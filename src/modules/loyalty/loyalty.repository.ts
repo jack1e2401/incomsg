@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
 import type { LoyaltyConfigDto, LoyaltyConfigInput } from "./loyalty.types.js";
 import { calculateEarnedPoints, selectTier } from "./loyalty.calculation.js";
+import { canReservePoints } from "./points-reservation.js";
 import type { OrderDto } from "../orders/orders.types.js";
 
 const defaultTiers = [
@@ -26,6 +27,43 @@ function serialize(merchantId: number, rule: { vndPerPoint: number; isActive: bo
 }
 
 export const loyaltyRepository = {
+  async reserveOrderPoints(tx: Prisma.TransactionClient, order: { memberId: number; merchantId: number; total: Prisma.Decimal }): Promise<number> {
+    const [rule, membership] = await Promise.all([
+      tx.loyaltyRule.findUnique({ where: { merchantId: order.merchantId } }),
+      tx.merchantMembership.upsert({
+        where: { memberId_merchantId: { memberId: order.memberId, merchantId: order.merchantId } },
+        create: { memberId: order.memberId, merchantId: order.merchantId },
+        update: {},
+        include: { tier: true, wallet: true },
+      }),
+    ]);
+    const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
+    const configuredTiers = await tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } });
+    const bronzeMultiplier = configuredTiers.length === 4
+      ? configuredTiers.find((tier) => tier.level === "BRONZE")!.multiplier
+      : new Prisma.Decimal(defaultTiers[0]!.multiplier);
+    const multiplier = membership.tier?.multiplier ?? bronzeMultiplier;
+    let requested: number;
+    try {
+      requested = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, multiplier);
+    } catch (error) {
+      if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
+      throw error;
+    }
+    if (!canReservePoints({ available: wallet.availablePoints, lifetime: wallet.lifetimeEarnedPoints, reserved: wallet.reservedPoints, requested })) {
+      throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
+    }
+    const reserved = await tx.loyaltyWallet.updateMany({
+      where: { id: wallet.id, reservedPoints: wallet.reservedPoints },
+      data: { reservedPoints: { increment: requested } },
+    });
+    if (reserved.count !== 1) {
+      const retry = Object.assign(new Error("Retry loyalty reservation after concurrent wallet update"), { code: "P2034" });
+      throw retry;
+    }
+    return requested;
+  },
+
   async getConfig(merchantId: number): Promise<LoyaltyConfigDto> {
     const [rule, tiers] = await Promise.all([
       prisma.loyaltyRule.findUnique({ where: { merchantId }, select: { vndPerPoint: true, isActive: true } }),
@@ -56,7 +94,7 @@ export const loyaltyRepository = {
     return this.getConfig(merchantId);
   },
 
-  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number): Promise<OrderDto | "missing" | "already_paid"> {
+  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earnedPointsSnapshot?: number): Promise<OrderDto | "missing" | "already_paid"> {
     const changed = await tx.order.updateMany({
       where: { id: orderId, memberId, status: "PENDING" },
       data: { status: "PAID", paidAt: new Date() },
@@ -108,14 +146,14 @@ export const loyaltyRepository = {
     const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
     let earnedPoints: number;
     try {
-      earnedPoints = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier);
+      earnedPoints = earnedPointsSnapshot ?? (rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier));
     } catch (error) {
       if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
       throw error;
     }
     const balanceAfter = wallet.availablePoints + earnedPoints;
     const lifetimeAfter = wallet.lifetimeEarnedPoints + earnedPoints;
-    if (balanceAfter > 2147483647 || lifetimeAfter > 2147483647) {
+    if (balanceAfter + wallet.reservedPoints > 2147483647 || lifetimeAfter + wallet.reservedPoints > 2147483647) {
       throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
     }
     await tx.loyaltyWallet.update({

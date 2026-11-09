@@ -153,6 +153,7 @@ model PaymentAttempt {
   orderId               Int                  @unique
   txnRef                String               @unique @db.VarChar(100)
   expectedAmount        Decimal              @db.Decimal(15, 0)
+  reservedPoints        Int                  @default(0)
   status                PaymentAttemptStatus @default(CREATED)
   transactionNo         String?              @db.VarChar(64)
   createdAt             DateTime             @default(now())
@@ -220,6 +221,7 @@ model LoyaltyWallet {
   membershipId         Int                @unique
   availablePoints      Int                @default(0)
   lifetimeEarnedPoints Int                @default(0)
+  reservedPoints       Int                @default(0)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   membership           MerchantMembership @relation(fields: [membershipId], references: [id])

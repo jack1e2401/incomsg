@@ -151,6 +151,8 @@ test("only a signed successful IPN confirms the order and duplicate IPN is idemp
 test("tampered or mismatched IPN never confirms; failed payment is terminal", async () => {
   const order = await createOrder();
   const created = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
+  const failedReservation = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
+  const reservationBeforeFailure = await prisma.loyaltyWallet.findFirstOrThrow({ where: { membership: { memberId, merchantId } } });
   const invalidSignature = signedIpn(created.json.txnRef, "12000000");
   invalidSignature.set("vnp_Amount", "12000001");
   assert.equal((await request(`/api/payments/vnpay/ipn?${invalidSignature}`)).json.RspCode, "97");
@@ -161,7 +163,10 @@ test("tampered or mismatched IPN never confirms; failed payment is terminal", as
   assert.equal((await request(`/api/payments/vnpay/ipn?${failed}`)).json.RspCode, "00");
   assert.equal((await request(`/api/payments/vnpay/ipn?${failed}`)).json.RspCode, "02");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
-  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "FAILED");
+  const failedAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
+  assert.equal(failedAttempt.status, "FAILED");
+  const failedMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId, merchantId } }, include: { wallet: true } });
+  assert.equal(failedMembership.wallet?.reservedPoints, reservationBeforeFailure.reservedPoints - failedReservation.reservedPoints);
   assert.equal(await prisma.pointTransaction.count({ where: { orderId: order.id } }), 0);
 });
 
@@ -180,9 +185,12 @@ test("incomplete transaction status stays open for a later successful IPN", asyn
   const order = await createOrder();
   const created = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
   const incomplete = signedIpn(created.json.txnRef, "12000000", { vnp_ResponseCode: "00", vnp_TransactionStatus: "01" });
-  assert.equal((await request(`/api/payments/vnpay/ipn?${incomplete}`)).json.RspCode, "00");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${incomplete}`)).json.RspCode, "99");
   assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "CREATED");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
+  const unknownPending = signedIpn(created.json.txnRef, "12000000", { vnp_ResponseCode: "00", vnp_TransactionStatus: "09" });
+  assert.equal((await request(`/api/payments/vnpay/ipn?${unknownPending}`)).json.RspCode, "99");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "CREATED");
   const success = signedIpn(created.json.txnRef, "12000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${success}`)).json.RspCode, "00");
   assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "SUCCEEDED");
@@ -257,4 +265,53 @@ test("zero-total orders finalize internally without a payment attempt", async ()
   const finalMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } });
   assert.equal(finalWallet.availablePoints, 0);
   assert.equal(finalMembership.tier?.level, "BRONZE");
+});
+
+test("blocks a payment redirect when the configured loyalty award exceeds the database limit", async () => {
+  await prisma.loyaltyRule.upsert({
+    where: { merchantId },
+    create: { merchantId, vndPerPoint: 1, isActive: true },
+    update: { vndPerPoint: 1, isActive: true },
+  });
+  const expensiveProductId = (await prisma.product.create({ data: { merchantId, name: "High point total", price: "3000000000" } })).id;
+  const orderResponse = await request("/api/orders", "POST", memberToken, { productId: expensiveProductId, quantity: 1 });
+  assert.equal(orderResponse.response.status, 201);
+  const result = await request(`/api/orders/${orderResponse.json.order.id}/payments/vnpay`, "POST", memberToken);
+  assert.equal(result.response.status, 409);
+  assert.equal(result.json.error, "LOYALTY_LIMIT_EXCEEDED");
+  assert.equal(await prisma.paymentAttempt.count({ where: { orderId: orderResponse.json.order.id } }), 0);
+});
+
+test("concurrent payment starts reserve shared wallet capacity and snapshot points across config changes", async () => {
+  await prisma.loyaltyRule.upsert({
+    where: { merchantId },
+    create: { merchantId, vndPerPoint: 10000, isActive: true },
+    update: { vndPerPoint: 10000, isActive: true },
+  });
+  const membership = await prisma.merchantMembership.upsert({
+    where: { memberId_merchantId: { memberId, merchantId } },
+    create: { memberId, merchantId }, update: {},
+  });
+  await prisma.loyaltyWallet.upsert({
+    where: { membershipId: membership.id },
+    create: { membershipId: membership.id, availablePoints: 2_147_483_632, lifetimeEarnedPoints: 2_147_483_632 },
+    update: { availablePoints: 2_147_483_632, lifetimeEarnedPoints: 2_147_483_632, reservedPoints: 0 },
+  });
+  const orders = await Promise.all([createOrder(), createOrder()]);
+  const responses = await Promise.all(orders.map((order) => request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken)));
+  assert.deepEqual(responses.map((item) => item.response.status).sort(), [201, 409]);
+  const acceptedIndex = responses.findIndex((item) => item.response.status === 201);
+  const rejectedIndex = 1 - acceptedIndex;
+  const accepted = responses[acceptedIndex]!;
+  assert.equal(responses[rejectedIndex]!.json.error, "LOYALTY_LIMIT_EXCEEDED");
+  const acceptedOrderId = orders[acceptedIndex]!.id;
+  assert.equal(await prisma.paymentAttempt.count({ where: { orderId: { in: orders.map((order) => order.id) } } }), 1);
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 12);
+
+  await prisma.loyaltyRule.update({ where: { merchantId }, data: { vndPerPoint: 1, isActive: false } });
+  const ipn = signedIpn(accepted.json.txnRef, "12000000");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: acceptedOrderId } })).status, "PAID");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: acceptedOrderId } })).delta, 12);
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 0);
 });
