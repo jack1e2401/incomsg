@@ -156,6 +156,7 @@ model PaymentAttempt {
   reservedPoints        Int                  @default(0)
   snapshotVndPerPoint   Int                  @default(10000)
   snapshotRuleActive    Boolean              @default(true)
+  snapshotMaxMultiplier Decimal              @default(2.00) @db.Decimal(5, 2)
   status                PaymentAttemptStatus @default(CREATED)
   transactionNo         String?              @db.VarChar(64)
   createdAt             DateTime             @default(now())

@@ -363,9 +363,10 @@ test("payment settlement uses the member's current tier multiplier", async () =>
   assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).delta, 14);
 });
 
-test("legacy CREATED attempts receive a safe wallet reservation during SQL backfill", async () => {
-  const user = await prisma.user.create({ data: { email: `m6-legacy-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
+test("tier multiplier increases after initiation cannot exceed the saved reservation ceiling", async () => {
+  const user = await prisma.user.create({ data: { email: `m6-multiplier-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
   fixtureUserIds.push(user.id);
+  const token = await signAccessToken(user.id);
   await prisma.loyaltyRule.upsert({ where: { merchantId }, create: { merchantId, vndPerPoint: 10000, isActive: true }, update: { vndPerPoint: 10000, isActive: true } });
   const tiers = [
     { level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" },
@@ -376,27 +377,63 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   for (const tier of tiers) {
     await prisma.loyaltyTier.upsert({ where: { merchantId_level: { merchantId, level: tier.level } }, create: { merchantId, ...tier }, update: { minLifetimePoints: tier.minLifetimePoints, multiplier: tier.multiplier } });
   }
-  const order = await prisma.order.create({ data: {
-    memberId: user.id, merchantId, status: "PENDING", subtotal: "120000", discountAmount: "0", total: "120000",
-    items: { create: { productId, productName: "Legacy order", unitPrice: "120000", quantity: 1, lineTotal: "120000" } },
-  } });
-  const legacyAttempt = await prisma.paymentAttempt.create({ data: { orderId: order.id, txnRef: `legacy-${suffix}`, expectedAmount: "12000000" } });
-  assert.equal(legacyAttempt.reservedPoints, 0);
-  await prisma.paymentAttempt.updateMany({ where: { status: "CREATED", id: { not: legacyAttempt.id } }, data: { status: "FAILED" } });
-  const migration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
-  const body = migration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
-  assert.ok(body);
+  const order = await createOrderFor(token);
+  const payment = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", token);
+  const attempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
+  assert.equal(attempt.snapshotMaxMultiplier.toFixed(2), "2.00");
+  assert.equal(attempt.reservedPoints, 24);
+
+  const bronze = await prisma.loyaltyTier.findUniqueOrThrow({ where: { merchantId_level: { merchantId, level: "BRONZE" } } });
+  try {
+    await prisma.loyaltyTier.update({ where: { id: bronze.id }, data: { multiplier: "999.99" } });
+    assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(payment.json.txnRef, "12000000")}`)).json.RspCode, "00");
+    const earned = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } });
+    assert.equal(earned.delta, 24);
+    assert.ok(earned.delta <= attempt.reservedPoints);
+  } finally {
+    await prisma.loyaltyTier.update({ where: { id: bronze.id }, data: { multiplier: "1.00" } });
+  }
+});
+
+test("legacy CREATED attempts receive a safe wallet reservation during SQL backfill", async () => {
+  const firstMigration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
+  const secondMigration = readFileSync(new URL("../prisma/migrations/20261109210000_snapshot_max_multiplier/migration.sql", import.meta.url), "utf8");
+  const firstBody = firstMigration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
+  const secondBody = secondMigration.split("-- BEGIN MULTIPLIER RESERVATION BACKFILL")[1]?.split("-- END MULTIPLIER RESERVATION BACKFILL")[0];
+  assert.ok(firstBody && secondBody);
+  const tableNames: [string, string][] = [
+    ["`PaymentAttempt`", "`TestPaymentAttempt`"], ["`Order`", "`TestOrder`"],
+    ["`MerchantMembership`", "`TestMerchantMembership`"], ["`LoyaltyWallet`", "`TestLoyaltyWallet`"],
+    ["`LoyaltyRule`", "`TestLoyaltyRule`"], ["`LoyaltyTier`", "`TestLoyaltyTier`"],
+  ];
   await prisma.$transaction(async (tx) => {
-    for (const statement of body.split(";").map((sql) => sql.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
-      await tx.$executeRawUnsafe(statement);
+    const tempTables = [
+      "CREATE TEMPORARY TABLE TestOrder (id INTEGER PRIMARY KEY, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, total DECIMAL(15,0) NOT NULL)",
+      "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00)",
+      "CREATE TEMPORARY TABLE TestMerchantMembership (id INTEGER PRIMARY KEY AUTO_INCREMENT, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL, UNIQUE KEY merchant_member (merchantId, memberId))",
+      "CREATE TEMPORARY TABLE TestLoyaltyWallet (id INTEGER PRIMARY KEY AUTO_INCREMENT, membershipId INTEGER NOT NULL UNIQUE, availablePoints INTEGER NOT NULL DEFAULT 0, lifetimeEarnedPoints INTEGER NOT NULL DEFAULT 0, reservedPoints INTEGER NOT NULL DEFAULT 0, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL)",
+      "CREATE TEMPORARY TABLE TestLoyaltyRule (merchantId INTEGER PRIMARY KEY, vndPerPoint INTEGER NOT NULL, isActive BOOLEAN NOT NULL)",
+      "CREATE TEMPORARY TABLE TestLoyaltyTier (merchantId INTEGER NOT NULL, multiplier DECIMAL(5,2) NOT NULL)",
+    ];
+    for (const sql of tempTables) await tx.$executeRawUnsafe(sql);
+    await tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000)");
+    await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status) VALUES (601, 501, 'CREATED')");
+    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, true)");
+    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 1.00), (701, 1.20), (701, 1.50), (701, 2.00)");
+    for (const body of [firstBody, secondBody]) {
+      const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
+      for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+        await tx.$executeRawUnsafe(statement);
+      }
     }
+    const [attempt] = await tx.$queryRawUnsafe<{ reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string }[]>("SELECT reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier FROM TestPaymentAttempt WHERE id = 601");
+    assert.equal(attempt?.snapshotVndPerPoint, 10000);
+    assert.equal(Boolean(attempt?.snapshotRuleActive), true);
+    assert.equal(Number(attempt?.snapshotMaxMultiplier), 2);
+    assert.equal(attempt?.reservedPoints, 24);
+    const [wallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = 1");
+    assert.equal(wallet?.reservedPoints, 24);
   });
-  const backfilled = await prisma.paymentAttempt.findUniqueOrThrow({ where: { id: legacyAttempt.id } });
-  assert.equal(backfilled.snapshotVndPerPoint, 10000);
-  assert.equal(backfilled.snapshotRuleActive, true);
-  assert.equal(backfilled.reservedPoints, 24);
-  const wallet = await prisma.loyaltyWallet.findFirstOrThrow({ where: { membership: { memberId: user.id, merchantId } } });
-  assert.equal(wallet.reservedPoints, 24);
 });
 
 test("mock finalization and VNPay attempt creation cannot both win concurrently", async () => {

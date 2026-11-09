@@ -62,7 +62,12 @@ export const loyaltyRepository = {
       const retry = Object.assign(new Error("Retry loyalty reservation after concurrent wallet update"), { code: "P2034" });
       throw retry;
     }
-    return { reservedPoints: requested, snapshotVndPerPoint: vndPerPoint, snapshotRuleActive: ruleActive };
+    return {
+      reservedPoints: requested,
+      snapshotVndPerPoint: vndPerPoint,
+      snapshotRuleActive: ruleActive,
+      snapshotMaxMultiplier: maxMultiplier,
+    };
   },
 
   async getConfig(merchantId: number): Promise<LoyaltyConfigDto> {
@@ -95,7 +100,7 @@ export const loyaltyRepository = {
     return this.getConfig(merchantId);
   },
 
-  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earningRuleSnapshot?: { vndPerPoint: number; ruleActive: boolean }): Promise<OrderDto | "missing" | "already_paid"> {
+  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earningSnapshot?: { vndPerPoint: number; ruleActive: boolean; maxMultiplier?: Prisma.Decimal }): Promise<OrderDto | "missing" | "already_paid"> {
     const changed = await tx.order.updateMany({
       where: { id: orderId, memberId, status: "PENDING" },
       data: { status: "PAID", paidAt: new Date() },
@@ -147,9 +152,12 @@ export const loyaltyRepository = {
     const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
     let earnedPoints: number;
     try {
-      const ruleActive = earningRuleSnapshot?.ruleActive ?? rule?.isActive ?? true;
-      const vndPerPoint = earningRuleSnapshot?.vndPerPoint ?? rule?.vndPerPoint ?? 10000;
-      earnedPoints = ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, earningMultiplier) : 0;
+      const ruleActive = earningSnapshot?.ruleActive ?? rule?.isActive ?? true;
+      const vndPerPoint = earningSnapshot?.vndPerPoint ?? rule?.vndPerPoint ?? 10000;
+      const multiplier = earningSnapshot?.maxMultiplier && earningMultiplier.greaterThan(earningSnapshot.maxMultiplier)
+        ? earningSnapshot.maxMultiplier
+        : earningMultiplier;
+      earnedPoints = ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, multiplier) : 0;
     } catch (error) {
       if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
       throw error;

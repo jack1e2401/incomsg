@@ -32,6 +32,7 @@ export const paymentsRepository = {
             reservedPoints: reservation.reservedPoints,
             snapshotVndPerPoint: reservation.snapshotVndPerPoint,
             snapshotRuleActive: reservation.snapshotRuleActive,
+            snapshotMaxMultiplier: reservation.snapshotMaxMultiplier,
           },
           include: { order: true },
         });
@@ -105,6 +106,7 @@ export const paymentsRepository = {
         const paid = await loyaltyRepository.completePaidOrder(tx, attempt.orderId, attempt.order.memberId, {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
+          maxMultiplier: attempt.snapshotMaxMultiplier,
         });
         if (paid === "missing") return { code: "01", message: "Order not found" };
         if (paid === "already_paid") return { code: "02", message: "Order already confirmed" };
