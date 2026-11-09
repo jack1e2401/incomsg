@@ -26,6 +26,7 @@ Chạy `npm test`, `npm run test:db` và `npm run build` để kiểm tra mã, q
 
 - Member đăng ký qua `POST /api/auth/register/member` và active ngay.
 - Merchant đăng ký qua `POST /api/auth/register/merchant`. Tài khoản ở trạng thái chờ duyệt.
+- Merchant xem trạng thái hồ sơ của chính mình qua `POST /api/auth/application-status` với email/mật khẩu đã đăng ký; endpoint trả PENDING, APPROVED hoặc REJECTED mà không cấp token.
 - Đăng nhập qua `POST /api/auth/login`, sau đó gửi `Authorization: Bearer <accessToken>` tới route cần đăng nhập.
 - Admin xem hồ sơ chờ tại `GET /api/admin/merchants/pending`, duyệt tại `PATCH /api/admin/merchants/:id/approve` hoặc từ chối tại `PATCH /api/admin/merchants/:id/reject`.
 - Merchant đã duyệt xem cửa hàng của mình tại `GET /api/merchant/me`.

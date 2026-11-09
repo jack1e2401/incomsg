@@ -2,7 +2,7 @@ import { hashPassword, verifyPassword } from "../../lib/password.js";
 import { HttpError } from "../../lib/http-error.js";
 import { signAccessToken } from "../../lib/access-token.js";
 import { authRepository } from "./auth.repository.js";
-import type { Credentials, MerchantRegistration, UserDto } from "./auth.types.js";
+import type { ApplicationDto, Credentials, MerchantRegistration, UserDto } from "./auth.types.js";
 
 function isUniqueEmailError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
@@ -50,5 +50,17 @@ export const authService = {
       accessToken: await signAccessToken(identity.user.id),
       user: identity.user,
     };
+  },
+
+  async getMerchantApplicationStatus(input: Credentials): Promise<ApplicationDto> {
+    const identity = await authRepository.findByEmail(input.email);
+    if (!identity || !(await verifyPassword(input.password, identity.passwordHash))) {
+      throw new HttpError(401, "INVALID_CREDENTIALS");
+    }
+    if (identity.user.role !== "MERCHANT") throw new HttpError(404, "APPLICATION_NOT_FOUND");
+
+    const application = await authRepository.findApplicationForApplicant(identity.user.id);
+    if (!application) throw new HttpError(404, "APPLICATION_NOT_FOUND");
+    return application;
   },
 };

@@ -8,6 +8,15 @@ const userSelection = {
   isActive: true,
 } as const;
 
+const applicationSelection = {
+  id: true,
+  applicantId: true,
+  storeName: true,
+  status: true,
+  reviewedById: true,
+  reviewedAt: true,
+} as const;
+
 export const authRepository = {
   async createMember(email: string, passwordHash: string): Promise<UserDto> {
     return prisma.user.create({
@@ -75,5 +84,12 @@ export const authRepository = {
 
   async findUser(userId: number): Promise<UserDto | null> {
     return prisma.user.findUnique({ where: { id: userId }, select: userSelection });
+  },
+
+  async findApplicationForApplicant(applicantId: number): Promise<ApplicationDto | null> {
+    return prisma.merchantApplication.findUnique({
+      where: { applicantId },
+      select: applicationSelection,
+    });
   },
 };

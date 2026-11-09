@@ -105,6 +105,35 @@ test("merchant applies and cannot log in before approval", async () => {
   assert.equal(login.status, 403);
 });
 
+test("merchant can securely check their pending application status", async () => {
+  const response = await fetch(`${baseUrl}/api/auth/application-status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: merchantEmail, password: "merchant-password-123" }),
+  });
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.application.id, applicationId);
+  assert.equal(result.application.applicantId > 0, true);
+  assert.equal(result.application.storeName, "Demo Store");
+  assert.equal(result.application.status, "PENDING");
+
+  const wrongPassword = await fetch(`${baseUrl}/api/auth/application-status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: merchantEmail, password: "wrong-password" }),
+  });
+  assert.equal(wrongPassword.status, 401);
+
+  const memberLookup = await fetch(`${baseUrl}/api/auth/application-status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: memberEmail, password: "member-password-123" }),
+  });
+  assert.equal(memberLookup.status, 404);
+});
+
 test("member cannot access admin or merchant routes", async () => {
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -160,6 +189,15 @@ test("admin lists and approves a pending merchant", async () => {
   });
   assert.equal(storeResponse.status, 200);
   assert.equal((await storeResponse.json()).merchant.id, result.merchant.id);
+
+  const applicationStatus = await fetch(`${baseUrl}/api/auth/application-status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: merchantEmail, password: "merchant-password-123" }),
+  });
+  const statusResult = await applicationStatus.json();
+  assert.equal(applicationStatus.status, 200);
+  assert.equal(statusResult.application.status, "APPROVED");
 });
 
 test("admin rejects a pending merchant", async () => {
@@ -190,4 +228,13 @@ test("admin rejects a pending merchant", async () => {
     body: JSON.stringify({ email: rejectedMerchantEmail, password: "merchant-password-123" }),
   });
   assert.equal(merchantLogin.status, 403);
+
+  const applicationStatus = await fetch(`${baseUrl}/api/auth/application-status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: rejectedMerchantEmail, password: "merchant-password-123" }),
+  });
+  const statusResult = await applicationStatus.json();
+  assert.equal(applicationStatus.status, 200);
+  assert.equal(statusResult.application.status, "REJECTED");
 });

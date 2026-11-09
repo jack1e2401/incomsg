@@ -15,3 +15,8 @@ export const registerMerchant: RequestHandler = async (request, response) => {
 export const login: RequestHandler = async (request, response) => {
   response.json(await authService.login(readLogin(request.body)));
 };
+
+export const applicationStatus: RequestHandler = async (request, response) => {
+  const application = await authService.getMerchantApplicationStatus(readLogin(request.body));
+  response.json({ application });
+};

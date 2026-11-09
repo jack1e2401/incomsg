@@ -9,6 +9,9 @@ flowchart TD
   P --> A["Admin đăng nhập và xem hồ sơ chờ"]
   A -->|Duyệt| T["Một transaction: APPROVED, tạo cửa hàng, kích hoạt User"]
   A -->|Từ chối| X["REJECTED, User vẫn inactive"]
+  P --> S["Merchant xác thực credentials để xem trạng thái application"]
+  T --> S
+  X --> S
   T --> G["Merchant đăng nhập, gọi GET /api/merchant/me"]
 ~~~
 
@@ -17,6 +20,7 @@ flowchart TD
 - Login dùng lại `verifyPassword`. Khi tài khoản active, ký JWT bằng `jose` (HS256, `sub` là User ID, hiệu lực 1 giờ, secret lấy từ `JWT_SECRET`). Các route bảo vệ đọc Bearer token, tải User hiện tại và kiểm tra `isActive` cùng role. Demo dùng một access token.
 - Admin chỉ xét hồ sơ `PENDING`. Khi duyệt, Repository dùng một `prisma.$transaction` để ghi `APPROVED` cùng reviewer và thời gian xét, tạo `Merchant` active với `ownerId=applicantId` và slug `store-<applicationId>`, rồi kích hoạt User. Khi reject, ghi `REJECTED`, reviewer và thời gian xét. User vẫn inactive và chưa có cửa hàng. Reviewer lấy từ User đã xác thực. [Prisma 7 Transactions](https://www.prisma.io/docs/orm/v7/prisma-client/queries/transactions)
 - Merchant gọi `/api/merchant/me` sau khi được duyệt. Middleware kiểm tra role và tài khoản active. Repository tìm cửa hàng active theo `ownerId` lấy từ User đã xác thực.
+- Merchant gọi `POST /api/auth/application-status` bằng email/mật khẩu để xem đúng hồ sơ của mình ở cả ba trạng thái. Endpoint xác minh mật khẩu scrypt nhưng không tạo JWT, vì Merchant PENDING/REJECTED đang inactive. Không tra cứu theo application ID do người gọi cung cấp.
 
 ## Hợp đồng API
 
@@ -24,6 +28,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `POST /api/auth/register/member` | Public | `{email,password}` | `201 {user}` |
 | `POST /api/auth/register/merchant` | Public | `{email,password,storeName}` | `201 {user,application}` |
+| `POST /api/auth/application-status` | Public, credential-verified | `{email,password}` | `200 {application}` |
 | `POST /api/auth/login` | Public | `{email,password}` | `200 {accessToken,user}` |
 | `GET /api/admin/merchants/pending` | Admin | — | `200 {applications}` |
 | `PATCH /api/admin/merchants/:id/approve` | Admin | — | `200 {application,merchant}` |
@@ -31,11 +36,12 @@ flowchart TD
 | `GET /api/merchant/me` | Merchant active | — | `200 {merchant}` |
 
 - DTO `user` gồm `id,email,role,isActive`. DTO `application` gồm `id,applicantId,storeName,status,reviewedById,reviewedAt`. DTO `merchant` gồm `id,name,slug,isActive`.
+- Application status dùng validation như login. Sai credential trả `401 INVALID_CREDENTIALS`; Member hoặc Merchant không có hồ sơ trả `404 APPLICATION_NOT_FOUND`.
 - Validate cơ bản. Email trim + lowercase, hợp lệ theo quy tắc seed và tối đa 191 ký tự. Password đăng ký 12–128 ký tự, login 1–128 ký tự. `storeName` trim, dài 1–191 ký tự. ID hồ sơ là số nguyên dương trong range MySQL INT. Server tự gán role và trạng thái.
 - Lỗi trả `{error:string}` theo kiểu hiện có. `400` cho input sai, `401` cho credential hoặc token không hợp lệ, `403` cho tài khoản chưa active hoặc thiếu quyền, `404` cho hồ sơ không tồn tại, `409` cho email trùng hoặc hồ sơ đã xử lý, `500` cho lỗi bất ngờ. Trả DTO công khai và thông báo lỗi ngắn.
 
 ## Nghiệm thu
 
-Member đăng ký và login được. Merchant đăng ký ở `PENDING` và chưa login được. Admin xem hồ sơ chờ rồi duyệt hoặc từ chối. Merchant đã duyệt login được và xem đúng cửa hàng của mình. Member bị chặn ở route Admin và Merchant. Build và test BE đạt.
+Member đăng ký và login được. Merchant đăng ký ở `PENDING` và chưa login được, nhưng có thể xác minh credential để xem hồ sơ của chính mình. Status endpoint trả đúng PENDING/APPROVED/REJECTED sau mỗi lần Admin xét. Admin xem hồ sơ chờ rồi duyệt hoặc từ chối. Merchant đã duyệt login được và xem đúng cửa hàng của mình. Member bị chặn ở route Admin và Merchant. Build và test BE đạt.
 
 Phạm vi code dừng ở các API trong bảng. Loyalty, catalog, orders và vouchers thuộc các mốc sau.
