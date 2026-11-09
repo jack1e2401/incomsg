@@ -415,9 +415,12 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   const fourthMigration = readFileSync(new URL("../prisma/migrations/20261109230000_legacy_tier_snapshot_fallback/migration.sql", import.meta.url), "utf8");
   const firstBody = firstMigration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
   const secondBody = secondMigration.split("-- BEGIN MULTIPLIER RESERVATION BACKFILL")[1]?.split("-- END MULTIPLIER RESERVATION BACKFILL")[0];
-  const thirdBody = thirdMigration.split("-- BEGIN TIER MULTIPLIER SNAPSHOT BACKFILL")[1]?.split("-- END TIER MULTIPLIER SNAPSHOT BACKFILL")[0];
   const fourthBody = fourthMigration.split("-- BEGIN LEGACY TIER CONFIG FALLBACK")[1]?.split("-- END LEGACY TIER CONFIG FALLBACK")[0];
-  assert.ok(firstBody && secondBody && thirdBody && fourthBody);
+  assert.ok(firstBody && secondBody && fourthBody);
+  assert.doesNotMatch(firstMigration, /UPDATE\s+`LoyaltyWallet`|SET pa\.`reservedPoints`/i);
+  assert.match(secondMigration, /SET pa\.`snapshotMaxMultiplier`[\s\S]*pa\.`reservedPoints`/);
+  assert.match(thirdMigration, /ALTER TABLE `PaymentAttempt`[\s\S]*ADD COLUMN `snapshotBronzeMultiplier`/);
+  assert.doesNotMatch(thirdMigration, /UPDATE\s+`(?:PaymentAttempt|LoyaltyWallet)`/i);
   const tableNames: [string, string][] = [
     ["`PaymentAttempt`", "`TestPaymentAttempt`"], ["`Order`", "`TestOrder`"],
     ["`MerchantMembership`", "`TestMerchantMembership`"], ["`LoyaltyWallet`", "`TestLoyaltyWallet`"],
@@ -426,6 +429,7 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   await prisma.$transaction(async (tx) => {
     const tempTables = [
       "CREATE TEMPORARY TABLE TestOrder (id INTEGER PRIMARY KEY, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, total DECIMAL(15,0) NOT NULL)",
+      // Tier columns/defaults emulate 2200's schema-only ALTER TABLE.
       "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotBronzeMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.00, snapshotSilverMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.20, snapshotGoldMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.50, snapshotPlatinumMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotTierConfigFallback BOOLEAN NOT NULL DEFAULT false)",
       "CREATE TEMPORARY TABLE TestMerchantMembership (id INTEGER PRIMARY KEY AUTO_INCREMENT, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL, UNIQUE KEY merchant_member (merchantId, memberId))",
       "CREATE TEMPORARY TABLE TestLoyaltyWallet (id INTEGER PRIMARY KEY AUTO_INCREMENT, membershipId INTEGER NOT NULL UNIQUE, availablePoints INTEGER NOT NULL DEFAULT 0, lifetimeEarnedPoints INTEGER NOT NULL DEFAULT 0, reservedPoints INTEGER NOT NULL DEFAULT 0, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL)",
@@ -440,7 +444,7 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
     // The test uses TEMPORARY tables. MySQL cannot read a temporary table again
     // as the source of an INSERT into that same table, so drop only those
     // anti-join predicates; INSERT IGNORE and unique keys retain idempotence.
-    for (const body of [firstBody, secondBody, thirdBody]) {
+    for (const body of [firstBody, secondBody]) {
       const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
       for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
         const safeSql = statement
@@ -484,8 +488,8 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
     const [wallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", membership.id);
     assert.equal(wallet?.reservedPoints, 24);
     const [counts] = await tx.$queryRawUnsafe<{ memberships: number; wallets: number }[]>("SELECT (SELECT COUNT(*) FROM TestMerchantMembership) AS memberships, (SELECT COUNT(*) FROM TestLoyaltyWallet) AS wallets");
-    assert.equal(counts?.memberships, 1);
-    assert.equal(counts?.wallets, 1);
+    assert.equal(Number(counts?.memberships), 1);
+    assert.equal(Number(counts?.wallets), 1);
   });
 });
 
