@@ -18,11 +18,11 @@ let merchantBId: number;
 let inactiveMerchantId: number;
 let orderAId: number;
 let orderBId: number;
+let pendingOrderId: number;
 let memberAToken: string;
 let memberBToken: string;
 let merchantAToken: string;
 let merchantBToken: string;
-let fixtureReady = false;
 
 before(async () => {
   const [ownerA, ownerB, inactiveOwner, memberA, memberB] = await Promise.all([
@@ -44,7 +44,7 @@ before(async () => {
     prisma.product.create({ data: { merchantId: merchantAId, name: "Reads product A", price: "20000" } }),
     prisma.product.create({ data: { merchantId: merchantBId, name: "Reads product B", price: "30000" } }),
   ]);
-  const [orderA, orderB] = await Promise.all([
+  const [orderA, orderB, pendingOrder] = await Promise.all([
     prisma.order.create({
       data: {
         merchantId: merchantAId, memberId: memberA.id, status: "PAID", subtotal: 20000,
@@ -59,13 +59,20 @@ before(async () => {
         items: { create: { productId: productB.id, productName: productB.name, unitPrice: 30000, quantity: 1, lineTotal: 30000 } },
       },
     }),
+    prisma.order.create({
+      data: {
+        merchantId: merchantAId, memberId: memberA.id, status: "PENDING", subtotal: 20000,
+        discountAmount: 0, total: 20000, paidAt: null,
+        items: { create: { productId: productA.id, productName: productA.name, unitPrice: 20000, quantity: 1, lineTotal: 20000 } },
+      },
+    }),
   ]);
   orderAId = orderA.id;
   orderBId = orderB.id;
+  pendingOrderId = pendingOrder.id;
   const membership = await prisma.merchantMembership.create({ data: { memberId: memberA.id, merchantId: merchantAId } });
   const wallet = await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 2, lifetimeEarnedPoints: 2 } });
   await prisma.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN", delta: 2, balanceAfter: 2, reason: "test read", orderId: orderAId } });
-  fixtureReady = true;
   [merchantAToken, merchantBToken, memberAToken, memberBToken] = await Promise.all([
     signAccessToken(ownerA.id), signAccessToken(ownerB.id), signAccessToken(memberA.id), signAccessToken(memberB.id),
   ]);
@@ -77,24 +84,40 @@ before(async () => {
 });
 
 after(async () => {
-  if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
-  if (!fixtureReady) return;
-  const users = await prisma.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
-  const userIds = users.map((user) => user.id);
-  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
-  const merchantIds = merchants.map((merchant) => merchant.id);
-  const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
-  const membershipIds = memberships.map((membership) => membership.id);
-  const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
-  await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((wallet) => wallet.id) } } });
-  await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: userIds } } } });
-  await prisma.order.deleteMany({ where: { memberId: { in: userIds } } });
-  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
-  await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  await prisma.$disconnect();
+  try {
+    if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+    const users = await prisma.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
+    const userIds = users.map((user) => user.id);
+    if (userIds.length === 0) return;
+    const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
+    const merchantIds = merchants.map((merchant) => merchant.id);
+    const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
+    const membershipIds = memberships.map((membership) => membership.id);
+    const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
+    const walletIds = wallets.map((wallet) => wallet.id);
+    const vouchers = await prisma.memberVoucher.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
+    const voucherIds = vouchers.map((voucher) => voucher.id);
+    const orders = await prisma.order.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
+    const orderIds = orders.map((order) => order.id);
+    await prisma.rewardFulfillment.deleteMany({ where: { voucherId: { in: voucherIds } } });
+    await prisma.order.updateMany({ where: { id: { in: orderIds }, voucherId: { in: voucherIds } }, data: { voucherId: null } });
+    await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+    await prisma.paymentAttempt.deleteMany({ where: { orderId: { in: orderIds } } });
+    await prisma.pointTransaction.deleteMany({ where: { OR: [{ walletId: { in: walletIds } }, { memberVoucherId: { in: voucherIds } }] } });
+    await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.memberVoucher.deleteMany({ where: { id: { in: voucherIds } } });
+    await prisma.loyaltyWallet.deleteMany({ where: { id: { in: walletIds } } });
+    await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
+    await prisma.merchantApplication.deleteMany({ where: { applicantId: { in: userIds } } });
+    await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
 async function request(path: string, token?: string) {
@@ -115,11 +138,31 @@ test("public merchant directory lists active stores only", async () => {
 test("member order list is scoped to member and merchant; foreign detail is hidden", async () => {
   const own = await request(`/api/member/orders?merchantId=${merchantAId}`, memberAToken);
   assert.equal(own.response.status, 200);
-  assert.deepEqual(own.json.orders.map((order: { id: number }) => order.id), [orderAId]);
-  assert.equal(own.json.orders[0].earnedPoints, 2);
+  const paidOrder = own.json.orders.find((order: { id: number }) => order.id === orderAId);
+  const pendingOrder = own.json.orders.find((order: { id: number }) => order.id === pendingOrderId);
+  assert.equal(paidOrder.earnedPoints, 2);
+  assert.equal(pendingOrder.earnedPoints, null);
   const foreign = await request(`/api/member/orders/${orderAId}`, memberBToken);
   assert.equal(foreign.response.status, 404);
   assert.equal(foreign.json.error, "ORDER_NOT_FOUND");
+});
+
+test("member order history remains readable after merchant deactivation", async () => {
+  await prisma.merchant.update({ where: { id: merchantAId }, data: { isActive: false } });
+  try {
+    const history = await request(`/api/member/orders?merchantId=${merchantAId}`, memberAToken);
+    assert.equal(history.response.status, 200);
+    assert.ok(history.json.orders.some((order: { id: number }) => order.id === orderAId));
+  } finally {
+    await prisma.merchant.update({ where: { id: merchantAId }, data: { isActive: true } });
+  }
+});
+
+test("member order list validates authentication, role and merchant query IDs", async () => {
+  assert.equal((await request(`/api/member/orders?merchantId=${merchantAId}`)).response.status, 401);
+  assert.equal((await request(`/api/member/orders?merchantId=${merchantAId}`, merchantAToken)).response.status, 403);
+  assert.equal((await request("/api/member/orders?merchantId=bad", memberAToken)).response.status, 400);
+  assert.equal((await request(`/api/member/orders?merchantId=${merchantAId}&merchantId=${merchantBId}`, memberAToken)).response.status, 400);
 });
 
 test("merchant order list returns only its own store orders and earned points", async () => {

@@ -9,7 +9,7 @@ const maxOrderTotal = new Prisma.Decimal("999999999999999");
 
 export const ordersService = {
   async listMemberOrders(memberId: number, merchantId: number) {
-    const merchant = await merchantRepository.findActiveStoreById(merchantId);
+    const merchant = await merchantRepository.findStoreById(merchantId);
     if (!merchant) throw new HttpError(404, "MERCHANT_NOT_FOUND");
     return ordersRepository.listMemberOrders(memberId, merchantId);
   },

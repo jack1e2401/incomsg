@@ -6,6 +6,10 @@ export const merchantRepository = {
     return prisma.merchant.findFirst({ where: { id: merchantId, isActive: true }, select: { id: true } });
   },
 
+  async findStoreById(merchantId: number) {
+    return prisma.merchant.findUnique({ where: { id: merchantId }, select: { id: true } });
+  },
+
   async listActiveStores() {
     return prisma.merchant.findMany({
       where: { isActive: true },
