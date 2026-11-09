@@ -199,3 +199,35 @@ test("discount snapshot is reserved once, used only on a committed pay, and rewa
   assert.equal(repeated.response.status, 409);
 });
 
+test("first paid order stays Bronze when its discount reduces total to zero", async () => {
+  const definition = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "DISCOUNT", title: "Giảm 250k", pointsCost: 1, discountAmount: "250000",
+  });
+  assert.equal(definition.response.status, 201);
+  const otherMemberId = fixtureIds[3];
+  const membership = await prisma.merchantMembership.create({ data: { memberId: otherMemberId, merchantId: merchantAId } });
+  const voucher = await prisma.memberVoucher.create({ data: {
+    membershipId: membership.id,
+    definitionId: definition.json.definition.id,
+    snapshotType: "DISCOUNT",
+    snapshotTitle: "Giảm 250k",
+    snapshotPointsCost: 1,
+    snapshotDiscountAmount: "250000",
+    snapshotRewardDescription: null,
+  } });
+  const created = await request("/api/orders", "POST", otherToken, { productId: productAId, quantity: 1, voucherId: voucher.id });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.json.order.subtotal, "200000");
+  assert.equal(created.json.order.discountAmount, "200000");
+  assert.equal(created.json.order.total, "0");
+  const paid = await request(`/api/orders/${created.json.order.id}/pay`, "POST", otherToken);
+  assert.equal(paid.response.status, 200);
+  assert.equal(paid.json.order.status, "PAID");
+  assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: created.json.order.id } })).delta, 0);
+  const wallet = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", otherToken);
+  assert.equal(wallet.json.wallet.availablePoints, 0);
+  assert.equal(wallet.json.wallet.lifetimeEarnedPoints, 0);
+  assert.equal(wallet.json.wallet.tier, "BRONZE");
+});
+
