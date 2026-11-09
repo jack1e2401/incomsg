@@ -30,5 +30,5 @@ export const receiveVnpayIpn: RequestHandler = async (request, response) => {
 
 export const receiveVnpayReturn: RequestHandler = async (request, response) => {
   const query = new URL(request.originalUrl, "http://localhost").searchParams;
-  response.redirect(302, await paymentsService.getReturnLocation(query.get("vnp_TxnRef")));
+  response.redirect(302, await paymentsService.getReturnLocation(query));
 };

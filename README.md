@@ -99,3 +99,11 @@ $paidOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/orders/$($order.o
 ```
 
 Gọi lại bước 9 với cùng đơn trả `409 ORDER_ALREADY_PAID`. Đơn giữ nguyên tên sản phẩm và giá snapshot tại thời điểm đặt, kể cả khi Merchant sửa hoặc ẩn sản phẩm sau đó.
+
+## Milestone 6 — VNPay Sandbox
+
+Mặc định `PAYMENT_MODE=mock`; route `POST /api/orders/:orderId/pay` xác nhận thanh toán giả lập. Khi bật `PAYMENT_MODE=vnpay`, cấu hình `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL` và `VNPAY_IPN_URL` trong `.env`. URL thanh toán bị giới hạn vào endpoint HTTPS Sandbox `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`; không dùng hash secret production trong cấu hình này.
+
+Chạy `npx prisma migrate deploy` để tạo `PaymentAttempt`. Cấu hình Return URL và IPN URL công khai trên HTTPS; Return URL chỉ đưa Member về trang kết quả, còn IPN có chữ ký HMAC-SHA512 mới quyết định PAID. Member khởi tạo thanh toán qua `POST /api/orders/:orderId/payments/vnpay`, giao diện đọc lại `GET /api/orders/:orderId/payment-status`. Thành công cần cả `vnp_ResponseCode=00` và `vnp_TransactionStatus=00`; IPN lặp không phát điểm lần hai. Đơn tổng bằng 0 được hoàn tất trong backend mà không chuyển sang VNPay.
+
+Chạy `npm test`, `npm run build`, `npx prisma validate` và `npx tsx --test tests/milestone-6.integration.test.ts`. Integration test tạo IPN đã ký để kiểm tra xác nhận, lỗi và gọi lặp; smoke test với VNPay thật cần credential Sandbox và URL IPN công khai.

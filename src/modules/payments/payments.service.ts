@@ -2,7 +2,7 @@ import { env } from "../../config/env.js";
 import { HttpError } from "../../lib/http-error.js";
 import { ordersService } from "../orders/orders.service.js";
 import { paymentsRepository } from "./payments.repository.js";
-import { signVnpay } from "./vnpay-signature.js";
+import { signVnpay, verifyVnpay } from "./vnpay-signature.js";
 
 function vnpayDate(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -57,7 +57,6 @@ export const paymentsService = {
   async processIpn(params: URLSearchParams) {
     if (env.paymentMode !== "vnpay") return { code: "99", message: "VNPay is not enabled" };
     if (!env.vnpay.hashSecret || !env.vnpay.tmnCode) return { code: "99", message: "Configuration error" };
-    const { verifyVnpay } = await import("./vnpay-signature.js");
     if (!verifyVnpay(params, env.vnpay.hashSecret)) return { code: "97", message: "Invalid signature" };
     const required = ["vnp_TxnRef", "vnp_TmnCode", "vnp_Amount", "vnp_ResponseCode", "vnp_TransactionStatus"];
     if (required.some((key) => !params.has(key))) return { code: "99", message: "Missing required fields" };
@@ -72,7 +71,11 @@ export const paymentsService = {
     });
   },
 
-  async getReturnLocation(txnRef: string | null) {
+  async getReturnLocation(params: URLSearchParams) {
+    if (env.paymentMode === "vnpay" && (!env.vnpay.hashSecret || !verifyVnpay(params, env.vnpay.hashSecret))) {
+      return `${env.frontendOrigin}/`;
+    }
+    const txnRef = params.get("vnp_TxnRef");
     if (!txnRef) return `${env.frontendOrigin}/`;
     const attempt = await paymentsRepository.findForReturn(txnRef);
     if (!attempt) return `${env.frontendOrigin}/`;
