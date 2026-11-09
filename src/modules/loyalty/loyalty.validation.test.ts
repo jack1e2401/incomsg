@@ -30,3 +30,11 @@ test("rejects invalid loyalty rate, tier order, multiplier, or missing tier", ()
     assert.throws(() => parseConfig(input), (error: unknown) => error instanceof HttpError && error.statusCode === 400);
   }
 });
+
+test("rejects values outside signed MySQL Int range", () => {
+  assert.throws(() => parseConfig({ ...config, vndPerPoint: 2147483648 }), HttpError);
+  assert.throws(() => parseConfig({
+    ...config,
+    tiers: config.tiers.map((tier, index) => index === 3 ? { ...tier, minLifetimePoints: 2147483648 } : tier),
+  }), HttpError);
+});

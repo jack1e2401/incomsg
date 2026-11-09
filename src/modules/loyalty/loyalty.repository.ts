@@ -1,5 +1,6 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
+import { HttpError } from "../../lib/http-error.js";
 import type { LoyaltyConfigDto, LoyaltyConfigInput } from "./loyalty.types.js";
 import { calculateEarnedPoints, selectTier } from "./loyalty.calculation.js";
 import type { OrderDto } from "../orders/orders.types.js";
@@ -90,9 +91,18 @@ export const loyaltyRepository = {
     });
     const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
     const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
-    const earnedPoints = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier);
+    let earnedPoints: number;
+    try {
+      earnedPoints = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier);
+    } catch (error) {
+      if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
+      throw error;
+    }
     const balanceAfter = wallet.availablePoints + earnedPoints;
     const lifetimeAfter = wallet.lifetimeEarnedPoints + earnedPoints;
+    if (balanceAfter > 2147483647 || lifetimeAfter > 2147483647) {
+      throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
+    }
     await tx.loyaltyWallet.update({
       where: { id: wallet.id },
       data: { availablePoints: { increment: earnedPoints }, lifetimeEarnedPoints: { increment: earnedPoints } },

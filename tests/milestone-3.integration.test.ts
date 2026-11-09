@@ -65,13 +65,25 @@ after(async () => {
   }
   const users = await prisma.user.findMany({ where: { email: { in: fixtureEmails } }, select: { id: true } });
   const userIds = users.map(({ id }) => id);
+  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
+  const merchantIds = merchants.map(({ id }) => id);
+  const memberships = await prisma.merchantMembership.findMany({
+    where: { merchantId: { in: merchantIds }, memberId: { in: userIds } },
+    select: { id: true },
+  });
+  const membershipIds = memberships.map(({ id }) => id);
+  const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
+  const walletIds = wallets.map(({ id }) => id);
+  await prisma.pointTransaction.deleteMany({ where: { walletId: { in: walletIds } } });
+  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
+  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
   const orders = await prisma.order.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
   const orderIds = orders.map(({ id }) => id);
   await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
-  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
-  const merchantIds = merchants.map(({ id }) => id);
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();

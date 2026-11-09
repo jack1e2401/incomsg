@@ -21,3 +21,10 @@ test("selects the highest tier reached by lifetime earned points", () => {
   assert.equal(selectTier(5000, tiers), "GOLD");
   assert.equal(selectTier(10000, tiers), "PLATINUM");
 });
+
+test("rejects earned points above the database Int range", () => {
+  assert.throws(
+    () => calculateEarnedPoints(new Prisma.Decimal("999999999999999"), 1, new Prisma.Decimal("999.99")),
+    RangeError,
+  );
+});
