@@ -195,6 +195,7 @@ test("concurrent paid orders serialize the wallet balance and preserve member is
   const foreignWallet = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", secondMemberToken);
   assert.equal(foreignWallet.json.wallet.availablePoints, 0);
   assert.equal(foreignWallet.json.wallet.tier, "UNRANKED");
+  assert.deepEqual(foreignWallet.json.wallet.transactions, []);
 });
 
 test("a sub-threshold first paid order creates Bronze without inventing points", async () => {
