@@ -26,11 +26,13 @@ let otherToken: string;
 let fixtureUserIds: number[] = [];
 
 before(async () => {
+  console.error("[M6 setup] create shared fixtures: start");
   const [owner, member, other] = await Promise.all([
     prisma.user.create({ data: { email: emails[0], passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: emails[1], passwordHash: "fixture", role: "MEMBER" } }),
     prisma.user.create({ data: { email: emails[2], passwordHash: "fixture", role: "MEMBER" } }),
   ]);
+  console.error("[M6 setup] create shared fixtures: done");
   fixtureUserIds = [owner.id, member.id, other.id];
   memberId = member.id;
   const merchant = await prisma.merchant.create({ data: { ownerId: owner.id, name: "M6 Shop", slug: `m6-${suffix}` } });
@@ -508,7 +510,17 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     ["`MerchantMembership`", "`TestMerchantMembership`"], ["`LoyaltyWallet`", "`TestLoyaltyWallet`"],
     ["`LoyaltyRule`", "`TestLoyaltyRule`"], ["`LoyaltyTier`", "`TestLoyaltyTier`"],
   ];
+  let sqlStep = 0;
+  const traceSql = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
+    const step = ++sqlStep;
+    console.error(`[M6 migration ${step}] ${label}: start`);
+    const result = await operation();
+    console.error(`[M6 migration ${step}] ${label}: done`);
+    return result;
+  };
+  console.error("[M6 migration] interactive transaction: start");
   await prisma.$transaction(async (tx) => {
+    console.error("[M6 migration] interactive transaction: acquired");
     const tempTables = [
       "CREATE TEMPORARY TABLE TestOrder (id INTEGER PRIMARY KEY, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, total DECIMAL(15,0) NOT NULL)",
       // Tier columns/defaults emulate 2200's schema-only ALTER TABLE.
@@ -518,43 +530,45 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
       "CREATE TEMPORARY TABLE TestLoyaltyRule (merchantId INTEGER PRIMARY KEY, vndPerPoint INTEGER NOT NULL, isActive BOOLEAN NOT NULL)",
       "CREATE TEMPORARY TABLE TestLoyaltyTier (merchantId INTEGER NOT NULL, level VARCHAR(20) NOT NULL, multiplier DECIMAL(5,2) NOT NULL)",
     ];
-    for (const sql of tempTables) await tx.$executeRawUnsafe(sql);
-    await tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000), (502, 701, 802, 30000)");
-    await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status, reservedPoints) VALUES (601, 501, 'CREATED', 0), (602, 502, 'CREATED', 4)");
-    await tx.$executeRawUnsafe("INSERT INTO TestMerchantMembership (id, merchantId, memberId, createdAt, updatedAt) VALUES (2, 701, 802, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
-    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyWallet (id, membershipId, availablePoints, lifetimeEarnedPoints, reservedPoints, createdAt, updatedAt) VALUES (2, 2, 4, 4, 4, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
-    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, false)");
-    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 'BRONZE', 1.00), (701, 'SILVER', 1.20), (701, 'GOLD', 1.50), (701, 'PLATINUM', 2.00)");
+    for (const sql of tempTables) await traceSql(`create temp table: ${sql.split(" ")[2]}`, () => tx.$executeRawUnsafe(sql));
+    await traceSql("seed orders", () => tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000), (502, 701, 802, 30000)"));
+    await traceSql("seed attempts", () => tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status, reservedPoints) VALUES (601, 501, 'CREATED', 0), (602, 502, 'CREATED', 4)"));
+    await traceSql("seed membership", () => tx.$executeRawUnsafe("INSERT INTO TestMerchantMembership (id, merchantId, memberId, createdAt, updatedAt) VALUES (2, 701, 802, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))"));
+    await traceSql("seed wallet", () => tx.$executeRawUnsafe("INSERT INTO TestLoyaltyWallet (id, membershipId, availablePoints, lifetimeEarnedPoints, reservedPoints, createdAt, updatedAt) VALUES (2, 2, 4, 4, 4, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))"));
+    await traceSql("seed inactive rule", () => tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, false)"));
+    await traceSql("seed tiers", () => tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 'BRONZE', 1.00), (701, 'SILVER', 1.20), (701, 'GOLD', 1.50), (701, 'PLATINUM', 2.00)"));
     // The test uses TEMPORARY tables. MySQL cannot read a temporary table again
     // as the source of an INSERT into that same table, so drop only those
     // anti-join predicates; INSERT IGNORE and unique keys retain idempotence.
     const runBody = async (body: string, statementFilter = (_statement: string) => true) => {
       const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
+      let statementNumber = 0;
       for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean).filter(statementFilter)) {
+        statementNumber++;
         const safeSql = statement
           .replace("LEFT JOIN `TestMerchantMembership` mm ON mm.`merchantId` = o.`merchantId` AND mm.`memberId` = o.`memberId`", "")
           .replace(" AND mm.`id` IS NULL", "")
           .replace("LEFT JOIN `TestLoyaltyWallet` w ON w.`membershipId` = mm.`id`", "")
           .replace(" AND w.`id` IS NULL", "");
-        await tx.$executeRawUnsafe(safeSql);
+        await traceSql(`migration ${body === firstBody ? "2000" : "2100"} statement ${statementNumber} (${safeSql.slice(0, 110)})`, () => tx.$executeRawUnsafe(safeSql));
       }
     };
     await runBody(firstBody);
-    await tx.$executeRawUnsafe("UPDATE TestLoyaltyTier SET multiplier = 999.99 WHERE level = 'BRONZE'");
+    await traceSql("change current bronze multiplier", () => tx.$executeRawUnsafe("UPDATE TestLoyaltyTier SET multiplier = 999.99 WHERE level = 'BRONZE'"));
     await runBody(secondBody);
     // Re-run only INSERT IGNORE statements to verify existing membership/wallet
     // records remain unchanged without rerunning the capacity calculation.
     await runBody(firstBody, (statement) => statement.startsWith("INSERT IGNORE INTO"));
-    const [preservedBeforeFallback] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestPaymentAttempt WHERE id = 602");
+    const [preservedBeforeFallback] = await traceSql("read preserved reservation", () => tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestPaymentAttempt WHERE id = 602"));
     assert.equal(preservedBeforeFallback?.reservedPoints, 4);
     const fallbackSql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), fourthBody);
     for (const statement of fallbackSql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
-      await tx.$executeRawUnsafe(statement);
+      await traceSql(`migration 2300 statement ${sqlStep + 1}`, () => tx.$executeRawUnsafe(statement));
     }
     const exactFallbackUpdate = fifthMigration.split(";").map((statement) => statement.trim()).find((statement) => statement.startsWith("UPDATE `PaymentAttempt`"));
     assert.ok(exactFallbackUpdate);
-    await tx.$executeRawUnsafe(tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), exactFallbackUpdate));
-    const [backfilledAttempt, preservedAttempt] = await tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean; snapshotExactReservationAward: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback, snapshotExactReservationAward FROM TestPaymentAttempt ORDER BY id");
+    await traceSql("migration 2400 exact-award classifier", () => tx.$executeRawUnsafe(tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), exactFallbackUpdate)));
+    const [backfilledAttempt, preservedAttempt] = await traceSql("read migrated attempts", () => tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean; snapshotExactReservationAward: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback, snapshotExactReservationAward FROM TestPaymentAttempt ORDER BY id"));
     assert.equal(backfilledAttempt?.snapshotVndPerPoint, 10000);
     assert.equal(Boolean(backfilledAttempt?.snapshotRuleActive), false);
     assert.equal(Number(backfilledAttempt?.snapshotMaxMultiplier), 999.99);
@@ -571,16 +585,17 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     assert.equal(Boolean(preservedAttempt?.snapshotTierConfigFallback), true);
     assert.equal(Boolean(preservedAttempt?.snapshotExactReservationAward), true);
     assert.equal(preservedAttempt?.reservedPoints, 4);
-    const [newMembership] = await tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801");
+    const [newMembership] = await traceSql("read backfilled membership", () => tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801"));
     assert.ok(newMembership);
-    const [newWallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", newMembership.id);
+    const [newWallet] = await traceSql("read backfilled wallet", () => tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", newMembership.id));
     assert.equal(newWallet?.reservedPoints, 11999);
-    const [existingWallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = 2");
+    const [existingWallet] = await traceSql("read preserved wallet", () => tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = 2"));
     assert.equal(existingWallet?.reservedPoints, 4);
-    const [counts] = await tx.$queryRawUnsafe<{ memberships: number; wallets: number }[]>("SELECT (SELECT COUNT(*) FROM TestMerchantMembership) AS memberships, (SELECT COUNT(*) FROM TestLoyaltyWallet) AS wallets");
+    const [counts] = await traceSql("read temp table counts", () => tx.$queryRawUnsafe<{ memberships: number; wallets: number }[]>("SELECT (SELECT COUNT(*) FROM TestMerchantMembership) AS memberships, (SELECT COUNT(*) FROM TestLoyaltyWallet) AS wallets"));
     assert.equal(Number(counts?.memberships), 2);
     assert.equal(Number(counts?.wallets), 2);
   });
+  console.error("[M6 migration] interactive transaction: completed");
 });
 
 test("mock finalization and VNPay attempt creation cannot both win concurrently", async () => {
