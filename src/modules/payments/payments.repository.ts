@@ -64,13 +64,17 @@ export const paymentsRepository = {
       return { code: "04", message: "Invalid amount" };
     }
     if (attempt.status !== "CREATED") return { code: "02", message: "Order already confirmed" };
+    if (input.transactionStatus === "01") return { code: "00", message: "Transaction is incomplete" };
+    const successful = input.responseCode === "00" && input.transactionStatus === "00";
+    const terminalFailure = input.responseCode !== "00" || ["02", "04", "07"].includes(input.transactionStatus);
+    if (!successful && !terminalFailure) return { code: "00", message: "Transaction result is pending" };
 
     try {
       return await withTransactionRetry(() => prisma.$transaction(async (tx) => {
         const claimed = await tx.paymentAttempt.updateMany({
           where: { id: attempt.id, status: "CREATED" },
           data: {
-            status: input.responseCode === "00" && input.transactionStatus === "00" ? "SUCCEEDED" : "FAILED",
+            status: successful ? "SUCCEEDED" : "FAILED",
             transactionNo: input.transactionNo || null,
             confirmedAt: new Date(),
           },

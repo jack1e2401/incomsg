@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 function formEncode(value: string): string {
   return encodeURIComponent(value)
     .replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/~/g, "%7E")
     .replace(/%20/g, "+");
 }
 

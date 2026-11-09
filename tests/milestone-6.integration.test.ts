@@ -77,7 +77,11 @@ async function request(path: string, method = "GET", token?: string, body?: unkn
     redirect: "manual",
   });
   const text = await response.text();
-  return { response, json: text ? JSON.parse(text) as Record<string, any> : {} };
+  const contentType = response.headers.get("content-type") ?? "";
+  const json = contentType.includes("application/json") && text
+    ? JSON.parse(text) as Record<string, any>
+    : {};
+  return { response, json, text };
 }
 
 async function createOrder() {
@@ -158,4 +162,98 @@ test("tampered or mismatched IPN never confirms; failed payment is terminal", as
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
   assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "FAILED");
   assert.equal(await prisma.pointTransaction.count({ where: { orderId: order.id } }), 0);
+});
+
+test("rejects a signed foreign merchant code and unknown transaction reference", async () => {
+  const order = await createOrder();
+  const created = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
+  const wrongMerchant = signedIpn(created.json.txnRef, "12000000", { vnp_TmnCode: "OTHER123" });
+  const unknownReference = signedIpn("unknown-txn-ref", "12000000");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${wrongMerchant}`)).json.RspCode, "04");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${unknownReference}`)).json.RspCode, "01");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "CREATED");
+});
+
+test("incomplete transaction status stays open for a later successful IPN", async () => {
+  const order = await createOrder();
+  const created = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
+  const incomplete = signedIpn(created.json.txnRef, "12000000", { vnp_ResponseCode: "00", vnp_TransactionStatus: "01" });
+  assert.equal((await request(`/api/payments/vnpay/ipn?${incomplete}`)).json.RspCode, "00");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "CREATED");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
+  const success = signedIpn(created.json.txnRef, "12000000");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${success}`)).json.RspCode, "00");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } })).status, "SUCCEEDED");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PAID");
+  assert.equal(await prisma.pointTransaction.count({ where: { orderId: order.id } }), 1);
+});
+
+test("requires both VNPAY result codes to be successful", async () => {
+  const responseFailedOrder = await createOrder();
+  const responseFailedPayment = await request(`/api/orders/${responseFailedOrder.id}/payments/vnpay`, "POST", memberToken);
+  const responseFailed = signedIpn(responseFailedPayment.json.txnRef, "12000000", { vnp_ResponseCode: "24", vnp_TransactionStatus: "00" });
+  assert.equal((await request(`/api/payments/vnpay/ipn?${responseFailed}`)).json.RspCode, "00");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: responseFailedOrder.id } })).status, "PENDING");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: responseFailedOrder.id } })).status, "FAILED");
+
+  const statusFailedOrder = await createOrder();
+  const statusFailedPayment = await request(`/api/orders/${statusFailedOrder.id}/payments/vnpay`, "POST", memberToken);
+  const statusFailed = signedIpn(statusFailedPayment.json.txnRef, "12000000", { vnp_ResponseCode: "00", vnp_TransactionStatus: "02" });
+  assert.equal((await request(`/api/payments/vnpay/ipn?${statusFailed}`)).json.RspCode, "00");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: statusFailedOrder.id } })).status, "PENDING");
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: statusFailedOrder.id } })).status, "FAILED");
+  assert.equal(await prisma.pointTransaction.count({ where: { orderId: { in: [responseFailedOrder.id, statusFailedOrder.id] } } }), 0);
+});
+
+test("successful IPN consumes the discount and awards points on the net total", async () => {
+  const membership = await prisma.merchantMembership.upsert({
+    where: { memberId_merchantId: { memberId, merchantId } },
+    create: { memberId, merchantId }, update: {},
+  });
+  const wallet = await prisma.loyaltyWallet.findUnique({ where: { membershipId: membership.id } });
+  if (!wallet) await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 200, lifetimeEarnedPoints: 200 } });
+  const definition = await prisma.voucherDefinition.create({ data: {
+    merchantId, type: "DISCOUNT", title: "Giảm 20.000", pointsCost: 200, discountAmount: "20000",
+  } });
+  const voucher = await prisma.memberVoucher.create({ data: {
+    membershipId: membership.id, definitionId: definition.id, snapshotType: "DISCOUNT",
+    snapshotTitle: "Giảm 20.000", snapshotPointsCost: 200, snapshotDiscountAmount: "20000",
+  } });
+  const orderResponse = await request("/api/orders", "POST", memberToken, { productId, quantity: 1, voucherId: voucher.id });
+  assert.equal(orderResponse.response.status, 201);
+  const order = orderResponse.json.order;
+  assert.equal(order.total, "100000");
+  const payment = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
+  const ipn = signedIpn(payment.json.txnRef, "10000000");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
+  assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } })).delta, 10);
+});
+
+test("zero-total orders finalize internally without a payment attempt", async () => {
+  const otherMemberId = (await prisma.user.findUniqueOrThrow({ where: { email: emails[2] } })).id;
+  const membership = await prisma.merchantMembership.create({ data: { memberId: otherMemberId, merchantId } });
+  await prisma.loyaltyWallet.create({ data: { membershipId: membership.id } });
+  const definition = await prisma.voucherDefinition.create({ data: {
+    merchantId, type: "DISCOUNT", title: "Giảm 250.000", pointsCost: 1, discountAmount: "250000",
+  } });
+  const voucher = await prisma.memberVoucher.create({ data: {
+    membershipId: membership.id, definitionId: definition.id, snapshotType: "DISCOUNT",
+    snapshotTitle: "Giảm 250.000", snapshotPointsCost: 1, snapshotDiscountAmount: "250000",
+  } });
+  const orderResponse = await request("/api/orders", "POST", otherToken, { productId, quantity: 1, voucherId: voucher.id });
+  assert.equal(orderResponse.response.status, 201);
+  const orderId = orderResponse.json.order.id as number;
+  assert.equal(orderResponse.json.order.total, "0");
+  const payment = await request(`/api/orders/${orderId}/payments/vnpay`, "POST", otherToken);
+  assert.equal(payment.response.status, 200);
+  assert.equal(payment.json.orderStatus, "PAID");
+  assert.equal(await prisma.paymentAttempt.count({ where: { orderId } }), 0);
+  assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta, 0);
+  const finalWallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
+  const finalMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } });
+  assert.equal(finalWallet.availablePoints, 0);
+  assert.equal(finalMembership.tier?.level, "BRONZE");
 });
