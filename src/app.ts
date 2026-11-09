@@ -11,12 +11,14 @@ import { orderRoutes, memberOrderReadRoutes, merchantOrderReadRoutes } from "./m
 import { merchantVoucherRoutes, publicVoucherRoutes, memberVoucherRoutes, memberRedemptionRoutes, merchantRewardRoutes } from "./modules/vouchers/vouchers.routes.js";
 import { merchantLoyaltyRoutes, memberLoyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
 import { orderPaymentRoutes, vnpayRoutes } from "./modules/payments/payments.routes.js";
+import { adminRoutes } from "./modules/admin/admin.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
 app.use(express.json());
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
