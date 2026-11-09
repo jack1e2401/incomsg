@@ -8,8 +8,11 @@ import { prisma } from "../src/lib/prisma.js";
 const suffix = randomUUID();
 const memberEmail = `m2-member-${suffix}@test.local`;
 const merchantEmail = `m2-merchant-${suffix}@test.local`;
+const rejectedMerchantEmail = `m2-rejected-${suffix}@test.local`;
+const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 let server: Server;
 let baseUrl: string;
+let applicationId: number;
 
 before(async () => {
   server = app.listen(0, "127.0.0.1");
@@ -22,10 +25,11 @@ before(async () => {
 after(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   const users = await prisma.user.findMany({
-    where: { email: { in: [memberEmail, merchantEmail] } },
+    where: { email: { in: [memberEmail, merchantEmail, rejectedMerchantEmail] } },
     select: { id: true },
   });
   const userIds = users.map(({ id }) => id);
+  await prisma.merchant.deleteMany({ where: { ownerId: { in: userIds } } });
   await prisma.merchantApplication.deleteMany({ where: { applicantId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
@@ -74,6 +78,7 @@ test("merchant applies and cannot log in before approval", async () => {
   assert.equal(registered.user.isActive, false);
   assert.equal(registered.application.status, "PENDING");
   assert.equal(registered.application.storeName, "Demo Store");
+  applicationId = registered.application.id;
 
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -82,5 +87,96 @@ test("merchant applies and cannot log in before approval", async () => {
   });
 
   assert.equal(login.status, 403);
+});
+
+test("member cannot access admin or merchant routes", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: memberEmail, password: "member-password-123" }),
+  });
+  const { accessToken } = await login.json();
+  const headers = { authorization: `Bearer ${accessToken}` };
+
+  const adminResponse = await fetch(`${baseUrl}/api/admin/merchants/pending`, { headers });
+  const merchantResponse = await fetch(`${baseUrl}/api/merchant/me`, { headers });
+  const anonymousResponse = await fetch(`${baseUrl}/api/admin/merchants/pending`);
+
+  assert.equal(adminResponse.status, 403);
+  assert.equal(merchantResponse.status, 403);
+  assert.equal(anonymousResponse.status, 401);
+});
+
+test("admin lists and approves a pending merchant", async () => {
+  assert.ok(adminEmail);
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  assert.ok(adminPassword);
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+  });
+  assert.equal(login.status, 200);
+  const { accessToken } = await login.json();
+  const headers = { authorization: `Bearer ${accessToken}` };
+
+  const pendingResponse = await fetch(`${baseUrl}/api/admin/merchants/pending`, { headers });
+  assert.equal(pendingResponse.status, 200);
+  const { applications } = await pendingResponse.json();
+  assert.ok(applications.some((application: { id: number }) => application.id === applicationId));
+
+  const approval = await fetch(`${baseUrl}/api/admin/merchants/${applicationId}/approve`, {
+    method: "PATCH",
+    headers,
+  });
+  assert.equal(approval.status, 200);
+  const result = await approval.json();
+  assert.equal(result.application.status, "APPROVED");
+  assert.equal(result.application.reviewedById, (await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } })).id);
+  assert.equal(result.merchant.name, "Demo Store");
+
+  const merchantLogin = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: merchantEmail, password: "merchant-password-123" }),
+  });
+  assert.equal(merchantLogin.status, 200);
+  const merchantSession = await merchantLogin.json();
+  const storeResponse = await fetch(`${baseUrl}/api/merchant/me`, {
+    headers: { authorization: `Bearer ${merchantSession.accessToken}` },
+  });
+  assert.equal(storeResponse.status, 200);
+  assert.equal((await storeResponse.json()).merchant.id, result.merchant.id);
+});
+
+test("admin rejects a pending merchant", async () => {
+  const registration = await fetch(`${baseUrl}/api/auth/register/merchant`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: rejectedMerchantEmail, password: "merchant-password-123", storeName: "Rejected Store" }),
+  });
+  assert.equal(registration.status, 201);
+  const { application } = await registration.json();
+
+  assert.ok(adminEmail);
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: adminEmail, password: process.env.ADMIN_PASSWORD }),
+  });
+  const { accessToken } = await login.json();
+  const rejection = await fetch(`${baseUrl}/api/admin/merchants/${application.id}/reject`, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(rejection.status, 200);
+  assert.equal((await rejection.json()).application.status, "REJECTED");
+
+  const merchantLogin = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: rejectedMerchantEmail, password: "merchant-password-123" }),
+  });
+  assert.equal(merchantLogin.status, 403);
 });
 

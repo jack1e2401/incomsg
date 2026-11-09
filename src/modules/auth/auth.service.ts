@@ -43,6 +43,10 @@ export const authService = {
       if (identity.applicationStatus === "REJECTED") throw new HttpError(403, "MERCHANT_REJECTED");
     }
     if (!identity.user.isActive) throw new HttpError(403, "ACCOUNT_INACTIVE");
+    if (identity.user.role === "MERCHANT" &&
+      (identity.applicationStatus !== "APPROVED" || !identity.merchant?.isActive)) {
+      throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    }
 
     return {
       accessToken: await signAccessToken(identity.user.id),

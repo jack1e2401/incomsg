@@ -5,8 +5,8 @@ Express + TypeScript + Prisma + MySQL. Mỗi module đặt controller, service, 
 ## Chạy local
 
 1. Cài Node.js >= 22.12 và MySQL trên máy.
-2. Sao chép `.env.example` thành `.env`, sửa `DATABASE_URL` và `FRONTEND_ORIGIN` nếu cần.
-3. Chạy `npm ci`, `npm run db:generate`, rồi `npm run dev`.
+2. Sao chép `.env.example` thành `.env`, đặt `DATABASE_URL`, `JWT_SECRET` (ít nhất 32 byte), `ADMIN_EMAIL`, `ADMIN_PASSWORD` và `FRONTEND_ORIGIN`.
+3. Chạy `npm ci`, `npm run db:generate`, `npm run db:seed`, rồi `npm run dev`.
 
 API chạy tại `http://localhost:3000`. `GET /api/health` kiểm tra server; `GET /api/health/db` kiểm tra kết nối MySQL qua Repository.
 
@@ -21,3 +21,13 @@ Schema gồm tài khoản, hồ sơ xin mở cửa hàng, Merchant, sản phẩm
 Chạy `npm test`, `npm run test:db` và `npm run build` để kiểm tra mã, quan hệ database và bản build. Bài test database dùng transaction rồi rollback, không để lại dữ liệu test.
 
 `npm run build` tạo bản chạy tại `dist/`; sau đó dùng `npm start`.
+
+## Milestone 2 — đăng ký, đăng nhập và Merchant approval
+
+- Member đăng ký qua `POST /api/auth/register/member` và active ngay.
+- Merchant đăng ký qua `POST /api/auth/register/merchant`. Tài khoản ở trạng thái chờ duyệt.
+- Đăng nhập qua `POST /api/auth/login`, sau đó gửi `Authorization: Bearer <accessToken>` tới route cần đăng nhập.
+- Admin xem hồ sơ chờ tại `GET /api/admin/merchants/pending`, duyệt tại `PATCH /api/admin/merchants/:id/approve` hoặc từ chối tại `PATCH /api/admin/merchants/:id/reject`.
+- Merchant đã duyệt xem cửa hàng của mình tại `GET /api/merchant/me`.
+
+Chạy `npm run test:milestone2` để kiểm tra luồng Member đăng ký/login, Merchant đăng ký chờ duyệt, Admin duyệt/từ chối, và role guard qua HTTP thật. Test dùng email ngẫu nhiên trên database local rồi dọn các bản ghi do chính test tạo.
