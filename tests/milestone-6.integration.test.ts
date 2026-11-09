@@ -48,28 +48,41 @@ before(async () => {
 });
 
 after(async () => {
-  if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+  console.error("[M6 teardown] start");
+  if (server) {
+    console.error("[M6 teardown] server.close: start");
+    await new Promise<void>((resolve) => server!.close(() => resolve()));
+    console.error("[M6 teardown] server.close: done");
+  }
   if (!fixtureUserIds.length) return;
-  await prisma.paymentAttempt.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
-  const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: fixtureUserIds } }, select: { id: true } });
+  const cleanup = async <T>(label: string, operation: () => Promise<T>): Promise<T> => {
+    console.error(`[M6 teardown] ${label}: start`);
+    const result = await operation();
+    console.error(`[M6 teardown] ${label}: done`);
+    return result;
+  };
+  await cleanup("delete attempts", () => prisma.paymentAttempt.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } }));
+  const memberships = await cleanup("find memberships", () => prisma.merchantMembership.findMany({ where: { memberId: { in: fixtureUserIds } }, select: { id: true } }));
   const membershipIds = memberships.map((item) => item.id);
-  const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
-  await prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
-  await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((item) => item.id) } } });
-  await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
-  await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
-  await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureUserIds } }, select: { id: true } });
+  const wallets = await cleanup("find wallets", () => prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } }));
+  await cleanup("delete reward fulfillment", () => prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } }));
+  await cleanup("delete point transactions", () => prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((item) => item.id) } } }));
+  await cleanup("delete order items", () => prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } }));
+  await cleanup("delete orders", () => prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } }));
+  await cleanup("delete member vouchers", () => prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } }));
+  const merchants = await cleanup("find merchants", () => prisma.merchant.findMany({ where: { ownerId: { in: fixtureUserIds } }, select: { id: true } }));
   const merchantIds = merchants.map((item) => item.id);
-  await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
-  await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } });
+  await cleanup("delete voucher definitions", () => prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } }));
+  await cleanup("delete wallets", () => prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } }));
+  await cleanup("delete memberships", () => prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } }));
+  await cleanup("delete products", () => prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } }));
+  await cleanup("delete tiers", () => prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } }));
+  await cleanup("delete rules", () => prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } }));
+  await cleanup("delete merchants", () => prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } }));
+  await cleanup("delete users", () => prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } }));
+  console.error("[M6 teardown] prisma disconnect: start");
   await prisma.$disconnect();
+  console.error("[M6 teardown] complete");
 });
 
 async function request(path: string, method = "GET", token?: string, body?: unknown) {
@@ -565,8 +578,12 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     for (const statement of fallbackSql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
       await traceSql(`migration 2300 statement ${sqlStep + 1}`, () => tx.$executeRawUnsafe(statement));
     }
+    console.error(`[M6 migration] migration 2400 extraction: start (${fifthMigration.length} chars)`);
     const exactFallbackUpdate = fifthMigration.split(";").map((statement) => statement.trim()).find((statement) => statement.startsWith("UPDATE `PaymentAttempt`"));
+    console.error(`[M6 migration] migration 2400 extraction: done (found=${Boolean(exactFallbackUpdate)})`);
+    console.error("[M6 migration] migration 2400 extraction assertion: start");
     assert.ok(exactFallbackUpdate);
+    console.error("[M6 migration] migration 2400 extraction assertion: done");
     await traceSql("migration 2400 exact-award classifier", () => tx.$executeRawUnsafe(tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), exactFallbackUpdate)));
     const [backfilledAttempt, preservedAttempt] = await traceSql("read migrated attempts", () => tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean; snapshotExactReservationAward: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback, snapshotExactReservationAward FROM TestPaymentAttempt ORDER BY id"));
     assert.equal(backfilledAttempt?.snapshotVndPerPoint, 10000);
