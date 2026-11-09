@@ -1,20 +1,35 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import type { Server } from "node:http";
-import { app } from "../src/app.js";
-import { prisma } from "../src/lib/prisma.js";
+
+process.env.JWT_SECRET ??= randomBytes(32).toString("hex");
+
+const [{ app }, { prisma }, { hashPassword }] = await Promise.all([
+  import("../src/app.js"),
+  import("../src/lib/prisma.js"),
+  import("../src/lib/password.js"),
+]);
 
 const suffix = randomUUID();
 const memberEmail = `m2-member-${suffix}@test.local`;
 const merchantEmail = `m2-merchant-${suffix}@test.local`;
 const rejectedMerchantEmail = `m2-rejected-${suffix}@test.local`;
-const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+const adminEmail = `m2-admin-${suffix}@test.local`;
+const adminPassword = `admin-${suffix}-password`;
 let server: Server;
 let baseUrl: string;
 let applicationId: number;
 
 before(async () => {
+  await prisma.user.create({
+    data: {
+      email: adminEmail,
+      passwordHash: await hashPassword(adminPassword),
+      role: "ADMIN",
+      isActive: true,
+    },
+  });
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -25,7 +40,7 @@ before(async () => {
 after(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   const users = await prisma.user.findMany({
-    where: { email: { in: [memberEmail, merchantEmail, rejectedMerchantEmail] } },
+    where: { email: { in: [memberEmail, merchantEmail, rejectedMerchantEmail, adminEmail] } },
     select: { id: true },
   });
   const userIds = users.map(({ id }) => id);
@@ -76,6 +91,7 @@ test("merchant applies and cannot log in before approval", async () => {
   assert.equal(registration.status, 201);
   assert.equal(registered.user.role, "MERCHANT");
   assert.equal(registered.user.isActive, false);
+  assert.equal("application" in registered.user, false);
   assert.equal(registered.application.status, "PENDING");
   assert.equal(registered.application.storeName, "Demo Store");
   applicationId = registered.application.id;
@@ -108,9 +124,6 @@ test("member cannot access admin or merchant routes", async () => {
 });
 
 test("admin lists and approves a pending merchant", async () => {
-  assert.ok(adminEmail);
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  assert.ok(adminPassword);
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -158,11 +171,10 @@ test("admin rejects a pending merchant", async () => {
   assert.equal(registration.status, 201);
   const { application } = await registration.json();
 
-  assert.ok(adminEmail);
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: adminEmail, password: process.env.ADMIN_PASSWORD }),
+    body: JSON.stringify({ email: adminEmail, password: adminPassword }),
   });
   const { accessToken } = await login.json();
   const rejection = await fetch(`${baseUrl}/api/admin/merchants/${application.id}/reject`, {
@@ -179,4 +191,3 @@ test("admin rejects a pending merchant", async () => {
   });
   assert.equal(merchantLogin.status, 403);
 });
-

@@ -43,7 +43,8 @@ export const authRepository = {
         },
       },
     });
-    return { user: created, application: created.application! };
+    const { application, ...user } = created;
+    return { user, application: application! };
   },
 
   async findByEmail(email: string): Promise<LoginIdentity | null> {

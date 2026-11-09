@@ -17,10 +17,6 @@ async function createWithUniqueEmail<T>(operation: () => Promise<T>): Promise<T>
   }
 }
 
-function publicUser(user: UserDto): UserDto {
-  return user;
-}
-
 export const authService = {
   async registerMember(input: Credentials): Promise<UserDto> {
     const passwordHash = await hashPassword(input.password);
@@ -43,14 +39,16 @@ export const authService = {
       if (identity.applicationStatus === "REJECTED") throw new HttpError(403, "MERCHANT_REJECTED");
     }
     if (!identity.user.isActive) throw new HttpError(403, "ACCOUNT_INACTIVE");
-    if (identity.user.role === "MERCHANT" &&
-      (identity.applicationStatus !== "APPROVED" || !identity.merchant?.isActive)) {
+    if (
+      identity.user.role === "MERCHANT" &&
+      (identity.applicationStatus !== "APPROVED" || !identity.merchant?.isActive)
+    ) {
       throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
     }
 
     return {
       accessToken: await signAccessToken(identity.user.id),
-      user: publicUser(identity.user),
+      user: identity.user,
     };
   },
 };
