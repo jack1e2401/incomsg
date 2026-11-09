@@ -116,11 +116,11 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
   await page.getByRole("button", { name: "Chọn mua" }).click();
   await page.getByRole("link", { name: "Giỏ hàng" }).click();
   await page.getByRole("link", { name: "Tiếp tục" }).click();
-  await page.getByRole("button", { name: /Tạo đơn chờ thanh toán/ }).click();
+  await page.getByRole("button", { name: "Tạo đơn" }).click();
   await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Thanh toán mô phỏng" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thanh toán thử" })).toBeVisible();
   expect(orderBody).toEqual({ productId: 12, quantity: 1 });
-  await page.getByRole("button", { name: "Thanh toán mô phỏng" }).click();
+  await page.getByRole("button", { name: "Thanh toán thử" }).click();
   await expect(page.getByRole("status").getByText("Thanh toán đã được máy chủ xác nhận")).toBeVisible();
 });
 
