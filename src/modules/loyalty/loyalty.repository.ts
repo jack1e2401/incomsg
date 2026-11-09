@@ -74,6 +74,7 @@ export const loyaltyRepository = {
       snapshotVndPerPoint: vndPerPoint,
       snapshotRuleActive: ruleActive,
       snapshotMaxMultiplier: maxMultiplier,
+      snapshotTierConfigFallback: false,
       snapshotBronzeMultiplier: snapshotMultipliers.BRONZE,
       snapshotSilverMultiplier: snapshotMultipliers.SILVER,
       snapshotGoldMultiplier: snapshotMultipliers.GOLD,

@@ -385,6 +385,7 @@ test("multiplier changes apply to new attempts and not existing ones", async () 
   const payment = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", token);
   const attempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
   assert.equal(attempt.snapshotMaxMultiplier.toFixed(2), "2.00");
+  assert.equal(attempt.snapshotTierConfigFallback, false);
   assert.equal(attempt.reservedPoints, 24);
 
   const bronze = await prisma.loyaltyTier.findUniqueOrThrow({ where: { merchantId_level: { merchantId, level: "BRONZE" } } });
@@ -411,10 +412,12 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   const firstMigration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
   const secondMigration = readFileSync(new URL("../prisma/migrations/20261109210000_snapshot_max_multiplier/migration.sql", import.meta.url), "utf8");
   const thirdMigration = readFileSync(new URL("../prisma/migrations/20261109220000_snapshot_tier_multipliers/migration.sql", import.meta.url), "utf8");
+  const fourthMigration = readFileSync(new URL("../prisma/migrations/20261109230000_legacy_tier_snapshot_fallback/migration.sql", import.meta.url), "utf8");
   const firstBody = firstMigration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
   const secondBody = secondMigration.split("-- BEGIN MULTIPLIER RESERVATION BACKFILL")[1]?.split("-- END MULTIPLIER RESERVATION BACKFILL")[0];
   const thirdBody = thirdMigration.split("-- BEGIN TIER MULTIPLIER SNAPSHOT BACKFILL")[1]?.split("-- END TIER MULTIPLIER SNAPSHOT BACKFILL")[0];
-  assert.ok(firstBody && secondBody && thirdBody);
+  const fourthBody = fourthMigration.split("-- BEGIN LEGACY TIER CONFIG FALLBACK")[1]?.split("-- END LEGACY TIER CONFIG FALLBACK")[0];
+  assert.ok(firstBody && secondBody && thirdBody && fourthBody);
   const tableNames: [string, string][] = [
     ["`PaymentAttempt`", "`TestPaymentAttempt`"], ["`Order`", "`TestOrder`"],
     ["`MerchantMembership`", "`TestMerchantMembership`"], ["`LoyaltyWallet`", "`TestLoyaltyWallet`"],
@@ -423,7 +426,7 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   await prisma.$transaction(async (tx) => {
     const tempTables = [
       "CREATE TEMPORARY TABLE TestOrder (id INTEGER PRIMARY KEY, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, total DECIMAL(15,0) NOT NULL)",
-      "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotBronzeMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.00, snapshotSilverMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.20, snapshotGoldMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.50, snapshotPlatinumMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00)",
+      "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotBronzeMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.00, snapshotSilverMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.20, snapshotGoldMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.50, snapshotPlatinumMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotTierConfigFallback BOOLEAN NOT NULL DEFAULT false)",
       "CREATE TEMPORARY TABLE TestMerchantMembership (id INTEGER PRIMARY KEY AUTO_INCREMENT, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL, UNIQUE KEY merchant_member (merchantId, memberId))",
       "CREATE TEMPORARY TABLE TestLoyaltyWallet (id INTEGER PRIMARY KEY AUTO_INCREMENT, membershipId INTEGER NOT NULL UNIQUE, availablePoints INTEGER NOT NULL DEFAULT 0, lifetimeEarnedPoints INTEGER NOT NULL DEFAULT 0, reservedPoints INTEGER NOT NULL DEFAULT 0, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL)",
       "CREATE TEMPORARY TABLE TestLoyaltyRule (merchantId INTEGER PRIMARY KEY, vndPerPoint INTEGER NOT NULL, isActive BOOLEAN NOT NULL)",
@@ -434,6 +437,9 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
     await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status) VALUES (601, 501, 'CREATED')");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, true)");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 'BRONZE', 1.00), (701, 'SILVER', 1.20), (701, 'GOLD', 1.50), (701, 'PLATINUM', 2.00)");
+    // The test uses TEMPORARY tables. MySQL cannot read a temporary table again
+    // as the source of an INSERT into that same table, so drop only those
+    // anti-join predicates; INSERT IGNORE and unique keys retain idempotence.
     for (const body of [firstBody, secondBody, thirdBody]) {
       const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
       for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
@@ -445,17 +451,41 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
         await tx.$executeRawUnsafe(safeSql);
       }
     }
-    const [attempt] = await tx.$queryRawUnsafe<{ reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string }[]>("SELECT reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier FROM TestPaymentAttempt WHERE id = 601");
+    // Running the two INSERT IGNORE backfills again verifies existing membership
+    // and wallet rows do not duplicate or reset their IDs.
+    for (const body of [firstBody, secondBody]) {
+      const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
+      for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+        const safeSql = statement
+          .replace("LEFT JOIN `TestMerchantMembership` mm ON mm.`merchantId` = o.`merchantId` AND mm.`memberId` = o.`memberId`", "")
+          .replace(" AND mm.`id` IS NULL", "")
+          .replace("LEFT JOIN `TestLoyaltyWallet` w ON w.`membershipId` = mm.`id`", "")
+          .replace(" AND w.`id` IS NULL", "");
+        await tx.$executeRawUnsafe(safeSql);
+      }
+    }
+    await tx.$executeRawUnsafe("UPDATE TestLoyaltyTier SET multiplier = 999.99 WHERE level = 'BRONZE'");
+    const fallbackSql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), fourthBody);
+    for (const statement of fallbackSql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+      await tx.$executeRawUnsafe(statement);
+    }
+    const [attempt] = await tx.$queryRawUnsafe<{ reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean }[]>("SELECT reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback FROM TestPaymentAttempt WHERE id = 601");
     assert.equal(attempt?.snapshotVndPerPoint, 10000);
     assert.equal(Boolean(attempt?.snapshotRuleActive), true);
     assert.equal(Number(attempt?.snapshotMaxMultiplier), 2);
-    assert.equal(Number(attempt?.snapshotBronzeMultiplier), 1);
-    assert.equal(Number(attempt?.snapshotSilverMultiplier), 1.2);
+    assert.equal(Number(attempt?.snapshotBronzeMultiplier), 2);
+    assert.equal(Number(attempt?.snapshotSilverMultiplier), 2);
+    assert.equal(Number(attempt?.snapshotGoldMultiplier), 2);
+    assert.equal(Number(attempt?.snapshotPlatinumMultiplier), 2);
+    assert.equal(Boolean(attempt?.snapshotTierConfigFallback), true);
     assert.equal(attempt?.reservedPoints, 24);
     const [membership] = await tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801");
     assert.ok(membership);
     const [wallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", membership.id);
     assert.equal(wallet?.reservedPoints, 24);
+    const [counts] = await tx.$queryRawUnsafe<{ memberships: number; wallets: number }[]>("SELECT (SELECT COUNT(*) FROM TestMerchantMembership) AS memberships, (SELECT COUNT(*) FROM TestLoyaltyWallet) AS wallets");
+    assert.equal(counts?.memberships, 1);
+    assert.equal(counts?.wallets, 1);
   });
 });
 

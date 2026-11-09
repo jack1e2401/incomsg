@@ -157,6 +157,7 @@ model PaymentAttempt {
   snapshotVndPerPoint   Int                  @default(10000)
   snapshotRuleActive    Boolean              @default(true)
   snapshotMaxMultiplier Decimal              @default(2.00) @db.Decimal(5, 2)
+  snapshotTierConfigFallback Boolean         @default(false)
   snapshotBronzeMultiplier   Decimal         @default(1.00) @db.Decimal(5, 2)
   snapshotSilverMultiplier   Decimal         @default(1.20) @db.Decimal(5, 2)
   snapshotGoldMultiplier     Decimal         @default(1.50) @db.Decimal(5, 2)

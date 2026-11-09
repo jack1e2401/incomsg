@@ -37,6 +37,7 @@ export const paymentsRepository = {
             snapshotSilverMultiplier: reservation.snapshotSilverMultiplier,
             snapshotGoldMultiplier: reservation.snapshotGoldMultiplier,
             snapshotPlatinumMultiplier: reservation.snapshotPlatinumMultiplier,
+            snapshotTierConfigFallback: reservation.snapshotTierConfigFallback,
           },
           include: { order: true },
         });
@@ -111,6 +112,7 @@ export const paymentsRepository = {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
           maxMultiplier: attempt.snapshotMaxMultiplier,
+          // Legacy upgrade attempts use the reserved maximum for every tier because the original schedule is unavailable.
           tierMultipliers: {
             BRONZE: attempt.snapshotBronzeMultiplier,
             SILVER: attempt.snapshotSilverMultiplier,
