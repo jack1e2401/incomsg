@@ -17,8 +17,9 @@ const suffix = randomUUID();
 const merchantAEmail = `m3-merchant-a-${suffix}@test.local`;
 const merchantBEmail = `m3-merchant-b-${suffix}@test.local`;
 const memberEmail = `m3-member-${suffix}@test.local`;
+const secondMemberEmail = `m3-member-b-${suffix}@test.local`;
 const inactiveMerchantEmail = `m3-inactive-${suffix}@test.local`;
-const fixtureEmails = [merchantAEmail, merchantBEmail, memberEmail, inactiveMerchantEmail];
+const fixtureEmails = [merchantAEmail, merchantBEmail, memberEmail, secondMemberEmail, inactiveMerchantEmail];
 
 let server: Server | undefined;
 let baseUrl: string;
@@ -27,12 +28,14 @@ let inactiveMerchantId: number;
 let merchantAToken: string;
 let merchantBToken: string;
 let memberToken: string;
+let secondMemberToken: string;
 
 before(async () => {
-  const [merchantAOwner, merchantBOwner, member, inactiveMerchantOwner] = await Promise.all([
+  const [merchantAOwner, merchantBOwner, member, secondMember, inactiveMerchantOwner] = await Promise.all([
     prisma.user.create({ data: { email: merchantAEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: merchantBEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: memberEmail, passwordHash: "fixture", role: "MEMBER" } }),
+    prisma.user.create({ data: { email: secondMemberEmail, passwordHash: "fixture", role: "MEMBER" } }),
     prisma.user.create({ data: { email: inactiveMerchantEmail, passwordHash: "fixture", role: "MERCHANT" } }),
   ]);
 
@@ -47,6 +50,7 @@ before(async () => {
   merchantAToken = await signAccessToken(merchantAOwner.id);
   merchantBToken = await signAccessToken(merchantBOwner.id);
   memberToken = await signAccessToken(member.id);
+  secondMemberToken = await signAccessToken(secondMember.id);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server!.once("listening", resolve));
@@ -61,6 +65,10 @@ after(async () => {
   }
   const users = await prisma.user.findMany({ where: { email: { in: fixtureEmails } }, select: { id: true } });
   const userIds = users.map(({ id }) => id);
+  const orders = await prisma.order.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
+  const orderIds = orders.map(({ id }) => id);
+  await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+  await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
   const merchantIds = merchants.map(({ id }) => id);
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
@@ -79,6 +87,12 @@ async function request(path: string, method: string, token?: string, body?: Reco
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return { response, json: await response.json() as Record<string, any> };
+}
+
+async function createTestProduct(name = "Demo Coffee", price = "150000") {
+  const result = await request("/api/merchant/products", "POST", merchantAToken, { name, price });
+  assert.equal(result.response.status, 201);
+  return result.json.product as { id: number; name: string; price: string };
 }
 
 test("route IDs reject repeated path parameter values", () => {
@@ -160,4 +174,78 @@ test("public catalog filters hidden products", async () => {
 
   const inactiveStore = await request(`/api/merchants/${inactiveMerchantId}/products`, "GET");
   assert.equal(inactiveStore.response.status, 404);
+});
+
+test("buy now snapshots price and name", async () => {
+  const product = await createTestProduct();
+  const created = await request("/api/orders", "POST", memberToken, { productId: product.id, quantity: 2 });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.json.order.status, "PENDING");
+  assert.equal(created.json.order.subtotal, "300000");
+  assert.equal(created.json.order.discountAmount, "0");
+  assert.equal(created.json.order.total, "300000");
+  assert.equal(created.json.order.paidAt, null);
+  assert.equal(created.json.order.items[0].unitPrice, "150000");
+  assert.equal(created.json.order.items[0].productName, "Demo Coffee");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: created.json.order.id } })).voucherId, null);
+
+  const updated = await request(`/api/merchant/products/${product.id}`, "PATCH", merchantAToken, {
+    name: "Renamed Coffee",
+    price: "160000",
+    status: "HIDDEN",
+  });
+  assert.equal(updated.response.status, 200);
+
+  const paid = await request(`/api/orders/${created.json.order.id}/pay`, "POST", memberToken);
+  assert.equal(paid.response.status, 200);
+  assert.equal(paid.json.order.status, "PAID");
+  assert.equal(paid.json.order.total, "300000");
+  assert.equal(paid.json.order.items[0].productName, "Demo Coffee");
+
+  const hiddenProductOrder = await request("/api/orders", "POST", memberToken, { productId: product.id, quantity: 1 });
+  assert.equal(hiddenProductOrder.response.status, 404);
+});
+
+test("buy now validates the payload", async () => {
+  const product = await createTestProduct();
+  const zeroQuantity = await request("/api/orders", "POST", memberToken, { productId: product.id, quantity: 0 });
+  assert.equal(zeroQuantity.response.status, 400);
+  assert.equal(zeroQuantity.json.error, "INVALID_INPUT");
+
+  const clientTotal = await request("/api/orders", "POST", memberToken, {
+    productId: product.id,
+    quantity: 1,
+    total: "1",
+  });
+  assert.equal(clientTotal.response.status, 400);
+  assert.equal(clientTotal.json.error, "INVALID_INPUT");
+
+  const expensiveProduct = await createTestProduct("Very Expensive Coffee", "999999999999999");
+  const overflow = await request("/api/orders", "POST", memberToken, { productId: expensiveProduct.id, quantity: 2 });
+  assert.equal(overflow.response.status, 400);
+  assert.equal(overflow.json.error, "INVALID_INPUT");
+});
+
+test("only the member who owns the order can pay once", async () => {
+  const product = await createTestProduct();
+  const created = await request("/api/orders", "POST", memberToken, { productId: product.id, quantity: 1 });
+  assert.equal(created.response.status, 201);
+  const orderId = created.json.order.id as number;
+
+  const merchantOrder = await request("/api/orders", "POST", merchantAToken, { productId: product.id, quantity: 1 });
+  assert.equal(merchantOrder.response.status, 403);
+
+  const otherMemberPay = await request(`/api/orders/${orderId}/pay`, "POST", secondMemberToken);
+  assert.equal(otherMemberPay.response.status, 404);
+
+  const paid = await request(`/api/orders/${orderId}/pay`, "POST", memberToken);
+  assert.equal(paid.response.status, 200);
+  assert.equal(paid.json.order.status, "PAID");
+  assert.ok(paid.json.order.paidAt);
+  const originalPaidAt = (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).paidAt;
+
+  const paidAgain = await request(`/api/orders/${orderId}/pay`, "POST", memberToken);
+  assert.equal(paidAgain.response.status, 409);
+  assert.equal(paidAgain.json.error, "ORDER_ALREADY_PAID");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).paidAt?.getTime(), originalPaidAt?.getTime());
 });
