@@ -270,6 +270,93 @@ test("Admin reviews applications through authenticated endpoints", async ({ page
   expect(approvalAuthorization).toBe("Bearer signed-admin-token");
 });
 
+test("Admin approval queue shows each API application once and keeps actions with its row", async ({
+  page,
+}) => {
+  let rejectedPath = "";
+  const applications = [
+    {
+      id: 55,
+      applicantId: 105,
+      storeName: "Pending admin read",
+      status: "PENDING",
+      reviewedById: null,
+      reviewedAt: null,
+    },
+    {
+      id: 56,
+      applicantId: 106,
+      storeName: "Gốm Mây",
+      status: "PENDING",
+      reviewedById: null,
+      reviewedAt: null,
+    },
+  ];
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accessToken: "signed-admin-token",
+        user: { id: 1, email: "admin@test.local", role: "ADMIN", isActive: true },
+      }),
+    });
+  });
+  await page.route("**/api/admin/merchants/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ applications }),
+    });
+  });
+  await page.route("**/api/admin/merchants/56/reject", async (route) => {
+    rejectedPath = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        application: {
+          ...applications[1],
+          status: "REJECTED",
+          reviewedById: 1,
+          reviewedAt: "2026-11-09T03:00:00.000Z",
+        },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("admin@test.local");
+  await page.getByLabel("Mật khẩu").fill("seeded-admin-password");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+
+  await expect(page.getByRole("heading", { name: "Duyệt hồ sơ cửa hàng" })).toBeVisible();
+  await expect(page.getByText("Pending admin read", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Gốm Mây", { exact: true })).toHaveCount(1);
+  const secondRow = page.getByRole("listitem").filter({ hasText: "Gốm Mây" });
+  await expect(secondRow).toContainText("#56");
+  await expect(secondRow).toContainText("#106");
+  await expect(secondRow.getByRole("button", { name: "Duyệt Gốm Mây" })).toBeVisible();
+  await expect(secondRow.getByRole("button", { name: "Từ chối Gốm Mây" })).toBeVisible();
+  await expect(secondRow.getByRole("button", { name: "Từ chối Gốm Mây" })).toHaveCSS("white-space", "nowrap");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Pending admin read", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.locator("aside").evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const mobileTitle = page.getByRole("heading", { name: "Duyệt hồ sơ cửa hàng" });
+  expect(await mobileTitle.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const rejectButton = secondRow.getByRole("button", { name: "Từ chối Gốm Mây" });
+  const rejectBounds = await rejectButton.boundingBox();
+  expect(rejectBounds).not.toBeNull();
+  expect(rejectBounds!.x + rejectBounds!.width).toBeLessThanOrEqual(390);
+  await secondRow.getByRole("button", { name: "Từ chối Gốm Mây" }).click();
+  await page.getByRole("button", { name: "Xác nhận từ chối" }).click();
+  await expect(page.getByText("Đã từ chối Gốm Mây.", { exact: true })).toBeVisible();
+  expect(rejectedPath).toBe("/api/admin/merchants/56/reject");
+});
+
 test("Admin confirms rejection in an in-app dialog before sending the API request", async ({ page }) => {
   let rejectionAuthorization = "";
   await page.route("**/api/auth/login", async (route) => {

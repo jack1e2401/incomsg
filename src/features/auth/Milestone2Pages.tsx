@@ -8,7 +8,6 @@ import type { BackendApplicationDto, BackendRole } from "../../api/contracts/mil
 import {
   Button,
   BusyLabel,
-  Card,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -40,14 +39,12 @@ export function AdminApplicationsM2() {
   const [actionError, setActionError] = useState("");
   const [decisionNotice, setDecisionNotice] = useState("");
   const [applications, setApplications] = useState<BackendApplicationDto[] | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [pendingDecision, setPendingDecision] = useState<{
     application: BackendApplicationDto;
     decision: "approve" | "reject";
   } | null>(null);
   const allApplications = applications ?? resource.data?.applications ?? [];
   const pending = allApplications.filter((application) => application.status === "PENDING");
-  const selected = pending.find((application) => application.id === selectedId) ?? pending[0] ?? null;
 
   async function decide(id: number, decision: "approve" | "reject") {
     if (!accessToken || busyId !== null) return;
@@ -80,7 +77,6 @@ export function AdminApplicationsM2() {
             ? "Đã từ chối"
             : "Đang chờ";
       setDecisionNotice(`${statusLabel} ${resultApplication.storeName}.`);
-      setSelectedId(null);
       setPendingDecision(null);
     } catch (reason) {
       setActionError(
@@ -95,6 +91,7 @@ export function AdminApplicationsM2() {
     <>
       <PageHeader
         title="Duyệt hồ sơ cửa hàng"
+        titleClassName="text-2xl tracking-[-0.015em] sm:text-[2.55rem]"
         action={
           <div className="flex items-center gap-2">
             <span className="text-sm muted">{pending.length} cần duyệt</span>
@@ -129,80 +126,70 @@ export function AdminApplicationsM2() {
       ) : pending.length === 0 ? (
         <EmptyState title="Không có hồ sơ cần xử lý" description="Hàng chờ đã được cập nhật." />
       ) : (
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,.65fr)]">
-          <section className="surface overflow-hidden rounded-[1.5rem]" aria-label="Danh sách hồ sơ">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[34rem] border-collapse text-left">
-                <thead className="border-b border-[#e8ece5] bg-[#f7f8f4] text-xs muted">
-                  <tr>
-                    <th className="px-5 py-4 font-semibold">Cửa hàng</th>
-                    <th className="px-5 py-4 font-semibold">Mã hồ sơ</th>
-                    <th className="px-5 py-4 font-semibold">Trạng thái</th>
-                    <th className="px-5 py-4">
-                      <span className="sr-only">Chọn</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#edf0eb]">
-                  {pending.map((application) => (
-                    <tr
-                      key={application.id}
-                      className={selected?.id === application.id ? "bg-[#f4f7f0]" : "bg-white"}
-                    >
-                      <td className="px-5 py-4 font-bold text-[#294432]">{application.storeName}</td>
-                      <td className="px-5 py-4 text-sm muted">#{application.id}</td>
-                      <td className="px-5 py-4">
-                        <ApplicationStatusText status={application.status} />
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          type="button"
-                          className="text-sm font-bold text-[#416d48] hover:text-[#24452f]"
-                          onClick={() => setSelectedId(application.id)}
-                          aria-label={`Xem ${application.storeName}`}
-                        >
-                          Xem
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          {selected && (
-            <Card className="p-6 sm:p-7">
-              <p className="text-sm muted">Hồ sơ #{selected.id}</p>
-              <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-[#294432]">
-                {selected.storeName}
-              </h2>
-              <p className="mt-4 text-sm muted">
-                Trạng thái: <ApplicationStatusText status={selected.status} />
-              </p>
-              <div className="mt-7 flex flex-wrap gap-2">
-                <Button
-                  onClick={() => setPendingDecision({ application: selected, decision: "approve" })}
-                  disabled={busyId !== null || resource.loading}
-                >
-                  {busyId === selected.id ? (
-                    <BusyLabel>Đang duyệt</BusyLabel>
-                  ) : (
-                    <>
-                      <CheckCircle size={16} /> Duyệt
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setPendingDecision({ application: selected, decision: "reject" })}
-                  disabled={busyId !== null || resource.loading}
-                >
-                  <XCircle size={16} /> Từ chối
-                </Button>
-              </div>
-            </Card>
-          )}
-        </div>
+        <section aria-label="Danh sách hồ sơ" className="surface overflow-hidden rounded-[1.5rem]">
+          <div className="hidden grid-cols-[minmax(0,1fr)_7rem_8rem_7rem_14rem] items-center gap-4 border-b border-[#e8ece5] bg-[#f7f8f4] px-5 py-4 text-xs font-semibold muted md:grid">
+            <span>Cửa hàng</span>
+            <span>Mã hồ sơ</span>
+            <span>Mã người nộp</span>
+            <span>Trạng thái</span>
+            <span className="text-right">Thao tác</span>
+          </div>
+          <div role="list" className="divide-y divide-[#edf0eb]">
+            {pending.map((application) => (
+              <article
+                key={application.id}
+                role="listitem"
+                className="grid gap-4 px-4 py-5 transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[#fbfcf9] sm:px-5 md:grid-cols-[minmax(0,1fr)_7rem_8rem_7rem_14rem] md:items-center md:gap-4"
+              >
+                <div className="min-w-0">
+                  <h2 className="break-words text-base font-bold text-[#294432]">{application.storeName}</h2>
+                  <p className="mt-1 text-xs muted md:hidden">
+                    Hồ sơ #{application.id} · User #{application.applicantId}
+                  </p>
+                </div>
+                <p className="hidden text-sm muted md:block">#{application.id}</p>
+                <p className="hidden text-sm muted md:block">#{application.applicantId}</p>
+                <div className="flex items-center justify-between md:justify-start">
+                  <span className="text-xs muted md:hidden">Trạng thái</span>
+                  <ApplicationStatusText status={application.status} />
+                </div>
+                <div className="grid grid-cols-2 gap-2 md:flex">
+                  <Button
+                    size="sm"
+                    className="w-full whitespace-nowrap md:w-auto"
+                    aria-label={`Duyệt ${application.storeName}`}
+                    onClick={() => setPendingDecision({ application, decision: "approve" })}
+                    disabled={busyId !== null || resource.loading}
+                  >
+                    {busyId === application.id && pendingDecision?.decision === "approve" ? (
+                      <BusyLabel>Đang duyệt</BusyLabel>
+                    ) : (
+                      <>
+                        <CheckCircle size={15} /> Duyệt
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full whitespace-nowrap md:w-auto"
+                    aria-label={`Từ chối ${application.storeName}`}
+                    onClick={() => setPendingDecision({ application, decision: "reject" })}
+                    disabled={busyId !== null || resource.loading}
+                  >
+                    {busyId === application.id && pendingDecision?.decision === "reject" ? (
+                      <BusyLabel>Đang xử lý</BusyLabel>
+                    ) : (
+                      <>
+                        <XCircle size={15} /> Từ chối
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
       <ConfirmActionDialog
         open={pendingDecision !== null}

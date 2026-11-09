@@ -131,15 +131,22 @@ export function PageHeader({
   title,
   description,
   action,
+  titleClassName,
 }: {
   title: string;
   description?: string;
   action?: ReactNode;
+  titleClassName?: string;
 }) {
   return (
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-[-.055em] text-[#20392a] sm:text-[2.55rem]">
+        <h1
+          className={cn(
+            "text-3xl font-extrabold tracking-[-.055em] text-[#20392a] sm:text-[2.55rem]",
+            titleClassName,
+          )}
+        >
           {title}
         </h1>
         {description && <p className="mt-2 max-w-2xl text-sm leading-6 muted">{description}</p>}
