@@ -1,14 +1,118 @@
-:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #17233b; background: #f7f9fc; font-synthesis: none; }
-* { box-sizing: border-box; }
-body { margin: 0; }
-.page { min-height: 100vh; display: grid; place-items: center; padding: 32px; }
-.content { width: min(100%, 640px); }
-.eyebrow { color: #2863b6; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-h1 { margin: 12px 0; font-size: clamp(32px, 5vw, 52px); letter-spacing: -.04em; }
-.intro { color: #586781; line-height: 1.7; }
-code { font-size: .9em; }
-.status-card { display: flex; gap: 14px; align-items: center; margin-top: 32px; padding: 20px; border: 1px solid #dfe6f1; border-radius: 14px; background: #fff; box-shadow: 0 12px 30px #253d6610; }
-.status-card p { margin: 6px 0 0; color: #68778f; font-size: 14px; }
-.status-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: #a4afc0; }
-.status-dot--online { background: #28a66a; }
-.status-dot--offline { background: #d66a55; }
+@import "tailwindcss";
+@import "@fontsource/plus-jakarta-sans/400.css";
+@import "@fontsource/plus-jakarta-sans/500.css";
+@import "@fontsource/plus-jakarta-sans/600.css";
+@import "@fontsource/plus-jakarta-sans/700.css";
+@import "@fontsource/plus-jakarta-sans/800.css";
+@import "@fontsource/fraunces/600.css";
+
+:root {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  color: #26352f;
+  background: #f7f8f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+a {
+  text-decoration: none;
+}
+::selection {
+  background: #d9efb7;
+  color: #1e3a24;
+}
+@layer components {
+  .surface {
+    background: #fff;
+    border: 1px solid #e9ede6;
+    box-shadow: 0 18px 48px rgba(39, 62, 42, 0.045);
+  }
+  .surface-soft {
+    background: #f7f9f4;
+    border: 1px solid #e9ede6;
+  }
+}
+.serif {
+  font-family: Fraunces, Georgia, serif;
+}
+.ink {
+  color: #26352f;
+}
+.muted {
+  color: #7d8a80;
+}
+.accent {
+  color: #406d47;
+}
+.page-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+.subtle-grid {
+  background-image: radial-gradient(#c7d9c9 0.65px, transparent 0.65px);
+  background-size: 18px 18px;
+}
+.hero-gradient {
+  background: radial-gradient(circle at 75% 10%, #e4f2d9 0, #f7f8f4 40%, #f7f8f4 100%);
+}
+.member-gradient {
+  background: linear-gradient(138deg, #e8f5dc 0%, #f9f8ee 58%, #f6eade 100%);
+}
+.card-hover {
+  transition:
+    transform 0.35s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 55px rgba(39, 62, 42, 0.1);
+}
+.nav-link {
+  transition:
+    background 0.25s cubic-bezier(0.32, 0.72, 0, 1),
+    color 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.fade-in {
+  animation: fade-in 0.55s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,168 @@
+import { expect, test } from "@playwright/test";
+
+test("Member registration posts the M2 request and confirms backend response", async ({ page }) => {
+  let requestBody: unknown;
+  await page.route("**/api/auth/register/member", async (route) => {
+    requestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { id: 8, email: "member@test.local", role: "MEMBER", isActive: true } }),
+    });
+  });
+
+  await page.goto("/register");
+  await page.getByLabel("Email").fill("member@test.local");
+  await page.getByLabel("Mật khẩu").fill("member-password-123");
+  await page.getByRole("button", { name: "Tạo tài khoản Member" }).click();
+
+  await expect(page.getByText("Tài khoản đã sẵn sàng")).toBeVisible();
+  expect(requestBody).toEqual({ email: "member@test.local", password: "member-password-123" });
+});
+
+test("Merchant application confirms PENDING and does not create a session", async ({ page }) => {
+  let requestBody: unknown;
+  await page.route("**/api/auth/register/merchant", async (route) => {
+    requestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: { id: 9, email: "shop@test.local", role: "MERCHANT", isActive: false },
+        application: {
+          id: 42,
+          applicantId: 9,
+          storeName: "Nhà Mây",
+          status: "PENDING",
+          reviewedById: null,
+          reviewedAt: null,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/register");
+  await page.getByRole("button", { name: "Merchant", exact: true }).click();
+  await page.getByLabel("Tên cửa hàng").fill("Nhà Mây");
+  await page.getByLabel("Email").fill("shop@test.local");
+  await page.getByLabel("Mật khẩu").fill("merchant-password-123");
+  await page.getByRole("button", { name: "Gửi hồ sơ Merchant" }).click();
+
+  await expect(page.getByText("Hồ sơ #42 đang chờ Admin duyệt.")).toBeVisible();
+  expect(requestBody).toEqual({
+    email: "shop@test.local",
+    password: "merchant-password-123",
+    storeName: "Nhà Mây",
+  });
+  expect(await page.evaluate(() => sessionStorage.getItem("loyalty.m2.session"))).toBeNull();
+});
+
+test("login takes role from API response and sends protected Merchant request with Bearer token", async ({
+  page,
+}) => {
+  let authorization = "";
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accessToken: "signed-merchant-token",
+        user: { id: 11, email: "merchant@test.local", role: "MERCHANT", isActive: true },
+      }),
+    });
+  });
+  await page.route("**/api/merchant/me", async (route) => {
+    authorization = route.request().headers().authorization ?? "";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ merchant: { id: 2, name: "Mộc Studio", slug: "store-2", isActive: true } }),
+    });
+  });
+
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel("Email").fill("merchant@test.local");
+  await page.getByLabel("Mật khẩu").fill("merchant-password-123");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+
+  await expect(page.getByRole("heading", { name: "Mộc Studio" })).toBeVisible();
+  expect(authorization).toBe("Bearer signed-merchant-token");
+});
+
+test("Admin reviews applications through authenticated endpoints", async ({ page }) => {
+  let approvalAuthorization = "";
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accessToken: "signed-admin-token",
+        user: { id: 1, email: "admin@test.local", role: "ADMIN", isActive: true },
+      }),
+    });
+  });
+  await page.route("**/api/admin/merchants/pending", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        applications: [
+          {
+            id: 42,
+            applicantId: 9,
+            storeName: "Nhà Mây",
+            status: "PENDING",
+            reviewedById: null,
+            reviewedAt: null,
+          },
+        ],
+      }),
+    });
+  });
+  await page.route("**/api/admin/merchants/42/approve", async (route) => {
+    approvalAuthorization = route.request().headers().authorization ?? "";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        application: {
+          id: 42,
+          applicantId: 9,
+          storeName: "Nhà Mây",
+          status: "APPROVED",
+          reviewedById: 1,
+          reviewedAt: "2026-11-09T03:00:00.000Z",
+        },
+        merchant: { id: 20, name: "Nhà Mây", slug: "store-42", isActive: true },
+      }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("admin@test.local");
+  await page.getByLabel("Mật khẩu").fill("seeded-admin-password");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+  await expect(page.getByText("Nhà Mây", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Duyệt", exact: false }).click();
+
+  await expect(page.getByText("Đã duyệt", { exact: true })).toBeVisible();
+  expect(approvalAuthorization).toBe("Bearer signed-admin-token");
+});
+
+test("pending Merchant login shows the backend pending status message", async ({ page }) => {
+  await page.route("**/api/auth/login", async (route) => {
+    await route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "MERCHANT_PENDING" }),
+    });
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("pending@test.local");
+  await page.getByLabel("Mật khẩu").fill("merchant-password-123");
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("đang chờ Admin duyệt");
+});

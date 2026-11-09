@@ -27,7 +27,9 @@ export function StatusCard() {
       <span className={`status-dot status-dot--${status}`} aria-hidden="true" />
       <div>
         <strong>{label}</strong>
-        <p>Backend: <code>GET /api/health</code></p>
+        <p>
+          Backend: <code>GET /api/health</code>
+        </p>
       </div>
     </section>
   );
