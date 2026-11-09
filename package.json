@@ -10,6 +10,7 @@
     "typecheck": "npm run db:generate && tsc --noEmit",
     "test": "tsx --test src/**/*.test.ts",
     "test:db": "tsx --test tests/*.integration.test.ts",
+    "test:milestone2": "tsx --test tests/milestone-2.integration.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
@@ -20,7 +21,8 @@
     "@prisma/client": "^7.10.1",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "jose": "^6.2.16"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
