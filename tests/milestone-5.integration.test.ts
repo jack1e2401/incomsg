@@ -173,6 +173,12 @@ test("discount snapshot is reserved once, used only on a committed pay, and rewa
   assert.equal(reservation.response.status, 409);
   const foreignReservedVoucher = await request("/api/orders", "POST", otherToken, { productId: productAId, quantity: 1, voucherId: discountVoucher.id });
   assert.equal(foreignReservedVoucher.response.status, 404);
+  const reservedList = await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", memberToken);
+  const reservedVoucher = (reservedList.json.vouchers as any[]).find((voucher) => voucher.id === discountVoucher.id);
+  assert.equal(reservedVoucher.status, "AVAILABLE");
+  assert.equal(reservedVoucher.reserved, true);
+  assert.deepEqual((await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", otherToken)).json.vouchers, []);
+  assert.deepEqual((await request(`/api/member/merchants/${merchantBId}/vouchers`, "GET", memberToken)).json.vouchers, []);
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountVoucher.id } })).status, "AVAILABLE");
   const paid = await request(`/api/orders/${order.id}/pay`, "POST", memberToken);
   assert.equal(paid.response.status, 409);
@@ -180,6 +186,8 @@ test("discount snapshot is reserved once, used only on a committed pay, and rewa
   const failedPayment = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
   assert.equal(failedPayment.status, "PENDING");
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountVoucher.id } })).status, "AVAILABLE");
+  const heldAfterFailedPay = await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", memberToken);
+  assert.equal((heldAfterFailedPay.json.vouchers as any[]).find((voucher) => voucher.id === discountVoucher.id).reserved, true);
   await prisma.loyaltyWallet.update({ where: { id: wallet.id }, data: { lifetimeEarnedPoints: 0 } });
   const successfulPay = await request(`/api/orders/${order.id}/pay`, "POST", memberToken);
   assert.equal(successfulPay.response.status, 200);
@@ -188,6 +196,10 @@ test("discount snapshot is reserved once, used only on a committed pay, and rewa
   const usedVoucher = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountVoucher.id } });
   assert.equal(usedVoucher.status, "USED");
   assert.ok(usedVoucher.usedAt);
+  const usedList = await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", memberToken);
+  const usedDto = (usedList.json.vouchers as any[]).find((voucher) => voucher.id === discountVoucher.id);
+  assert.equal(usedDto.status, "USED");
+  assert.equal(usedDto.reserved, false);
   const fulfillmentList = await request("/api/merchant/rewards", "GET", merchantAToken);
   assert.equal((fulfillmentList.json.rewards as any[]).some((voucher) => voucher.id === rewardVoucher.id), true);
   const foreignFulfillment = await request(`/api/merchant/rewards/${rewardVoucher.id}/fulfill`, "POST", merchantBToken, {});

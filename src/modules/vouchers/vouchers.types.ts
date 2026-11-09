@@ -21,6 +21,7 @@ export interface MemberVoucherDto {
   title: string;
   type: VoucherType;
   status: MemberVoucherStatus;
+  reserved: boolean;
   pointsCost: number;
   discountAmount: string | null;
   rewardDescription: string | null;
