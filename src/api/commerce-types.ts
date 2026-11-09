@@ -45,7 +45,18 @@ export interface OrderDto {
   total: string;
   paidAt: string | null;
   items: OrderItemDto[];
+  earnedPoints?: number;
 }
+
+export type PaymentStatusDto = {
+  orderStatus: OrderStatus;
+  paymentStatus: "CREATED" | "SUCCEEDED" | "FAILED" | null;
+};
+export type VnpayPaymentResponse =
+  | { orderId: number; paymentUrl: string; txnRef: string }
+  | { orderId: number; orderStatus: "PAID" };
+export type OrdersResponse = { orders: OrderDto[] };
+export type MerchantDirectoryResponse = { merchants: { id: number; name: string; slug: string; isActive?: boolean }[] };
 
 export interface CreateOrderInput {
   productId: number;

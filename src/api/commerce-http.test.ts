@@ -166,4 +166,50 @@ describe("commerce HTTP contract", () => {
       voucherId: 33,
     });
   });
+
+  it("supports authoritative mock and VNPay payment status reads", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ order: { id: 41, status: "PAID" } }))
+      .mockResolvedValueOnce(Response.json({ paymentUrl: "https://sandbox.vnpayment.vn/pay", txnRef: "m6-41" }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ orderStatus: "PENDING", paymentStatus: "CREATED" }));
+    const client = createCommerceClient("", fetcher);
+
+    await expect(client.payMockOrder(41, "member-token")).resolves.toMatchObject({ order: { status: "PAID" } });
+    await expect(client.createVnpayPayment(41, "member-token")).resolves.toMatchObject({ txnRef: "m6-41" });
+    await expect(client.getPaymentStatus(41, "member-token")).resolves.toEqual({
+      orderStatus: "PENDING",
+      paymentStatus: "CREATED",
+    });
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ["/api/orders/41/pay", "POST"],
+      ["/api/orders/41/payments/vnpay", "POST"],
+      ["/api/orders/41/payment-status", "GET"],
+    ]);
+    expect(fetcher.mock.calls.every(([, init]) => new Headers(init?.headers).get("Authorization") === "Bearer member-token")).toBe(true);
+  });
+
+  it("reads member orders and an order detail from owner-scoped endpoints", async () => {
+    const order = { id: 41, merchantId: 7, memberId: 9, status: "PENDING", subtotal: "10000", discountAmount: "0", total: "10000", paidAt: null, items: [] };
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ orders: [order] }))
+      .mockResolvedValueOnce(Response.json({ order }));
+    const client = createCommerceClient("", fetcher);
+    await expect(client.listMemberOrders(7, "member-token")).resolves.toEqual({ orders: [order] });
+    await expect(client.getMemberOrder(41, "member-token")).resolves.toEqual({ order });
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "/api/member/orders?merchantId=7",
+      "/api/member/orders/41",
+    ]);
+  });
+
+  it("lists active merchants from the public directory endpoint", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }],
+    }));
+    const client = createCommerceClient("", fetcher);
+    await expect(client.listMerchants()).resolves.toEqual({
+      merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }],
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/merchants");
+  });
 });

@@ -8,6 +8,10 @@ import type {
   MerchantRewardResponse,
   MerchantRewardsResponse,
   OrderResponse,
+  OrdersResponse,
+  MerchantDirectoryResponse,
+  PaymentStatusDto,
+  VnpayPaymentResponse,
   OwnMerchantResponse,
   ProductInput,
   ProductPatch,
@@ -50,6 +54,9 @@ async function requestJson<T>(
 /** Only endpoints currently mounted by apps/backend/src/app.ts. */
 export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
   return {
+    listMerchants() {
+      return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, "/api/merchants");
+    },
     getOwnMerchant(token: string) {
       return requestJson<OwnMerchantResponse>(fetcher, baseUrl, "/api/merchant/me", { token });
     },
@@ -79,6 +86,30 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         token,
         body: input,
       });
+    },
+    payMockOrder(orderId: number, token: string) {
+      return requestJson<OrderResponse>(fetcher, baseUrl, `/api/orders/${orderId}/pay`, {
+        method: "POST",
+        token,
+      });
+    },
+    createVnpayPayment(orderId: number, token: string) {
+      return requestJson<VnpayPaymentResponse>(fetcher, baseUrl, `/api/orders/${orderId}/payments/vnpay`, {
+        method: "POST",
+        token,
+      });
+    },
+    getPaymentStatus(orderId: number, token: string) {
+      return requestJson<PaymentStatusDto>(fetcher, baseUrl, `/api/orders/${orderId}/payment-status`, { token });
+    },
+    listMemberOrders(merchantId: number, token: string) {
+      return requestJson<OrdersResponse>(fetcher, baseUrl, `/api/member/orders?merchantId=${merchantId}`, { token });
+    },
+    getMemberOrder(orderId: number, token: string) {
+      return requestJson<OrderResponse>(fetcher, baseUrl, `/api/member/orders/${orderId}`, { token });
+    },
+    listMerchantOrders(token: string) {
+      return requestJson<OrdersResponse>(fetcher, baseUrl, "/api/merchant/orders", { token });
     },
     getLoyaltyConfig(token: string) {
       return requestJson<LoyaltyConfigResponse>(fetcher, baseUrl, "/api/merchant/loyalty", { token });
