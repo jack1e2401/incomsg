@@ -408,7 +408,7 @@ test("multiplier changes apply to new attempts and not existing ones", async () 
   }
 });
 
-test("legacy CREATED attempts receive a safe wallet reservation during SQL backfill", async () => {
+test("SQL backfill preserves positive reservations and safely reserves zero-reserve legacy attempts", async () => {
   const firstMigration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
   const secondMigration = readFileSync(new URL("../prisma/migrations/20261109210000_snapshot_max_multiplier/migration.sql", import.meta.url), "utf8");
   const thirdMigration = readFileSync(new URL("../prisma/migrations/20261109220000_snapshot_tier_multipliers/migration.sql", import.meta.url), "utf8");
@@ -419,6 +419,7 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
   assert.ok(firstBody && secondBody && fourthBody);
   assert.doesNotMatch(firstMigration, /UPDATE\s+`LoyaltyWallet`|SET pa\.`reservedPoints`/i);
   assert.match(secondMigration, /SET pa\.`snapshotMaxMultiplier`[\s\S]*pa\.`reservedPoints`/);
+  assert.match(secondMigration, /CASE WHEN pa\.`reservedPoints` > 0 THEN pa\.`reservedPoints`/);
   assert.match(thirdMigration, /ALTER TABLE `PaymentAttempt`[\s\S]*ADD COLUMN `snapshotBronzeMultiplier`/);
   assert.doesNotMatch(thirdMigration, /UPDATE\s+`(?:PaymentAttempt|LoyaltyWallet)`/i);
   const tableNames: [string, string][] = [
@@ -437,16 +438,18 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
       "CREATE TEMPORARY TABLE TestLoyaltyTier (merchantId INTEGER NOT NULL, level VARCHAR(20) NOT NULL, multiplier DECIMAL(5,2) NOT NULL)",
     ];
     for (const sql of tempTables) await tx.$executeRawUnsafe(sql);
-    await tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000)");
-    await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status) VALUES (601, 501, 'CREATED')");
+    await tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000), (502, 701, 802, 120000)");
+    await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status, reservedPoints) VALUES (601, 501, 'CREATED', 0), (602, 502, 'CREATED', 12)");
+    await tx.$executeRawUnsafe("INSERT INTO TestMerchantMembership (id, merchantId, memberId, createdAt, updatedAt) VALUES (2, 701, 802, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
+    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyWallet (id, membershipId, availablePoints, lifetimeEarnedPoints, reservedPoints, createdAt, updatedAt) VALUES (2, 2, 12, 12, 12, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, true)");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 'BRONZE', 1.00), (701, 'SILVER', 1.20), (701, 'GOLD', 1.50), (701, 'PLATINUM', 2.00)");
     // The test uses TEMPORARY tables. MySQL cannot read a temporary table again
     // as the source of an INSERT into that same table, so drop only those
     // anti-join predicates; INSERT IGNORE and unique keys retain idempotence.
-    for (const body of [firstBody, secondBody]) {
+    const runBody = async (body: string, statementFilter = (_statement: string) => true) => {
       const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
-      for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+      for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(statementFilter)) {
         const safeSql = statement
           .replace("LEFT JOIN `TestMerchantMembership` mm ON mm.`merchantId` = o.`merchantId` AND mm.`memberId` = o.`memberId`", "")
           .replace(" AND mm.`id` IS NULL", "")
@@ -454,42 +457,43 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
           .replace(" AND w.`id` IS NULL", "");
         await tx.$executeRawUnsafe(safeSql);
       }
-    }
-    // Running the two INSERT IGNORE backfills again verifies existing membership
-    // and wallet rows do not duplicate or reset their IDs.
-    for (const body of [firstBody, secondBody]) {
-      const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
-      for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
-        const safeSql = statement
-          .replace("LEFT JOIN `TestMerchantMembership` mm ON mm.`merchantId` = o.`merchantId` AND mm.`memberId` = o.`memberId`", "")
-          .replace(" AND mm.`id` IS NULL", "")
-          .replace("LEFT JOIN `TestLoyaltyWallet` w ON w.`membershipId` = mm.`id`", "")
-          .replace(" AND w.`id` IS NULL", "");
-        await tx.$executeRawUnsafe(safeSql);
-      }
-    }
+    };
+    await runBody(firstBody);
     await tx.$executeRawUnsafe("UPDATE TestLoyaltyTier SET multiplier = 999.99 WHERE level = 'BRONZE'");
+    await runBody(secondBody);
+    // Re-run only INSERT IGNORE statements to verify existing membership/wallet
+    // records remain unchanged without rerunning the capacity calculation.
+    await runBody(firstBody, (statement) => statement.startsWith("INSERT IGNORE INTO"));
+    const [preservedBeforeFallback] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestPaymentAttempt WHERE id = 602");
+    assert.equal(preservedBeforeFallback?.reservedPoints, 12);
     const fallbackSql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), fourthBody);
     for (const statement of fallbackSql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
       await tx.$executeRawUnsafe(statement);
     }
-    const [attempt] = await tx.$queryRawUnsafe<{ reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean }[]>("SELECT reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback FROM TestPaymentAttempt WHERE id = 601");
-    assert.equal(attempt?.snapshotVndPerPoint, 10000);
-    assert.equal(Boolean(attempt?.snapshotRuleActive), true);
-    assert.equal(Number(attempt?.snapshotMaxMultiplier), 2);
-    assert.equal(Number(attempt?.snapshotBronzeMultiplier), 2);
-    assert.equal(Number(attempt?.snapshotSilverMultiplier), 2);
-    assert.equal(Number(attempt?.snapshotGoldMultiplier), 2);
-    assert.equal(Number(attempt?.snapshotPlatinumMultiplier), 2);
-    assert.equal(Boolean(attempt?.snapshotTierConfigFallback), true);
-    assert.equal(attempt?.reservedPoints, 24);
-    const [membership] = await tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801");
-    assert.ok(membership);
-    const [wallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", membership.id);
-    assert.equal(wallet?.reservedPoints, 24);
+    const [backfilledAttempt, preservedAttempt] = await tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback FROM TestPaymentAttempt ORDER BY id");
+    assert.equal(backfilledAttempt?.snapshotVndPerPoint, 10000);
+    assert.equal(Boolean(backfilledAttempt?.snapshotRuleActive), true);
+    assert.equal(Number(backfilledAttempt?.snapshotMaxMultiplier), 999.99);
+    assert.equal(Number(backfilledAttempt?.snapshotBronzeMultiplier), 999.99);
+    assert.equal(Number(backfilledAttempt?.snapshotSilverMultiplier), 999.99);
+    assert.equal(Number(backfilledAttempt?.snapshotGoldMultiplier), 999.99);
+    assert.equal(Number(backfilledAttempt?.snapshotPlatinumMultiplier), 999.99);
+    assert.equal(Boolean(backfilledAttempt?.snapshotTierConfigFallback), true);
+    assert.equal(backfilledAttempt?.reservedPoints, 11999);
+    assert.equal(Number(preservedAttempt?.snapshotMaxMultiplier), 1);
+    assert.equal(Number(preservedAttempt?.snapshotBronzeMultiplier), 1);
+    assert.equal(Number(preservedAttempt?.snapshotSilverMultiplier), 1);
+    assert.equal(Boolean(preservedAttempt?.snapshotTierConfigFallback), true);
+    assert.equal(preservedAttempt?.reservedPoints, 12);
+    const [newMembership] = await tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801");
+    assert.ok(newMembership);
+    const [newWallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = ?", newMembership.id);
+    assert.equal(newWallet?.reservedPoints, 11999);
+    const [existingWallet] = await tx.$queryRawUnsafe<{ reservedPoints: number }[]>("SELECT reservedPoints FROM TestLoyaltyWallet WHERE membershipId = 2");
+    assert.equal(existingWallet?.reservedPoints, 12);
     const [counts] = await tx.$queryRawUnsafe<{ memberships: number; wallets: number }[]>("SELECT (SELECT COUNT(*) FROM TestMerchantMembership) AS memberships, (SELECT COUNT(*) FROM TestLoyaltyWallet) AS wallets");
-    assert.equal(Number(counts?.memberships), 1);
-    assert.equal(Number(counts?.wallets), 1);
+    assert.equal(Number(counts?.memberships), 2);
+    assert.equal(Number(counts?.wallets), 2);
   });
 });
 
