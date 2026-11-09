@@ -34,8 +34,8 @@ WHERE pa.`status` = 'CREATED';
 
 UPDATE `PaymentAttempt` pa
 JOIN `VnpayReservationBackfill` backfill ON backfill.`attemptId` = pa.`id`
-SET pa.`snapshotVndPerPoint` = backfill.`snapshotVndPerPoint`,
-    pa.`snapshotRuleActive` = backfill.`snapshotRuleActive`;
+SET pa.`snapshotVndPerPoint` = CASE WHEN pa.`reservedPoints` > 0 THEN pa.`snapshotVndPerPoint` ELSE backfill.`snapshotVndPerPoint` END,
+    pa.`snapshotRuleActive` = CASE WHEN pa.`reservedPoints` > 0 THEN pa.`snapshotRuleActive` ELSE backfill.`snapshotRuleActive` END;
 
 DROP TEMPORARY TABLE `VnpayReservationBackfill`;
 -- END LEGACY RESERVATION BACKFILL

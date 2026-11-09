@@ -116,6 +116,7 @@ export const loyaltyRepository = {
     vndPerPoint: number;
     ruleActive: boolean;
     maxMultiplier?: Prisma.Decimal;
+    fallbackAward?: number;
     tierMultipliers?: Record<"BRONZE" | "SILVER" | "GOLD" | "PLATINUM", Prisma.Decimal>;
   }): Promise<OrderDto | "missing" | "already_paid"> {
     const changed = await tx.order.updateMany({
@@ -176,7 +177,9 @@ export const loyaltyRepository = {
       const multiplier = earningSnapshot?.maxMultiplier && earningMultiplier.greaterThan(earningSnapshot.maxMultiplier)
         ? earningSnapshot.maxMultiplier
         : earningMultiplier;
-      earnedPoints = ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, multiplier) : 0;
+      earnedPoints = earningSnapshot?.fallbackAward !== undefined
+        ? earningSnapshot.fallbackAward
+        : ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, multiplier) : 0;
     } catch (error) {
       if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
       throw error;

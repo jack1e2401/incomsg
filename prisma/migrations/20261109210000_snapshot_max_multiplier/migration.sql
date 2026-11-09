@@ -2,17 +2,15 @@ ALTER TABLE `PaymentAttempt`
   ADD COLUMN `snapshotMaxMultiplier` DECIMAL(5,2) NOT NULL DEFAULT 2.00;
 
 -- Backfill zero-reserve legacy attempts at the configured maximum tier multiplier.
--- Preserve positive reservations from the pre-2963b9c schema and derive a safe
--- per-attempt multiplier ceiling from the points already held for that order.
+-- Preserve positive reservations from the pre-2963b9c schema. Their historical
+-- multiplier/rate cannot be recovered, so set the multiplier ceiling to zero;
+-- migration 2300 settles them using the exact reservedPoints fallback award.
 -- As with that backfill, any signed-INT overflow aborts migration and requires
 -- reconciliation of the affected pending transactions before retrying.
 -- BEGIN MULTIPLIER RESERVATION BACKFILL
 CREATE TEMPORARY TABLE `VnpayMultiplierBackfill` AS
 SELECT pa.`id` AS `attemptId`, mm.`id` AS `membershipId`,
-       CASE WHEN pa.`reservedPoints` > 0 THEN
-              CASE WHEN FLOOR(o.`total` / CASE WHEN pa.`snapshotVndPerPoint` > 0 THEN pa.`snapshotVndPerPoint` ELSE 10000 END) > 0
-                   THEN LEAST(999.99, FLOOR(pa.`reservedPoints` * 100 / FLOOR(o.`total` / CASE WHEN pa.`snapshotVndPerPoint` > 0 THEN pa.`snapshotVndPerPoint` ELSE 10000 END)) / 100)
-                   ELSE 0.00 END
+       CASE WHEN pa.`reservedPoints` > 0 THEN 0.00
             ELSE CASE WHEN tierStats.`tierCount` = 4 THEN tierStats.`maxMultiplier` ELSE 2.00 END
        END AS `snapshotMaxMultiplier`,
        CASE WHEN pa.`reservedPoints` > 0 THEN pa.`reservedPoints`

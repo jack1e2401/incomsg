@@ -112,7 +112,8 @@ export const paymentsRepository = {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
           maxMultiplier: attempt.snapshotMaxMultiplier,
-          // Legacy upgrade attempts use the reserved maximum for every tier because the original schedule is unavailable.
+          ...(attempt.snapshotTierConfigFallback ? { fallbackAward: attempt.reservedPoints } : {}),
+          // Legacy upgrade attempts award the exact reservation because historical tier and rate terms cannot be recovered.
           tierMultipliers: {
             BRONZE: attempt.snapshotBronzeMultiplier,
             SILVER: attempt.snapshotSilverMultiplier,
