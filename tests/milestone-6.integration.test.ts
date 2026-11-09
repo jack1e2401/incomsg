@@ -579,7 +579,7 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
       await traceSql(`migration 2300 statement ${sqlStep + 1}`, () => tx.$executeRawUnsafe(statement));
     }
     console.error(`[M6 migration] migration 2400 extraction: start (${fifthMigration.length} chars)`);
-    const exactFallbackUpdate = fifthMigration.split(";").map((statement) => statement.trim()).find((statement) => statement.startsWith("UPDATE `PaymentAttempt`"));
+    const exactFallbackUpdate = fifthMigration.split(";").map((statement) => statement.replace(/^\s*--.*$/gm, "").trim()).find((statement) => statement.startsWith("UPDATE `PaymentAttempt`"));
     console.error(`[M6 migration] migration 2400 extraction: done (found=${Boolean(exactFallbackUpdate)})`);
     console.error("[M6 migration] migration 2400 extraction assertion: start");
     assert.ok(exactFallbackUpdate);
