@@ -50,6 +50,14 @@ const money = (value: string) =>
   );
 type Cart = { product: ProductDto; quantity: number } | null;
 type MemberContext = { merchantId: number; cart: Cart; setCart: (cart: Cart) => void };
+type PaymentPollPhase = "initial" | "polling" | "stopped" | "error" | "failed";
+type PaymentPollState = {
+  key: string;
+  count: number;
+  failed: boolean;
+  phase: PaymentPollPhase;
+  error: string;
+};
 
 function useMerchantContext() {
   return useOutletContext<MemberContext>();
@@ -428,45 +436,89 @@ export function MemberOrderResult() {
   const order = orderResource.data?.merchantId === merchantId ? orderResource.data : null;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [pollState, setPollState] = useState(() => ({
+  const [pollState, setPollState] = useState<PaymentPollState>(() => ({
     key: pollKey,
     count: 0,
     failed: false,
+    phase: "initial",
+    error: "",
   }));
-  const currentPollState = pollState.key === pollKey ? pollState : { key: pollKey, count: 0, failed: false };
+  const currentPollState =
+    pollState.key === pollKey
+      ? pollState
+      : { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" };
   const pollCount = currentPollState.count;
   const paymentFailed = currentPollState.failed;
+  const paymentError = currentPollState.error;
 
   const pollPaymentStatus = useCallback(
     async (reset = false) => {
       if (!accessToken) return;
       const previous =
-        reset || pollState.key !== pollKey ? { key: pollKey, count: 0, failed: false } : pollState;
+        reset || pollState.key !== pollKey
+          ? { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" }
+          : pollState;
       try {
         const status = await commerce.getPaymentStatus(orderId, accessToken);
         if (pollKeyRef.current !== pollKey) return;
         if (status.orderStatus === "PAID") {
-          setPollState({ key: pollKey, count: previous.count, failed: false });
+          setPollState({ ...previous, phase: "stopped", error: "" });
           orderResource.reload();
         } else if (status.paymentStatus === "FAILED") {
-          setPollState({ key: pollKey, count: previous.count + 1, failed: true });
+          setPollState({
+            key: pollKey,
+            count: previous.count + 1,
+            failed: true,
+            phase: "failed",
+            error: "",
+          });
+        } else if (status.paymentStatus === "CREATED") {
+          setPollState({
+            key: pollKey,
+            count: previous.count + 1,
+            failed: false,
+            phase: "polling",
+            error: "",
+          });
         } else {
-          setPollState({ key: pollKey, count: previous.count + 1, failed: false });
+          setPollState({
+            key: pollKey,
+            count: previous.count + 1,
+            failed: false,
+            phase: "stopped",
+            error: "",
+          });
         }
-      } catch {
+      } catch (reason) {
         if (pollKeyRef.current === pollKey)
-          setPollState({ key: pollKey, count: previous.count + 1, failed: false });
+          setPollState({
+            key: pollKey,
+            count: previous.count + 1,
+            failed: false,
+            phase: "error",
+            error: reason instanceof Error ? reason.message : "Không thể kết nối máy chủ.",
+          });
       }
     },
     [accessToken, orderId, orderResource.reload, pollKey, pollState],
   );
 
   useEffect(() => {
-    if (!order || order.status !== "PENDING" || paymentMode !== "vnpay" || paymentFailed || pollCount >= 30)
+    if (
+      !order ||
+      order.status !== "PENDING" ||
+      paymentMode !== "vnpay" ||
+      (currentPollState.phase !== "initial" && currentPollState.phase !== "polling") ||
+      paymentFailed ||
+      pollCount >= 30
+    )
       return;
-    const timer = window.setTimeout(() => void pollPaymentStatus(), 2000);
+    const timer = window.setTimeout(
+      () => void pollPaymentStatus(),
+      currentPollState.phase === "initial" ? 0 : 2000,
+    );
     return () => window.clearTimeout(timer);
-  }, [order, paymentFailed, paymentMode, pollCount, pollPaymentStatus]);
+  }, [currentPollState.phase, order, paymentFailed, paymentMode, pollCount, pollPaymentStatus]);
 
   async function pay() {
     if (!order || !accessToken || busy || order.status !== "PENDING") return;
@@ -477,7 +529,7 @@ export function MemberOrderResult() {
         const response = await commerce.payMockOrder(order.id, accessToken);
         orderResource.setData(response.order);
       } else {
-        setPollState({ key: pollKey, count: 0, failed: false });
+        setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
         const response = await commerce.createVnpayPayment(order.id, accessToken);
         if ("paymentUrl" in response) {
           window.location.assign(response.paymentUrl);
@@ -493,7 +545,7 @@ export function MemberOrderResult() {
   }
 
   function checkAgain() {
-    setPollState({ key: pollKey, count: 0, failed: false });
+    setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
     void pollPaymentStatus(true);
   }
 
@@ -545,6 +597,11 @@ export function MemberOrderResult() {
             {actionError}
           </p>
         )}
+        {paymentMode === "vnpay" && paymentError && (
+          <p role="alert" className="mt-4 text-sm text-red-700">
+            Không kiểm tra được trạng thái thanh toán. {paymentError}
+          </p>
+        )}
         {order.status === "PENDING" ? (
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a]">
@@ -574,9 +631,9 @@ export function MemberOrderResult() {
                 <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
               </Button>
             )}
-            {paymentMode === "vnpay" && (
+            {paymentMode === "vnpay" && !paymentFailed && (
               <Button className="ml-2 mt-4" variant="outline" onClick={checkAgain}>
-                Kiểm tra lại
+                {paymentError ? "Thử lại trạng thái" : "Kiểm tra lại"}
               </Button>
             )}
           </div>

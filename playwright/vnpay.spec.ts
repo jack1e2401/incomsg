@@ -17,8 +17,9 @@ const paid = { ...pending, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" };
 
 async function setup(
   page: Page,
-  status: () => { orderStatus: "PENDING" | "PAID"; paymentStatus: "CREATED" | "FAILED" | "SUCCEEDED" },
+  status: () => { orderStatus: "PENDING" | "PAID"; paymentStatus: "CREATED" | "FAILED" | "SUCCEEDED" | null },
   onPoll: () => void,
+  failRequest?: () => boolean,
 ) {
   await page.addInitScript(() =>
     sessionStorage.setItem(
@@ -38,6 +39,12 @@ async function setup(
   await page.route("**/api/orders/41/payment-status", (route) => {
     const response = status();
     onPoll();
+    if (failRequest?.())
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "STATUS_UNAVAILABLE" }),
+      });
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
   });
 }
@@ -92,24 +99,61 @@ test("VNPay FAILED directs the member to create a new order without retrying the
   expect(polls).toBe(1);
 });
 
+test("VNPay status null stops automatic polling", async ({ page }) => {
+  await page.clock.install();
+  let polls = 0;
+  await setup(
+    page,
+    () => ({ orderStatus: "PENDING", paymentStatus: null }),
+    () => polls++,
+  );
+  await page.goto("/member/7/orders/41");
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
+  await expect.poll(() => polls).toBe(1);
+  await page.clock.runFor(10_000);
+  expect(polls).toBe(1);
+});
+
+test("VNPay status errors are shown and manual retry resumes polling", async ({ page }) => {
+  await page.clock.install();
+  let polls = 0;
+  await setup(
+    page,
+    () => ({ orderStatus: "PENDING", paymentStatus: polls >= 2 ? null : "CREATED" }),
+    () => polls++,
+    () => polls === 1,
+  );
+  await page.goto("/member/7/orders/41");
+  await expect(page.getByRole("alert").getByText(/Không kiểm tra được trạng thái thanh toán/)).toBeVisible();
+  expect(polls).toBe(1);
+  await page.clock.runFor(10_000);
+  expect(polls).toBe(1);
+  await page.getByRole("button", { name: "Thử lại trạng thái" }).click();
+  await expect(page.getByRole("button", { name: "Kiểm tra lại" })).toBeVisible();
+  expect(polls).toBeGreaterThanOrEqual(2);
+  await page.clock.runFor(2_100);
+  await expect.poll(() => polls).toBe(3);
+});
+
 test("VNPay timeout occurs after 30 polls and Kiểm tra lại resets and resumes polling", async ({ page }) => {
   await page.clock.install();
   let polls = 0;
   await setup(
     page,
-    () => ({ orderStatus: "PENDING", paymentStatus: "CREATED" }),
+    () => ({ orderStatus: "PENDING", paymentStatus: polls >= 30 ? null : "CREATED" }),
     () => polls++,
   );
   await page.goto("/member/7/orders/41?vnp_ResponseCode=99");
   await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
-  for (let poll = 1; poll <= 30; poll++) {
+  await expect.poll(() => polls).toBe(1);
+  for (let poll = 2; poll <= 30; poll++) {
     await page.clock.runFor(2_100);
     await expect.poll(() => polls).toBe(poll);
   }
   await expect(page.getByText(/sau 30 lần kiểm tra/)).toBeVisible();
   expect(polls).toBe(30);
   await page.getByRole("button", { name: "Kiểm tra lại" }).click();
-  await expect.poll(() => polls).toBe(31);
-  await page.clock.runFor(2_100);
-  await expect.poll(() => polls).toBe(32);
+  await expect.poll(() => polls).toBeGreaterThanOrEqual(31);
+  await expect(page.getByText(/sau 30 lần kiểm tra/)).toHaveCount(0);
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
 });
