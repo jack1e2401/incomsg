@@ -23,7 +23,7 @@ import {
   MemberVouchers,
   MemberWallet,
 } from "../features/member/MemberLoyalty";
-import { LoginPage, RegisterPage } from "../features/auth/AuthPages";
+import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
 import {
   AdminApplicationsM2,
   MemberHomeM2,
@@ -81,6 +81,7 @@ function BackendRoutes() {
       <Route path="/" element={<BackendWelcome />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/application/status" element={<ApplicationStatusPage />} />
       <Route element={<RequireRole role="ADMIN" />}>
         <Route path="/admin" element={<Milestone2Workspace role="ADMIN" />}>
           <Route index element={<Navigate to="applications" replace />} />
@@ -131,6 +132,12 @@ function BackendWelcome() {
                 <Link to="/register">Tạo tài khoản</Link>
               </Button>
             </div>
+            <Link
+              to="/application/status"
+              className="mt-4 inline-flex text-xs font-bold text-[#527353] underline underline-offset-4"
+            >
+              Theo dõi hồ sơ Merchant
+            </Link>
             <p className="mt-4 text-[11px] text-[#9aa69b]">
               M2 API thật · Chưa có thanh toán hoặc điểm loyalty trong backend
             </p>

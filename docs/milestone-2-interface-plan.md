@@ -11,6 +11,7 @@ Giao diện hoàn chỉnh cho đúng phạm vi backend M2: đăng ký Member, đ
 | `/` | Public | Giới thiệu các luồng M2; nút đăng nhập và tạo tài khoản; hiển thị API mode và giới hạn M2. |
 | `/login` | Public | Email, mật khẩu, đang gửi, lỗi credential, Merchant PENDING/REJECTED, tài khoản inactive. Thành công điều hướng theo role BE trả về. |
 | `/register` | Public | Chọn Member hoặc Merchant. Member chỉ nhập email/mật khẩu. Merchant nhập tên cửa hàng, email, mật khẩu và thấy trước quy tắc chờ duyệt. |
+| `/application/status` | Public, credential-verified | Nhập email/mật khẩu; xem PENDING/APPROVED/REJECTED mới nhất, mã hồ sơ và ngày xét duyệt. Mật khẩu bị xóa sau lần tra cứu. |
 | `/admin/applications` | Admin | Tải hàng đợi PENDING, empty/error/loading, hồ sơ và applicant ID, trạng thái, ngày xét duyệt, approve/reject với trạng thái busy và lỗi API. |
 | `/merchant` | Merchant active | Gọi `/api/merchant/me`, hiển thị tên/slug/trạng thái cửa hàng thật; loading/error; giải thích các màn commerce thuộc milestone sau. |
 | `/member` | Member | Xác nhận tài khoản active và giải thích phần storefront/wallet chờ API commerce kế tiếp. |
@@ -23,6 +24,7 @@ Route không đúng role sẽ chuyển về workspace của role trong session. 
 | --- | --- | --- |
 | Đăng ký Member | `POST /api/auth/register/member` `{email,password}` | `201 {user}`; hiển thị hoàn tất và chuyển sang login. |
 | Nộp hồ sơ Merchant | `POST /api/auth/register/merchant` `{email,password,storeName}` | `201 {user,application}`; hiển thị ID hồ sơ và PENDING. |
+| Xem trạng thái hồ sơ | `POST /api/auth/application-status` `{email,password}` | `200 {application}`; hiển thị DTO mới nhất. Sai thông tin `401`; không có hồ sơ `404`. |
 | Đăng nhập | `POST /api/auth/login` `{email,password}` | `200 {accessToken,user}`; lưu session theo tab và điều hướng theo `user.role`. |
 | Tải hàng chờ | `GET /api/admin/merchants/pending` + Bearer | `200 {applications}`; chỉ dùng đúng trường DTO BE trả về. |
 | Duyệt | `PATCH /api/admin/merchants/:id/approve` + Bearer | `200 {application,merchant}`; hiển thị trạng thái response. |
@@ -37,6 +39,7 @@ Route không đúng role sẽ chuyển về workspace của role trong session. 
 - Không tự thêm hồ sơ vào hàng đợi nếu request thất bại. Approve/reject đổi trạng thái chỉ sau response thành công.
 - Backend DTO application không có applicant email, tên người hoặc ghi chú. UI không suy diễn các trường đó.
 - Member signup active ngay; Merchant signup không tự tạo session và không vào workspace trước khi được duyệt.
+- Status form không lưu password trong URL, session storage hoặc local storage; chỉ gửi đến backend để xác minh chủ hồ sơ.
 - Màn Admin chỉ truy vấn danh sách PENDING theo API hiện có. Kết quả approve/reject được giữ trong UI hiện tại; sau reload, API chỉ trả hồ sơ còn PENDING theo hợp đồng hiện tại.
 
 ## Điều kiện hoàn thành
@@ -45,6 +48,8 @@ Route không đúng role sẽ chuyển về workspace của role trong session. 
 - `VITE_API_MODE=mock` tiếp tục mở demo commerce hiện tại.
 - Admin không thể gọi màn Admin với Member/Merchant; Member không thể gọi Merchant workspace; chưa đăng nhập được chuyển về login.
 - Merchant PENDING/REJECTED nhận được giải thích rõ từ lỗi login do backend trả về.
+- Merchant có thể mở status screen sau signup hoặc từ lỗi login và tải lại trạng thái đã được Admin ghi nhận.
+- Approve và reject mở confirmation dialog nêu rõ tác động trước khi gửi PATCH.
 - Tất cả endpoint M2 có loading, error, pending/empty hoặc success state phù hợp.
 - Playwright kiểm tra đăng ký Member, Merchant PENDING, guards theo role, Admin approve/reject và Merchant `/me` bằng API test server khi môi trường DB seed sẵn; UI adapter tests có thể dùng stub khi không có DB.
 

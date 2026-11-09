@@ -1,6 +1,7 @@
 import {
   milestone2Paths,
   type ApproveApplicationResponse,
+  type ApplicationStatusResponse,
   type BackendErrorResponse,
   type LoginResponse,
   type MerchantRegistrationResponse,
@@ -53,6 +54,13 @@ export function createMilestone2Client(baseUrl = "", fetcher: FetchLike = fetch)
 
     registerMerchant(input: Credentials & { storeName: string }) {
       return requestJson<MerchantRegistrationResponse>(fetcher, baseUrl, milestone2Paths.registerMerchant, {
+        method: "POST",
+        body: input,
+      });
+    },
+
+    checkApplicationStatus(input: Credentials) {
+      return requestJson<ApplicationStatusResponse>(fetcher, baseUrl, milestone2Paths.applicationStatus, {
         method: "POST",
         body: input,
       });

@@ -15,6 +15,7 @@ import {
   LoadingState,
   PageHeader,
 } from "../../components/ui";
+import { ConfirmActionDialog } from "../../components/ui/ConfirmActionDialog";
 import { shortDate } from "../../lib/utils";
 
 export function RequireRole({ role }: { role: BackendRole }) {
@@ -87,6 +88,10 @@ export function AdminApplicationsM2() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [applications, setApplications] = useState<BackendApplicationDto[] | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<{
+    application: BackendApplicationDto;
+    decision: "approve" | "reject";
+  } | null>(null);
   const pending = applications ?? resource.data?.applications ?? [];
 
   async function decide(id: number, decision: "approve" | "reject") {
@@ -109,6 +114,7 @@ export function AdminApplicationsM2() {
           ),
         );
       }
+      setPendingDecision(null);
     } catch (reason) {
       setActionError(
         reason instanceof Error ? reason.message : "Không xử lý được hồ sơ. Thử tải lại danh sách.",
@@ -125,7 +131,20 @@ export function AdminApplicationsM2() {
         title="Duyệt hồ sơ cửa hàng"
         description="Danh sách và trạng thái được tải từ API. Thao tác duyệt/từ chối được lưu trực tiếp bởi backend."
         action={
-          <Badge tone="amber">{pending.filter((item) => item.status === "PENDING").length} đang chờ</Badge>
+          <div className="flex items-center gap-2">
+            <Badge tone="amber">{pending.filter((item) => item.status === "PENDING").length} đang chờ</Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={resource.loading}
+              onClick={() => {
+                setApplications(null);
+                resource.reload();
+              }}
+            >
+              Làm mới
+            </Button>
+          </div>
         }
       />
       {actionError && (
@@ -165,8 +184,8 @@ export function AdminApplicationsM2() {
                   <div className="mt-4 flex gap-2">
                     <Button
                       size="sm"
-                      onClick={() => void decide(application.id, "approve")}
-                      disabled={busyId !== null}
+                      onClick={() => setPendingDecision({ application, decision: "approve" })}
+                      disabled={busyId !== null || resource.loading}
                     >
                       {busyId === application.id ? (
                         <BusyLabel>Đang duyệt</BusyLabel>
@@ -179,11 +198,8 @@ export function AdminApplicationsM2() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        if (window.confirm(`Từ chối hồ sơ ${application.storeName}?`))
-                          void decide(application.id, "reject");
-                      }}
-                      disabled={busyId !== null}
+                      onClick={() => setPendingDecision({ application, decision: "reject" })}
+                      disabled={busyId !== null || resource.loading}
                     >
                       <XCircle size={15} /> Từ chối
                     </Button>
@@ -214,6 +230,25 @@ export function AdminApplicationsM2() {
           </Card>
         </div>
       )}
+      <ConfirmActionDialog
+        open={pendingDecision !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDecision(null);
+        }}
+        title={pendingDecision?.decision === "approve" ? "Duyệt hồ sơ Merchant?" : "Từ chối hồ sơ Merchant?"}
+        description={
+          pendingDecision?.decision === "approve"
+            ? `Duyệt ${pendingDecision.application.storeName} sẽ tạo cửa hàng và kích hoạt tài khoản Merchant trong backend.`
+            : `Từ chối ${pendingDecision?.application.storeName ?? "hồ sơ này"} sẽ giữ tài khoản Merchant ở trạng thái chưa hoạt động.`
+        }
+        confirmLabel={pendingDecision?.decision === "approve" ? "Xác nhận duyệt" : "Xác nhận từ chối"}
+        destructive={pendingDecision?.decision === "reject"}
+        busy={pendingDecision !== null && busyId === pendingDecision.application.id}
+        error={actionError}
+        onConfirm={() => {
+          if (pendingDecision) void decide(pendingDecision.application.id, pendingDecision.decision);
+        }}
+      />
     </>
   );
 }
