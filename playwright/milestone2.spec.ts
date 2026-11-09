@@ -67,7 +67,7 @@ test("Merchant application confirms PENDING and does not create a session", asyn
   await page.getByLabel("Mật khẩu").fill("merchant-password-123");
   await page.getByRole("button", { name: "Gửi hồ sơ Merchant" }).click();
 
-  await expect(page.getByText("Hồ sơ #42 đang chờ Admin duyệt.")).toBeVisible();
+  await expect(page.getByText("Hồ sơ #42 đang chờ Admin phê duyệt.")).toBeVisible();
   expect(requestBody).toEqual({
     email: "shop@test.local",
     password: "merchant-password-123",
@@ -164,7 +164,7 @@ test("Merchant status screen shows a rejected decision", async ({ page }) => {
   await page.getByRole("button", { name: "Kiểm tra trạng thái" }).click();
 
   await expect(page.getByRole("heading", { name: "Hồ sơ chưa được chấp thuận" })).toBeVisible();
-  await expect(page.getByText("REJECTED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Từ chối", { exact: true })).toBeVisible();
 });
 
 test("login takes role from API response and sends protected Merchant request with Bearer token", async ({
@@ -326,7 +326,7 @@ test("Admin confirms rejection in an in-app dialog before sending the API reques
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("Từ chối hồ sơ Merchant?");
-  await expect(dialog).toContainText("sẽ giữ tài khoản Merchant ở trạng thái chưa hoạt động");
+  await expect(dialog).toContainText("sẽ khóa tài khoản Merchant");
   await page.getByRole("button", { name: "Xác nhận từ chối" }).click();
 
   await expect(page.getByText("Đã từ chối", { exact: true })).toBeVisible();
