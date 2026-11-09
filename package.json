@@ -12,6 +12,8 @@
     "test:e2e": "playwright test",
     "test:e2e:m2": "playwright test --config playwright.m2.config.ts",
     "test:e2e:commerce": "playwright test --config playwright.commerce.config.ts",
+    "test:e2e:vnpay": "playwright test --config playwright.vnpay.config.ts",
+    "test:e2e:demo": "playwright test --config playwright.demo.config.ts",
     "format": "prettier --write src playwright *.ts",
     "format:check": "prettier --check src playwright *.ts"
   },

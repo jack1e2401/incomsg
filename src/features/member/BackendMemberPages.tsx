@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Link,
   NavLink,
@@ -308,7 +308,10 @@ export function MemberCheckout() {
     [merchantId, accessToken],
   );
   const availableDiscounts = (vouchers.data ?? []).filter(
-    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE",
+    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && !voucher.reserved,
+  );
+  const reservedDiscounts = (vouchers.data ?? []).filter(
+    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && voucher.reserved,
   );
   async function submit() {
     if (!cart || !accessToken || busy) return;
@@ -373,6 +376,12 @@ export function MemberCheckout() {
                 {!availableDiscounts.length && (
                   <span className="mt-2 block text-xs muted">Bạn chưa có voucher giảm giá khả dụng.</span>
                 )}
+                {reservedDiscounts.length > 0 && (
+                  <p className="mt-3 rounded-lg bg-[#fff1d6] p-3 text-xs leading-5 text-[#97682a]">
+                    {reservedDiscounts.map((voucher) => `“${voucher.title}”`).join(", ")} đang được giữ bởi
+                    đơn chờ thanh toán. Voucher chỉ dùng lại được nếu đơn đó được hủy hoặc hết hạn.
+                  </p>
+                )}
               </Field>
             )}
           </Card>
@@ -409,6 +418,9 @@ export function MemberOrderResult() {
   const location = useLocation();
   const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "vnpay" ? "vnpay" : "mock";
   const orderId = Number(useParams().orderId);
+  const pollKey = `${merchantId}:${orderId}`;
+  const pollKeyRef = useRef(pollKey);
+  pollKeyRef.current = pollKey;
   const orderResource = useResource(
     () => commerce.getMemberOrder(orderId, accessToken!).then(({ order }) => order),
     [orderId, merchantId, accessToken],
@@ -416,35 +428,55 @@ export function MemberOrderResult() {
   const order = orderResource.data?.merchantId === merchantId ? orderResource.data : null;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [pollCount, setPollCount] = useState(0);
-  const [paymentFailed, setPaymentFailed] = useState(false);
+  const [pollState, setPollState] = useState(() => ({
+    key: pollKey,
+    count: 0,
+    failed: false,
+    active: Boolean(location.search),
+  }));
+  const currentPollState =
+    pollState.key === pollKey
+      ? pollState
+      : { key: pollKey, count: 0, failed: false, active: Boolean(location.search) };
+  const pollCount = currentPollState.count;
+  const paymentFailed = currentPollState.failed;
+
+  const pollPaymentStatus = useCallback(
+    async (reset = false) => {
+      if (!accessToken) return;
+      const previous =
+        reset || pollState.key !== pollKey ? { count: 0, failed: false, active: true } : pollState;
+      try {
+        const status = await commerce.getPaymentStatus(orderId, accessToken);
+        if (pollKeyRef.current !== pollKey) return;
+        if (status.orderStatus === "PAID") {
+          setPollState({ key: pollKey, count: previous.count, failed: false, active: false });
+          orderResource.reload();
+        } else if (status.paymentStatus === "FAILED") {
+          setPollState({ key: pollKey, count: previous.count + 1, failed: true, active: false });
+        } else {
+          setPollState({ key: pollKey, count: previous.count + 1, failed: false, active: true });
+        }
+      } catch {
+        if (pollKeyRef.current === pollKey)
+          setPollState({ key: pollKey, count: previous.count + 1, failed: false, active: true });
+      }
+    },
+    [accessToken, orderId, orderResource.reload, pollKey, pollState],
+  );
 
   useEffect(() => {
-    if (!order || order.status !== "PENDING" || paymentMode !== "vnpay" || !accessToken || pollCount >= 30)
+    if (
+      !order ||
+      order.status !== "PENDING" ||
+      paymentMode !== "vnpay" ||
+      !currentPollState.active ||
+      pollCount >= 30
+    )
       return;
-    let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        const status = await commerce.getPaymentStatus(order.id, accessToken);
-        if (!active) return;
-        if (status.orderStatus === "PAID") {
-          orderResource.reload();
-          return;
-        }
-        if (status.paymentStatus === "FAILED") {
-          setPaymentFailed(true);
-          return;
-        }
-        if (status.paymentStatus === "CREATED") setPollCount((count) => count + 1);
-      } catch {
-        if (active) setPollCount((count) => count + 1);
-      }
-    }, 2000);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [accessToken, order?.id, order?.status, orderResource.reload, paymentMode, pollCount]);
+    const timer = window.setTimeout(() => void pollPaymentStatus(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [currentPollState.active, order, paymentMode, pollCount, pollPaymentStatus]);
 
   async function pay() {
     if (!order || !accessToken || busy || order.status !== "PENDING") return;
@@ -455,6 +487,7 @@ export function MemberOrderResult() {
         const response = await commerce.payMockOrder(order.id, accessToken);
         orderResource.setData(response.order);
       } else {
+        setPollState({ key: pollKey, count: 0, failed: false, active: false });
         const response = await commerce.createVnpayPayment(order.id, accessToken);
         if ("paymentUrl" in response) {
           window.location.assign(response.paymentUrl);
@@ -467,6 +500,16 @@ export function MemberOrderResult() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function checkAgain() {
+    setPollState({ key: pollKey, count: 0, failed: false, active: true });
+    void pollPaymentStatus(true);
+  }
+
+  async function retryVnpay() {
+    setPollState({ key: pollKey, count: 0, failed: false, active: false });
+    await pay();
   }
 
   if (orderResource.loading) return <LoadingState cards={1} />;
@@ -521,12 +564,13 @@ export function MemberOrderResult() {
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a]">
               {paymentFailed
-                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng; hãy tạo đơn mới để thử lại."
+                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng; bạn có thể thử thanh toán lại."
                 : "Đơn đang chờ thanh toán. Chưa có điểm thưởng. Trạng thái chỉ đổi sau khi máy chủ xác nhận."}
             </p>
             {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
               <p role="status" className="mt-2 text-xs text-[#97682a]">
-                Chưa nhận được kết quả từ VNPay. Bạn có thể tải lại trạng thái sau.
+                Chưa nhận được kết quả từ VNPay sau 30 lần kiểm tra. Dùng “Kiểm tra lại” để bắt đầu kiểm tra
+                mới.
               </p>
             )}
             {!paymentFailed && (
@@ -541,12 +585,12 @@ export function MemberOrderResult() {
               </Button>
             )}
             {paymentFailed && (
-              <Button asChild className="mt-4">
-                <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
+              <Button className="mt-4" disabled={busy} onClick={() => void retryVnpay()}>
+                Thử thanh toán VNPay lại
               </Button>
             )}
             {paymentMode === "vnpay" && (
-              <Button className="ml-2 mt-4" variant="outline" onClick={orderResource.reload}>
+              <Button className="ml-2 mt-4" variant="outline" onClick={checkAgain}>
                 Kiểm tra lại
               </Button>
             )}
@@ -868,7 +912,7 @@ function OwnedVoucherCard({ voucher }: { voucher: MemberVoucherDto }) {
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-extrabold">{voucher.title}</h3>
         <StatusText tone={voucher.status === "FULFILLED" || voucher.status === "USED" ? "neutral" : "amber"}>
-          {voucherStatusLabel(voucher.status)}
+          {voucherStatusLabel(voucher)}
         </StatusText>
       </div>
       <p className="mt-3 text-sm muted">
@@ -894,9 +938,10 @@ function transactionTypeLabel(type: PointTransactionType) {
   return "Đổi quà";
 }
 
-function voucherStatusLabel(status: MemberVoucherDto["status"]) {
-  if (status === "AVAILABLE") return "Còn hiệu lực";
-  return status === "USED" ? "Đã sử dụng" : "Đã trao";
+function voucherStatusLabel(voucher: MemberVoucherDto) {
+  if (voucher.type === "REWARD" && voucher.status === "AVAILABLE") return "Chờ cửa hàng trao";
+  if (voucher.status === "AVAILABLE") return "Còn hiệu lực";
+  return voucher.status === "USED" ? "Đã sử dụng" : "Đã trao";
 }
 
 export function MemberLanding() {

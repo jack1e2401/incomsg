@@ -53,10 +53,14 @@ export type PaymentStatusDto = {
   paymentStatus: "CREATED" | "SUCCEEDED" | "FAILED" | null;
 };
 export type VnpayPaymentResponse =
-  | { orderId: number; paymentUrl: string; txnRef: string }
-  | { orderId: number; orderStatus: "PAID" };
+  { orderId: number; paymentUrl: string; txnRef: string } | { orderId: number; orderStatus: "PAID" };
 export type OrdersResponse = { orders: OrderDto[] };
-export type MerchantDirectoryResponse = { merchants: { id: number; name: string; slug: string; isActive?: boolean }[] };
+export type MerchantDirectoryResponse = {
+  merchants: { id: number; name: string; slug: string; isActive?: boolean }[];
+};
+export type AdminDashboardResponse = {
+  stats: { merchants: number; pendingApplications: number; paidOrders: number; totalVolume: string | number };
+};
 
 export interface CreateOrderInput {
   productId: number;
@@ -119,6 +123,7 @@ export interface MemberVoucherDto {
   rewardDescription: string | null;
   redeemedAt: string;
   usedAt: string | null;
+  reserved?: boolean;
 }
 
 export type PointTransactionType = "EARN" | "REDEEM_DISCOUNT" | "REDEEM_REWARD";

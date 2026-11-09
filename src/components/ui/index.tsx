@@ -41,6 +41,28 @@ export function StatusText({
     </span>
   );
 }
+export function Badge({
+  children,
+  tone = "neutral",
+  className,
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "green" | "amber" | "red" | "purple";
+  className?: string;
+}) {
+  const colors = {
+    neutral: "bg-[#edf1ec] text-[#637269]",
+    green: "bg-[#e8f1e2] text-[#357044]",
+    amber: "bg-[#fff1d6] text-[#97682a]",
+    red: "bg-[#fbe9e6] text-[#a4473a]",
+    purple: "bg-[#eee9f7] text-[#7560a1]",
+  };
+  return (
+    <span className={cn("inline-flex rounded-full px-3 py-1 text-[10px] font-bold", colors[tone], className)}>
+      {children}
+    </span>
+  );
+}
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
@@ -128,10 +150,12 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
   );
 }
 export function PageHeader({
+  eyebrow,
   title,
   description,
   action,
 }: {
+  eyebrow?: string;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -139,6 +163,11 @@ export function PageHeader({
   return (
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
+        {eyebrow && (
+          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[.16em] text-[#83a969]">
+            {eyebrow}
+          </p>
+        )}
         <h1 className="text-3xl font-extrabold tracking-[-.055em] text-[#20392a] sm:text-[2.55rem]">
           {title}
         </h1>

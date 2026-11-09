@@ -1,5 +1,6 @@
 import type {
   CreateOrderInput,
+  AdminDashboardResponse,
   FulfillRewardInput,
   LoyaltyConfigInput,
   LoyaltyConfigResponse,
@@ -57,6 +58,12 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
     listMerchants() {
       return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, "/api/merchants");
     },
+    getAdminDashboard(token: string) {
+      return requestJson<AdminDashboardResponse>(fetcher, baseUrl, "/api/admin/dashboard", { token });
+    },
+    listAdminMerchants(token: string) {
+      return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, "/api/admin/merchants", { token });
+    },
     getOwnMerchant(token: string) {
       return requestJson<OwnMerchantResponse>(fetcher, baseUrl, "/api/merchant/me", { token });
     },
@@ -100,10 +107,14 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
       });
     },
     getPaymentStatus(orderId: number, token: string) {
-      return requestJson<PaymentStatusDto>(fetcher, baseUrl, `/api/orders/${orderId}/payment-status`, { token });
+      return requestJson<PaymentStatusDto>(fetcher, baseUrl, `/api/orders/${orderId}/payment-status`, {
+        token,
+      });
     },
     listMemberOrders(merchantId: number, token: string) {
-      return requestJson<OrdersResponse>(fetcher, baseUrl, `/api/member/orders?merchantId=${merchantId}`, { token });
+      return requestJson<OrdersResponse>(fetcher, baseUrl, `/api/member/orders?merchantId=${merchantId}`, {
+        token,
+      });
     },
     getMemberOrder(orderId: number, token: string) {
       return requestJson<OrderResponse>(fetcher, baseUrl, `/api/member/orders/${orderId}`, { token });

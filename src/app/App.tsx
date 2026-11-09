@@ -1,10 +1,42 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
-import { Button, Card, PageHeader } from "../components/ui";
+import { Button, Card, PageHeader, ErrorState, LoadingState, EmptyState } from "../components/ui";
 import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
 import { LoyaltyIllustration } from "../components/LoyaltyIllustration";
 import { AdminApplicationsM2, RequireRole } from "../features/auth/Milestone2Pages";
 import { BackendConsoleLayout } from "../layouts/BackendConsoleLayout";
+import { ApiProvider } from "../api/client";
+import { ConsoleLayout as DemoConsoleLayout } from "../layouts/ConsoleLayout";
+import { MemberLayout as DemoMemberLayout } from "../layouts/MemberLayout";
+import {
+  AdminApplications as DemoAdminApplications,
+  AdminMerchants as DemoAdminMerchants,
+  AdminOverview as DemoAdminOverview,
+} from "../features/admin/AdminPages";
+import {
+  MerchantLoyalty as DemoMerchantLoyalty,
+  MerchantOrders as DemoMerchantOrders,
+  MerchantOverview as DemoMerchantOverview,
+  MerchantProducts as DemoMerchantProducts,
+  MerchantRewards as DemoMerchantRewards,
+  MerchantStore as DemoMerchantStore,
+  MerchantVouchers as DemoMerchantVouchers,
+} from "../features/merchant/MerchantPages";
+import {
+  MemberCart as DemoMemberCart,
+  MemberCheckout as DemoMemberCheckout,
+  MemberProduct as DemoMemberProduct,
+  MemberStorefront as DemoMemberStorefront,
+} from "../features/member/MemberShop";
+import {
+  MemberOrderResult as DemoMemberOrderResult,
+  MemberOrders as DemoMemberOrders,
+  MemberRewards as DemoMemberRewards,
+  MemberVouchers as DemoMemberVouchers,
+  MemberWallet as DemoMemberWallet,
+} from "../features/member/MemberLoyalty";
+import { createCommerceClient } from "../api/commerce-http";
+import { useResource } from "../api/useResource";
 import {
   MerchantLoyalty,
   MerchantOrders,
@@ -28,49 +60,108 @@ import {
   MemberWallet,
 } from "../features/member/BackendMemberPages";
 
+const useBackend = import.meta.env.VITE_API_MODE === "http";
+
 export function App() {
+  return <AuthSessionProvider>{useBackend ? <BackendRoutes /> : <DemoRoutes />}</AuthSessionProvider>;
+}
+
+function BackendRoutes() {
   return (
-    <AuthSessionProvider>
+    <Routes>
+      <Route path="/" element={<Welcome />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/application/status" element={<ApplicationStatusPage />} />
+      <Route element={<RequireRole role="ADMIN" />}>
+        <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
+          <Route index element={<AdminOverview />} />
+          <Route path="applications" element={<AdminApplicationsM2 />} />
+          <Route path="merchants" element={<AdminMerchants />} />
+        </Route>
+      </Route>
+      <Route element={<RequireRole role="MERCHANT" />}>
+        <Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}>
+          <Route index element={<MerchantOverview />} />
+          <Route path="store" element={<MerchantStore />} />
+          <Route path="products" element={<MerchantProducts />} />
+          <Route path="orders" element={<MerchantOrders />} />
+          <Route path="loyalty" element={<MerchantLoyalty />} />
+          <Route path="vouchers" element={<MerchantVouchers />} />
+          <Route path="rewards" element={<MerchantRewards />} />
+        </Route>
+      </Route>
+      <Route element={<RequireRole role="MEMBER" />}>
+        <Route path="/member" element={<MemberLanding />} />
+        <Route path="/member/:merchantId" element={<BackendMemberLayout />}>
+          <Route index element={<MemberStorefront />} />
+          <Route path="product/:productId" element={<MemberProduct />} />
+          <Route path="cart" element={<MemberCart />} />
+          <Route path="checkout" element={<MemberCheckout />} />
+          <Route path="wallet" element={<MemberWallet />} />
+          <Route path="vouchers" element={<MemberVouchers />} />
+          <Route path="rewards" element={<MemberRewards />} />
+          <Route path="orders" element={<MemberOrders />} />
+          <Route path="orders/:orderId" element={<MemberOrderResult />} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+function DemoRoutes() {
+  return (
+    <ApiProvider>
       <Routes>
-        <Route path="/" element={<Welcome />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/application/status" element={<ApplicationStatusPage />} />
-        <Route element={<RequireRole role="ADMIN" />}>
-          <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
-            <Route index element={<AdminOverview />} />
-            <Route path="applications" element={<AdminApplicationsM2 />} />
-            <Route path="merchants" element={<AdminMerchants />} />
-          </Route>
+        <Route path="/" element={<DemoWelcome />} />
+        <Route path="/admin" element={<DemoConsoleLayout role="admin" />}>
+          <Route index element={<DemoAdminOverview />} />
+          <Route path="applications" element={<DemoAdminApplications />} />
+          <Route path="merchants" element={<DemoAdminMerchants />} />
         </Route>
-        <Route element={<RequireRole role="MERCHANT" />}>
-          <Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}>
-            <Route index element={<MerchantOverview />} />
-            <Route path="store" element={<MerchantStore />} />
-            <Route path="products" element={<MerchantProducts />} />
-            <Route path="orders" element={<MerchantOrders />} />
-            <Route path="loyalty" element={<MerchantLoyalty />} />
-            <Route path="vouchers" element={<MerchantVouchers />} />
-            <Route path="rewards" element={<MerchantRewards />} />
-          </Route>
+        <Route path="/merchant/:merchantId" element={<DemoConsoleLayout role="merchant" />}>
+          <Route index element={<DemoMerchantOverview />} />
+          <Route path="store" element={<DemoMerchantStore />} />
+          <Route path="products" element={<DemoMerchantProducts />} />
+          <Route path="orders" element={<DemoMerchantOrders />} />
+          <Route path="loyalty" element={<DemoMerchantLoyalty />} />
+          <Route path="vouchers" element={<DemoMerchantVouchers />} />
+          <Route path="rewards" element={<DemoMerchantRewards />} />
         </Route>
-        <Route element={<RequireRole role="MEMBER" />}>
-          <Route path="/member" element={<MemberLanding />} />
-          <Route path="/member/:merchantId" element={<BackendMemberLayout />}>
-            <Route index element={<MemberStorefront />} />
-            <Route path="product/:productId" element={<MemberProduct />} />
-            <Route path="cart" element={<MemberCart />} />
-            <Route path="checkout" element={<MemberCheckout />} />
-            <Route path="wallet" element={<MemberWallet />} />
-            <Route path="vouchers" element={<MemberVouchers />} />
-            <Route path="rewards" element={<MemberRewards />} />
-            <Route path="orders" element={<MemberOrders />} />
-            <Route path="orders/:orderId" element={<MemberOrderResult />} />
-          </Route>
+        <Route path="/member/:merchantId" element={<DemoMemberLayout />}>
+          <Route index element={<DemoMemberStorefront />} />
+          <Route path="product/:productId" element={<DemoMemberProduct />} />
+          <Route path="cart" element={<DemoMemberCart />} />
+          <Route path="checkout" element={<DemoMemberCheckout />} />
+          <Route path="wallet" element={<DemoMemberWallet />} />
+          <Route path="vouchers" element={<DemoMemberVouchers />} />
+          <Route path="rewards" element={<DemoMemberRewards />} />
+          <Route path="orders" element={<DemoMemberOrders />} />
+          <Route path="orders/:orderId" element={<DemoMemberOrderResult />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AuthSessionProvider>
+    </ApiProvider>
+  );
+}
+
+function DemoWelcome() {
+  return (
+    <main className="mx-auto max-w-4xl p-8">
+      <PageHeader title="Loyalty commerce demo" description="Demo mode · dữ liệu mẫu chạy offline" />
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Button asChild>
+          <Link to="/member/moc">Mở trải nghiệm Member</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/merchant/moc">Mở Merchant</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/admin">Mở Admin</Link>
+        </Button>
+      </div>
+    </main>
   );
 }
 
@@ -163,11 +254,48 @@ function Welcome() {
 }
 
 function AdminOverview() {
+  const { accessToken } = useAuthSession();
+  const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
+  const resource = useResource(
+    () => api.getAdminDashboard(accessToken!).then(({ stats }) => stats),
+    [accessToken],
+  );
   return (
     <>
       <PageHeader title="Tổng quan" />
-      <Card className="p-6">
-        <p className="text-sm muted">Giám sát giao dịch chưa khả dụng.</p>
+      {resource.loading ? (
+        <LoadingState cards={2} />
+      ) : resource.error ? (
+        <ErrorState message={resource.error} retry={resource.reload} />
+      ) : resource.data ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-5">
+            <p className="text-sm muted">Cửa hàng</p>
+            <p className="mt-2 text-2xl font-extrabold">{resource.data.merchants}</p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-sm muted">Hồ sơ chờ duyệt</p>
+            <p className="mt-2 text-2xl font-extrabold">{resource.data.pendingApplications}</p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-sm muted">Đơn đã thanh toán</p>
+            <p className="mt-2 text-2xl font-extrabold">{resource.data.paidOrders}</p>
+          </Card>
+          <Card className="p-5">
+            <p className="text-sm muted">Tổng doanh thu</p>
+            <p className="mt-2 text-2xl font-extrabold">
+              {new Intl.NumberFormat("vi-VN", {
+                style: "currency",
+                currency: "VND",
+                maximumFractionDigits: 0,
+              }).format(Number(resource.data.totalVolume))}
+            </p>
+          </Card>
+        </div>
+      ) : (
+        <Card className="p-6 text-sm muted">Chưa có số liệu.</Card>
+      )}
+      <Card className="mt-5 p-6">
         <Button asChild className="mt-5">
           <Link to="/admin/applications">Mở hàng chờ duyệt</Link>
         </Button>
@@ -177,10 +305,38 @@ function AdminOverview() {
 }
 
 function AdminMerchants() {
+  const { accessToken } = useAuthSession();
+  const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
+  const resource = useResource(
+    () => api.listAdminMerchants(accessToken!).then(({ merchants }) => merchants),
+    [accessToken],
+  );
   return (
     <>
       <PageHeader title="Danh sách cửa hàng" />
-      <Card className="p-6 text-sm muted">Danh sách chưa khả dụng.</Card>
+      {resource.loading ? (
+        <LoadingState cards={3} />
+      ) : resource.error ? (
+        <ErrorState message={resource.error} retry={resource.reload} />
+      ) : !resource.data?.length ? (
+        <EmptyState title="Chưa có cửa hàng" description="Danh sách cửa hàng sẽ xuất hiện tại đây." />
+      ) : (
+        <div className="space-y-3">
+          {resource.data.map((merchant) => (
+            <Card key={merchant.id} className="flex items-center justify-between gap-4 p-5">
+              <div>
+                <h2 className="font-extrabold">{merchant.name}</h2>
+                <p className="mt-1 text-xs muted">
+                  {merchant.slug} · #{merchant.id}
+                </p>
+              </div>
+              <span className="text-xs font-bold">
+                {merchant.isActive === false ? "Tạm ngưng" : "Hoạt động"}
+              </span>
+            </Card>
+          ))}
+        </div>
+      )}
     </>
   );
 }

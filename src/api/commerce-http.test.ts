@@ -168,13 +168,18 @@ describe("commerce HTTP contract", () => {
   });
 
   it("supports authoritative mock and VNPay payment status reads", async () => {
-    const fetcher = vi.fn<typeof fetch>()
+    const fetcher = vi
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ order: { id: 41, status: "PAID" } }))
-      .mockResolvedValueOnce(Response.json({ paymentUrl: "https://sandbox.vnpayment.vn/pay", txnRef: "m6-41" }, { status: 201 }))
+      .mockResolvedValueOnce(
+        Response.json({ paymentUrl: "https://sandbox.vnpayment.vn/pay", txnRef: "m6-41" }, { status: 201 }),
+      )
       .mockResolvedValueOnce(Response.json({ orderStatus: "PENDING", paymentStatus: "CREATED" }));
     const client = createCommerceClient("", fetcher);
 
-    await expect(client.payMockOrder(41, "member-token")).resolves.toMatchObject({ order: { status: "PAID" } });
+    await expect(client.payMockOrder(41, "member-token")).resolves.toMatchObject({
+      order: { status: "PAID" },
+    });
     await expect(client.createVnpayPayment(41, "member-token")).resolves.toMatchObject({ txnRef: "m6-41" });
     await expect(client.getPaymentStatus(41, "member-token")).resolves.toEqual({
       orderStatus: "PENDING",
@@ -185,12 +190,49 @@ describe("commerce HTTP contract", () => {
       ["/api/orders/41/payments/vnpay", "POST"],
       ["/api/orders/41/payment-status", "GET"],
     ]);
-    expect(fetcher.mock.calls.every(([, init]) => new Headers(init?.headers).get("Authorization") === "Bearer member-token")).toBe(true);
+    expect(
+      fetcher.mock.calls.every(
+        ([, init]) => new Headers(init?.headers).get("Authorization") === "Bearer member-token",
+      ),
+    ).toBe(true);
+  });
+
+  it("uses authenticated admin-only dashboard and merchant directory endpoints", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          stats: { merchants: 2, pendingApplications: 1, paidOrders: 9, totalVolume: "1234000" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }] }),
+      );
+    const client = createCommerceClient("", fetcher);
+    await client.getAdminDashboard("admin-token");
+    await client.listAdminMerchants("admin-token");
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual(["/api/admin/dashboard", "/api/admin/merchants"]);
+    expect(
+      fetcher.mock.calls.every(
+        ([, init]) => new Headers(init?.headers).get("Authorization") === "Bearer admin-token",
+      ),
+    ).toBe(true);
   });
 
   it("reads member orders and an order detail from owner-scoped endpoints", async () => {
-    const order = { id: 41, merchantId: 7, memberId: 9, status: "PENDING", subtotal: "10000", discountAmount: "0", total: "10000", paidAt: null, items: [] };
-    const fetcher = vi.fn<typeof fetch>()
+    const order = {
+      id: 41,
+      merchantId: 7,
+      memberId: 9,
+      status: "PENDING",
+      subtotal: "10000",
+      discountAmount: "0",
+      total: "10000",
+      paidAt: null,
+      items: [],
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ orders: [order] }))
       .mockResolvedValueOnce(Response.json({ order }));
     const client = createCommerceClient("", fetcher);
@@ -203,9 +245,11 @@ describe("commerce HTTP contract", () => {
   });
 
   it("lists active merchants from the public directory endpoint", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
-      merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }],
-    }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }],
+      }),
+    );
     const client = createCommerceClient("", fetcher);
     await expect(client.listMerchants()).resolves.toEqual({
       merchants: [{ id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true }],
