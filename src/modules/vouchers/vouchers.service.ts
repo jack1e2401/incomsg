@@ -1,0 +1,50 @@
+import { HttpError } from "../../lib/http-error.js";
+import { merchantRepository } from "../merchant/merchant.repository.js";
+import { vouchersRepository } from "./vouchers.repository.js";
+import type { DefinitionInput, DefinitionPatch } from "./vouchers.types.js";
+import { readDefinitionInput } from "./vouchers.validation.js";
+
+export const vouchersService = {
+  async createDefinition(ownerId: number, input: DefinitionInput) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return vouchersRepository.createDefinition(merchant.id, input);
+  },
+  async listMerchantDefinitions(ownerId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return vouchersRepository.listDefinitions(merchant.id, false);
+  },
+  async updateDefinition(ownerId: number, id: number, patch: DefinitionPatch) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    const existing = await vouchersRepository.getDefinition(id);
+    if (!existing || existing.merchantId !== merchant.id) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
+    const validated = readDefinitionInput({
+      type: existing.type,
+      title: patch.title ?? existing.title,
+      pointsCost: patch.pointsCost ?? existing.pointsCost,
+      discountAmount: patch.discountAmount !== undefined ? patch.discountAmount : existing.discountAmount?.toFixed(0),
+      rewardDescription: patch.rewardDescription !== undefined ? patch.rewardDescription : existing.rewardDescription,
+    });
+    const result = await vouchersRepository.updateDefinition(merchant.id, id, {
+      title: validated.title,
+      pointsCost: validated.pointsCost,
+      discountAmount: validated.discountAmount,
+      rewardDescription: validated.rewardDescription,
+      ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
+    });
+    if (!result) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
+    return result;
+  },
+  async listPublicDefinitions(merchantId: number) {
+    const result = await vouchersRepository.listPublicDefinitions(merchantId);
+    if (!result) throw new HttpError(404, "MERCHANT_NOT_FOUND");
+    return result;
+  },
+  async listOwnedVouchers(memberId: number, merchantId: number) {
+    const result = await vouchersRepository.listOwnedVouchers(memberId, merchantId);
+    if (!result) throw new HttpError(404, "MERCHANT_NOT_FOUND");
+    return result;
+  },
+};
