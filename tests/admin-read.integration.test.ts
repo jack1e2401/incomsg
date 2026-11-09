@@ -16,6 +16,8 @@ let merchantToken: string;
 let memberToken: string;
 let merchantId: number;
 let inactiveMerchantId: number;
+let ownerId: number;
+let memberId: number;
 
 before(async () => {
   const [admin, owner, member, applicant] = await Promise.all([
@@ -30,6 +32,8 @@ before(async () => {
   ]);
   merchantId = active.id;
   inactiveMerchantId = inactive.id;
+  ownerId = owner.id;
+  memberId = member.id;
   await prisma.merchantApplication.create({ data: { applicantId: applicant.id, storeName: "Pending admin read" } });
   const product = await prisma.product.create({ data: { merchantId, name: "Admin stats product", price: "250000" } });
   await prisma.order.create({
@@ -97,31 +101,38 @@ test("admin merchant directory returns only merchant directory fields", async ()
   assert.equal(inactive.isActive, false);
 });
 
-test("admin dashboard includes its fixture contributions and only paid orders", async () => {
-  const { response, json } = await request("/api/admin/dashboard", adminToken);
-  assert.equal(response.status, 200);
-  const [activeMerchant, pendingApplication, paidOrder, pendingOrder] = await Promise.all([
-    prisma.merchant.findUnique({ where: { id: merchantId }, select: { isActive: true } }),
-    prisma.merchantApplication.findFirst({ where: { applicant: { email: emails[3] }, status: "PENDING" } }),
-    prisma.order.findFirst({ where: { member: { email: emails[2] }, merchantId, status: "PAID" }, select: { total: true } }),
-    prisma.order.findFirst({ where: { member: { email: emails[2] }, merchantId, status: "PENDING" }, select: { total: true } }),
-  ]);
-  assert.equal(activeMerchant?.isActive, true);
-  assert.ok(pendingApplication);
-  assert.ok(paidOrder);
-  assert.ok(pendingOrder);
-  assert.ok(json.stats.merchants >= 1);
-  assert.ok(json.stats.pendingApplications >= 1);
-  assert.ok(json.stats.paidOrders >= 1);
-  assert.ok(BigInt(json.stats.totalVolume) >= BigInt(paidOrder.total.toFixed(0)));
-  // A PENDING fixture is present, so paid-only aggregates must stay below the all-order totals.
-  // These broad bounds tolerate other integration files inserting or deleting their own fixtures.
-  const [allOrderCount, allOrderVolume] = await Promise.all([
-    prisma.order.count(),
-    prisma.order.aggregate({ _sum: { total: true } }),
-  ]);
-  assert.ok(json.stats.paidOrders < allOrderCount);
-  assert.ok(BigInt(json.stats.totalVolume) < BigInt(allOrderVolume._sum.total?.toFixed(0) ?? "0"));
+test("admin dashboard reports exact deltas and excludes pending orders", async () => {
+  const before = await request("/api/admin/dashboard", adminToken);
+  assert.equal(before.response.status, 200);
+
+  const merchant = await prisma.merchant.create({
+    data: { ownerId, name: "Dashboard delta fixture", slug: `dashboard-delta-${suffix}` },
+  });
+  const product = await prisma.product.create({ data: { merchantId: merchant.id, name: "Delta product", price: "250000" } });
+  const paidTotal = 200000;
+  await prisma.order.create({
+    data: {
+      merchantId: merchant.id, memberId, status: "PAID", subtotal: 250000, discountAmount: 50000,
+      total: paidTotal, paidAt: new Date(),
+      items: { create: { productId: product.id, productName: product.name, unitPrice: 250000, quantity: 1, lineTotal: 250000 } },
+    },
+  });
+  await prisma.order.create({
+    data: {
+      merchantId: merchant.id, memberId, status: "PENDING", subtotal: 700000, discountAmount: 0,
+      total: 700000,
+      items: { create: { productId: product.id, productName: product.name, unitPrice: 700000, quantity: 1, lineTotal: 700000 } },
+    },
+  });
+
+  const after = await request("/api/admin/dashboard", adminToken);
+  assert.equal(after.response.status, 200);
+  assert.deepEqual(after.json.stats, {
+    merchants: before.json.stats.merchants + 1,
+    pendingApplications: before.json.stats.pendingApplications,
+    paidOrders: before.json.stats.paidOrders + 1,
+    totalVolume: (BigInt(before.json.stats.totalVolume) + BigInt(paidTotal)).toString(),
+  });
 });
 
 test("admin dashboard and directory reject anonymous and non-admin callers", async () => {
