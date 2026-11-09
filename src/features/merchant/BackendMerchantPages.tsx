@@ -6,6 +6,7 @@ import { createCommerceClient } from "../../api/commerce-http";
 import type {
   LoyaltyConfigInput,
   MemberVoucherDto,
+  OrderDto,
   ProductDto,
   ProductInput,
   ProductPatch,
@@ -44,15 +45,6 @@ function message(reason: unknown) {
 
 function formatPrice(value: string) {
   return money(Number(value));
-}
-
-function MissingEndpoint({ title }: { title: string }) {
-  return (
-    <>
-      <PageHeader title={title} />
-      <EmptyState title="Chưa khả dụng" description="Tính năng này chưa được hỗ trợ." />
-    </>
-  );
 }
 
 export function MerchantOverview() {
@@ -359,7 +351,58 @@ export function MerchantProducts() {
 }
 
 export function MerchantOrders() {
-  return <MissingEndpoint title="Đơn hàng" />;
+  const token = useToken();
+  const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
+  return (
+    <>
+      <PageHeader
+        title="Đơn hàng"
+        description="Đơn hàng thuộc cửa hàng của bạn, với trạng thái từ backend."
+      />
+      {resource.loading ? (
+        <LoadingState cards={2} />
+      ) : resource.error ? (
+        <ErrorState message={resource.error} retry={resource.reload} />
+      ) : !resource.data?.length ? (
+        <EmptyState
+          title="Chưa có đơn hàng"
+          description="Đơn của Member sẽ xuất hiện sau khi được tạo tại cửa hàng này."
+        />
+      ) : (
+        <div className="space-y-3">
+          {resource.data.map((order: OrderDto) => (
+            <Card key={order.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="font-extrabold">Đơn #{order.id}</h2>
+                  <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
+                    {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
+                  </StatusText>
+                </div>
+                <p className="mt-2 text-xs muted">
+                  Member #{order.memberId} ·{" "}
+                  {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
+                </p>
+                {order.paidAt && (
+                  <p className="mt-1 text-xs muted">
+                    Thanh toán {new Date(order.paidAt).toLocaleString("vi-VN")}
+                  </p>
+                )}
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
+                {order.status === "PAID" && order.earnedPoints !== undefined && (
+                  <p className="mt-1 text-xs font-semibold text-[#357044]">
+                    +{order.earnedPoints.toLocaleString("vi-VN")} điểm
+                  </p>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 export function MerchantVouchers() {
   const token = useToken();

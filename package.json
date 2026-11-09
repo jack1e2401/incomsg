@@ -11,6 +11,7 @@
     "test": "vitest run src",
     "test:e2e": "playwright test",
     "test:e2e:m2": "playwright test --config playwright.m2.config.ts",
+    "test:e2e:commerce": "playwright test --config playwright.commerce.config.ts",
     "format": "prettier --write src playwright *.ts",
     "format:check": "prettier --check src playwright *.ts"
   },

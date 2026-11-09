@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Link,
   NavLink,
@@ -23,7 +23,6 @@ import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
   MemberVoucherDto,
-  OrderDto,
   PointTransactionType,
   ProductDto,
   VoucherDefinitionDto,
@@ -406,19 +405,85 @@ export function MemberCheckout() {
 
 export function MemberOrderResult() {
   const { merchantId } = useMerchantContext();
-  const { state } = useLocation() as { state: { order?: OrderDto } | null };
+  const { accessToken } = useAuthSession();
+  const location = useLocation();
+  const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "vnpay" ? "vnpay" : "mock";
   const orderId = Number(useParams().orderId);
-  const order = state?.order?.id === orderId && state.order.merchantId === merchantId ? state.order : null;
+  const orderResource = useResource(
+    () => commerce.getMemberOrder(orderId, accessToken!).then(({ order }) => order),
+    [orderId, merchantId, accessToken],
+  );
+  const order = orderResource.data?.merchantId === merchantId ? orderResource.data : null;
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [pollCount, setPollCount] = useState(0);
+  const [paymentFailed, setPaymentFailed] = useState(false);
+
+  useEffect(() => {
+    if (!order || order.status !== "PENDING" || paymentMode !== "vnpay" || !accessToken || pollCount >= 30)
+      return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const status = await commerce.getPaymentStatus(order.id, accessToken);
+        if (!active) return;
+        if (status.orderStatus === "PAID") {
+          orderResource.reload();
+          return;
+        }
+        if (status.paymentStatus === "FAILED") {
+          setPaymentFailed(true);
+          return;
+        }
+        if (status.paymentStatus === "CREATED") setPollCount((count) => count + 1);
+      } catch {
+        if (active) setPollCount((count) => count + 1);
+      }
+    }, 2000);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [accessToken, order?.id, order?.status, orderResource.reload, paymentMode, pollCount]);
+
+  async function pay() {
+    if (!order || !accessToken || busy || order.status !== "PENDING") return;
+    setBusy(true);
+    setActionError("");
+    try {
+      if (paymentMode === "mock") {
+        const response = await commerce.payMockOrder(order.id, accessToken);
+        orderResource.setData(response.order);
+      } else {
+        const response = await commerce.createVnpayPayment(order.id, accessToken);
+        if ("paymentUrl" in response) {
+          window.location.assign(response.paymentUrl);
+        } else {
+          orderResource.reload();
+        }
+      }
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Không thể bắt đầu thanh toán");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (orderResource.loading) return <LoadingState cards={1} />;
+  if (orderResource.error) return <ErrorState message={orderResource.error} retry={orderResource.reload} />;
   if (!order)
     return (
       <Unavailable
         title="Không tải được đơn hàng"
-        description="Kết quả đơn hàng chỉ xem được ngay sau khi tạo."
+        description="Đơn không tồn tại hoặc không thuộc cửa hàng hiện tại."
       />
     );
   return (
     <>
-      <PageHeader title={`Đơn #${order.id}`} />
+      <PageHeader
+        title={`Đơn #${order.id}`}
+        description={location.search ? "Đang kiểm tra kết quả thanh toán từ máy chủ." : undefined}
+      />
       <Card className="p-6">
         <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
           {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
@@ -447,9 +512,48 @@ export function MemberOrderResult() {
           <span>Tổng cộng</span>
           <span>{money(order.total)}</span>
         </div>
-        {order.status === "PENDING" && (
-          <p className="mt-5 rounded-xl bg-[#fff1d6] p-4 text-xs leading-5 text-[#97682a]">
-            Đơn đang chờ thanh toán. Chưa có điểm thưởng hoặc xác nhận thanh toán.
+        {actionError && (
+          <p role="alert" className="mt-4 text-sm text-red-700">
+            {actionError}
+          </p>
+        )}
+        {order.status === "PENDING" ? (
+          <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
+            <p className="text-xs leading-5 text-[#97682a]">
+              {paymentFailed
+                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng; hãy tạo đơn mới để thử lại."
+                : "Đơn đang chờ thanh toán. Chưa có điểm thưởng. Trạng thái chỉ đổi sau khi máy chủ xác nhận."}
+            </p>
+            {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
+              <p role="status" className="mt-2 text-xs text-[#97682a]">
+                Chưa nhận được kết quả từ VNPay. Bạn có thể tải lại trạng thái sau.
+              </p>
+            )}
+            {!paymentFailed && (
+              <Button className="mt-4" disabled={busy} onClick={pay}>
+                {busy ? (
+                  <BusyLabel>Đang chuyển thanh toán</BusyLabel>
+                ) : paymentMode === "vnpay" ? (
+                  "Thanh toán qua VNPay Sandbox"
+                ) : (
+                  "Thanh toán mô phỏng"
+                )}
+              </Button>
+            )}
+            {paymentFailed && (
+              <Button asChild className="mt-4">
+                <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
+              </Button>
+            )}
+            {paymentMode === "vnpay" && (
+              <Button className="ml-2 mt-4" variant="outline" onClick={orderResource.reload}>
+                Kiểm tra lại
+              </Button>
+            )}
+          </div>
+        ) : (
+          <p role="status" className="mt-5 rounded-xl bg-[#e8f1e2] p-4 text-xs leading-5 text-[#357044]">
+            Thanh toán đã được máy chủ xác nhận. Ví và lịch sử điểm đã được tải từ backend.
           </p>
         )}
       </Card>
@@ -466,7 +570,48 @@ function Unavailable({ title, description }: { title: string; description: strin
   );
 }
 export function MemberOrders() {
-  return <Unavailable title="Đơn hàng" description="Tính năng này chưa được hỗ trợ." />;
+  const { merchantId } = useMerchantContext();
+  const { accessToken } = useAuthSession();
+  const resource = useResource(
+    () => commerce.listMemberOrders(merchantId, accessToken!).then(({ orders }) => orders),
+    [merchantId, accessToken],
+  );
+  return (
+    <>
+      <PageHeader title="Đơn hàng" description={`Đơn của bạn tại cửa hàng #${merchantId}.`} />
+      {resource.loading ? (
+        <LoadingState cards={2} />
+      ) : resource.error ? (
+        <ErrorState message={resource.error} retry={resource.reload} />
+      ) : !resource.data?.length ? (
+        <EmptyState title="Chưa có đơn hàng" description="Đơn bạn tạo tại cửa hàng này sẽ xuất hiện ở đây." />
+      ) : (
+        <div className="space-y-3">
+          {resource.data.map((order) => (
+            <Card key={order.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
+              <div>
+                <p className="font-extrabold">Đơn #{order.id}</p>
+                <p className="mt-1 text-xs muted">
+                  {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="font-bold">{money(order.total)}</p>
+                  <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
+                    {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
+                  </StatusText>
+                </div>
+                <Button asChild variant="outline">
+                  <Link to={`/member/${merchantId}/orders/${order.id}`}>Chi tiết</Link>
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 export function MemberWallet() {
   const { merchantId } = useMerchantContext();
@@ -758,6 +903,13 @@ export function MemberLanding() {
   const [merchantId, setMerchantId] = useState("");
   const navigate = useNavigate();
   const { logout } = useAuthSession();
+  const merchants = useResource(
+    () =>
+      commerce
+        .listMerchants()
+        .then(({ merchants: items }) => items.filter((item) => item.isActive !== false)),
+    [],
+  );
   const parsed = Number(merchantId);
   return (
     <main className="relative mx-auto grid min-h-dvh max-w-5xl items-center gap-8 px-4 py-12 sm:px-8 lg:grid-cols-2">
@@ -775,28 +927,45 @@ export function MemberLanding() {
         <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[#24452f] sm:text-5xl">
           Mua sắm theo cửa hàng
         </h1>
-        <p className="mt-4 text-sm leading-7 muted">Nhập mã cửa hàng để khám phá sản phẩm.</p>
-        <form
-          className="mt-6 flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (Number.isInteger(parsed) && parsed > 0) navigate(`/member/${parsed}`);
-          }}
-        >
-          <Input
-            aria-label="Mã cửa hàng"
-            type="number"
-            min={1}
-            step={1}
-            required
-            placeholder="Mã cửa hàng"
-            value={merchantId}
-            onChange={(event) => setMerchantId(event.target.value)}
-          />
-          <Button type="submit">
-            Mở <ArrowRight size={16} />
-          </Button>
-        </form>
+        <p className="mt-4 text-sm leading-7 muted">
+          Chọn cửa hàng để khám phá sản phẩm và ví điểm riêng của bạn.
+        </p>
+        {merchants.loading ? (
+          <p className="mt-5 text-sm muted">Đang tải cửa hàng…</p>
+        ) : merchants.error ? (
+          <div className="mt-5 max-w-md">
+            <ErrorState message={merchants.error} retry={merchants.reload} />
+          </div>
+        ) : !merchants.data?.length ? (
+          <p className="mt-5 text-sm muted">Hiện chưa có cửa hàng đang hoạt động.</p>
+        ) : (
+          <form
+            className="mt-6 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (Number.isInteger(parsed) && parsed > 0) navigate(`/member/${parsed}`);
+            }}
+          >
+            <Select
+              aria-label="Cửa hàng"
+              required
+              value={merchantId}
+              onChange={(event) => setMerchantId(event.target.value)}
+            >
+              <option value="" disabled>
+                Chọn cửa hàng
+              </option>
+              {merchants.data.map((merchant) => (
+                <option key={merchant.id} value={merchant.id}>
+                  {merchant.name}
+                </option>
+              ))}
+            </Select>
+            <Button type="submit">
+              Mở <ArrowRight size={16} />
+            </Button>
+          </form>
+        )}
       </div>
       <div className="h-64">
         <MemberMascot mood="hello" />
