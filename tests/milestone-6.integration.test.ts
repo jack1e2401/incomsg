@@ -437,6 +437,7 @@ test("legacy fallback settlement awards the exact positive reservation despite r
       snapshotGoldMultiplier: 0,
       snapshotPlatinumMultiplier: 0,
       snapshotTierConfigFallback: true,
+      snapshotExactReservationAward: true,
     } }),
     prisma.loyaltyWallet.update({ where: { id: membership.wallet.id }, data: { reservedPoints: 4 } }),
   ]);
@@ -452,11 +453,45 @@ test("legacy fallback settlement awards the exact positive reservation despite r
   }
 });
 
+test("inactive zero-reserve legacy fallback completes without awarding reserved capacity", async () => {
+  const user = await prisma.user.create({ data: { email: `m6-legacy-zero-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
+  fixtureUserIds.push(user.id);
+  const token = await signAccessToken(user.id);
+  const product = await prisma.product.create({ data: { merchantId, name: "Inactive legacy points", price: "30000" } });
+  const orderResponse = await request("/api/orders", "POST", token, { productId: product.id, quantity: 1 });
+  assert.equal(orderResponse.response.status, 201);
+  const orderId = orderResponse.json.order.id as number;
+  const payment = await request(`/api/orders/${orderId}/payments/vnpay`, "POST", token);
+  const attempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId } });
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: user.id, merchantId } }, include: { wallet: true } });
+  assert.ok(membership.wallet);
+  await prisma.$transaction([
+    prisma.paymentAttempt.update({ where: { id: attempt.id }, data: {
+      reservedPoints: 6,
+      snapshotRuleActive: false,
+      snapshotMaxMultiplier: 2,
+      snapshotBronzeMultiplier: 2,
+      snapshotSilverMultiplier: 2,
+      snapshotGoldMultiplier: 2,
+      snapshotPlatinumMultiplier: 2,
+      snapshotTierConfigFallback: true,
+      snapshotExactReservationAward: false,
+    } }),
+    prisma.loyaltyWallet.update({ where: { id: membership.wallet.id }, data: { reservedPoints: 6 } }),
+  ]);
+  const ipn = signedIpn(payment.json.txnRef, "3000000");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta, 0);
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints, 0);
+});
+
 test("SQL backfill preserves positive reservations and safely reserves zero-reserve legacy attempts", async () => {
   const firstMigration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
   const secondMigration = readFileSync(new URL("../prisma/migrations/20261109210000_snapshot_max_multiplier/migration.sql", import.meta.url), "utf8");
   const thirdMigration = readFileSync(new URL("../prisma/migrations/20261109220000_snapshot_tier_multipliers/migration.sql", import.meta.url), "utf8");
   const fourthMigration = readFileSync(new URL("../prisma/migrations/20261109230000_legacy_tier_snapshot_fallback/migration.sql", import.meta.url), "utf8");
+  const fifthMigration = readFileSync(new URL("../prisma/migrations/20261109240000_exact_legacy_reservation_award/migration.sql", import.meta.url), "utf8");
   const firstBody = firstMigration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
   const secondBody = secondMigration.split("-- BEGIN MULTIPLIER RESERVATION BACKFILL")[1]?.split("-- END MULTIPLIER RESERVATION BACKFILL")[0];
   const fourthBody = fourthMigration.split("-- BEGIN LEGACY TIER CONFIG FALLBACK")[1]?.split("-- END LEGACY TIER CONFIG FALLBACK")[0];
@@ -466,6 +501,8 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
   assert.match(secondMigration, /CASE WHEN pa\.`reservedPoints` > 0 THEN pa\.`reservedPoints`/);
   assert.match(thirdMigration, /ALTER TABLE `PaymentAttempt`[\s\S]*ADD COLUMN `snapshotBronzeMultiplier`/);
   assert.doesNotMatch(thirdMigration, /UPDATE\s+`(?:PaymentAttempt|LoyaltyWallet)`/i);
+  assert.match(fifthMigration, /ADD COLUMN `snapshotExactReservationAward` BOOLEAN NOT NULL DEFAULT false/);
+  assert.match(fifthMigration, /SET `snapshotExactReservationAward` = true[\s\S]*`snapshotMaxMultiplier` = 0/);
   const tableNames: [string, string][] = [
     ["`PaymentAttempt`", "`TestPaymentAttempt`"], ["`Order`", "`TestOrder`"],
     ["`MerchantMembership`", "`TestMerchantMembership`"], ["`LoyaltyWallet`", "`TestLoyaltyWallet`"],
@@ -475,7 +512,7 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     const tempTables = [
       "CREATE TEMPORARY TABLE TestOrder (id INTEGER PRIMARY KEY, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, total DECIMAL(15,0) NOT NULL)",
       // Tier columns/defaults emulate 2200's schema-only ALTER TABLE.
-      "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotBronzeMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.00, snapshotSilverMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.20, snapshotGoldMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.50, snapshotPlatinumMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotTierConfigFallback BOOLEAN NOT NULL DEFAULT false)",
+      "CREATE TEMPORARY TABLE TestPaymentAttempt (id INTEGER PRIMARY KEY, orderId INTEGER NOT NULL, status VARCHAR(20) NOT NULL, reservedPoints INTEGER NOT NULL DEFAULT 0, snapshotVndPerPoint INTEGER NOT NULL DEFAULT 10000, snapshotRuleActive BOOLEAN NOT NULL DEFAULT true, snapshotMaxMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotBronzeMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.00, snapshotSilverMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.20, snapshotGoldMultiplier DECIMAL(5,2) NOT NULL DEFAULT 1.50, snapshotPlatinumMultiplier DECIMAL(5,2) NOT NULL DEFAULT 2.00, snapshotTierConfigFallback BOOLEAN NOT NULL DEFAULT false, snapshotExactReservationAward BOOLEAN NOT NULL DEFAULT false)",
       "CREATE TEMPORARY TABLE TestMerchantMembership (id INTEGER PRIMARY KEY AUTO_INCREMENT, merchantId INTEGER NOT NULL, memberId INTEGER NOT NULL, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL, UNIQUE KEY merchant_member (merchantId, memberId))",
       "CREATE TEMPORARY TABLE TestLoyaltyWallet (id INTEGER PRIMARY KEY AUTO_INCREMENT, membershipId INTEGER NOT NULL UNIQUE, availablePoints INTEGER NOT NULL DEFAULT 0, lifetimeEarnedPoints INTEGER NOT NULL DEFAULT 0, reservedPoints INTEGER NOT NULL DEFAULT 0, createdAt DATETIME(3) NOT NULL, updatedAt DATETIME(3) NOT NULL)",
       "CREATE TEMPORARY TABLE TestLoyaltyRule (merchantId INTEGER PRIMARY KEY, vndPerPoint INTEGER NOT NULL, isActive BOOLEAN NOT NULL)",
@@ -486,7 +523,7 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status, reservedPoints) VALUES (601, 501, 'CREATED', 0), (602, 502, 'CREATED', 4)");
     await tx.$executeRawUnsafe("INSERT INTO TestMerchantMembership (id, merchantId, memberId, createdAt, updatedAt) VALUES (2, 701, 802, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyWallet (id, membershipId, availablePoints, lifetimeEarnedPoints, reservedPoints, createdAt, updatedAt) VALUES (2, 2, 4, 4, 4, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
-    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, true)");
+    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, false)");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 'BRONZE', 1.00), (701, 'SILVER', 1.20), (701, 'GOLD', 1.50), (701, 'PLATINUM', 2.00)");
     // The test uses TEMPORARY tables. MySQL cannot read a temporary table again
     // as the source of an INSERT into that same table, so drop only those
@@ -514,20 +551,25 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
     for (const statement of fallbackSql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
       await tx.$executeRawUnsafe(statement);
     }
-    const [backfilledAttempt, preservedAttempt] = await tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback FROM TestPaymentAttempt ORDER BY id");
+    const exactFallbackUpdate = fifthMigration.split(";").map((statement) => statement.trim()).find((statement) => statement.startsWith("UPDATE `PaymentAttempt`"));
+    assert.ok(exactFallbackUpdate);
+    await tx.$executeRawUnsafe(tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), exactFallbackUpdate));
+    const [backfilledAttempt, preservedAttempt] = await tx.$queryRawUnsafe<{ id: number; reservedPoints: number; snapshotVndPerPoint: number; snapshotRuleActive: boolean; snapshotMaxMultiplier: string; snapshotBronzeMultiplier: string; snapshotSilverMultiplier: string; snapshotGoldMultiplier: string; snapshotPlatinumMultiplier: string; snapshotTierConfigFallback: boolean; snapshotExactReservationAward: boolean }[]>("SELECT id, reservedPoints, snapshotVndPerPoint, snapshotRuleActive, snapshotMaxMultiplier, snapshotBronzeMultiplier, snapshotSilverMultiplier, snapshotGoldMultiplier, snapshotPlatinumMultiplier, snapshotTierConfigFallback, snapshotExactReservationAward FROM TestPaymentAttempt ORDER BY id");
     assert.equal(backfilledAttempt?.snapshotVndPerPoint, 10000);
-    assert.equal(Boolean(backfilledAttempt?.snapshotRuleActive), true);
+    assert.equal(Boolean(backfilledAttempt?.snapshotRuleActive), false);
     assert.equal(Number(backfilledAttempt?.snapshotMaxMultiplier), 999.99);
     assert.equal(Number(backfilledAttempt?.snapshotBronzeMultiplier), 999.99);
     assert.equal(Number(backfilledAttempt?.snapshotSilverMultiplier), 999.99);
     assert.equal(Number(backfilledAttempt?.snapshotGoldMultiplier), 999.99);
     assert.equal(Number(backfilledAttempt?.snapshotPlatinumMultiplier), 999.99);
     assert.equal(Boolean(backfilledAttempt?.snapshotTierConfigFallback), true);
+    assert.equal(Boolean(backfilledAttempt?.snapshotExactReservationAward), false);
     assert.equal(backfilledAttempt?.reservedPoints, 11999);
     assert.equal(Number(preservedAttempt?.snapshotMaxMultiplier), 0);
     assert.equal(Number(preservedAttempt?.snapshotBronzeMultiplier), 0);
     assert.equal(Number(preservedAttempt?.snapshotSilverMultiplier), 0);
     assert.equal(Boolean(preservedAttempt?.snapshotTierConfigFallback), true);
+    assert.equal(Boolean(preservedAttempt?.snapshotExactReservationAward), true);
     assert.equal(preservedAttempt?.reservedPoints, 4);
     const [newMembership] = await tx.$queryRawUnsafe<{ id: number }[]>("SELECT id FROM TestMerchantMembership WHERE merchantId = 701 AND memberId = 801");
     assert.ok(newMembership);

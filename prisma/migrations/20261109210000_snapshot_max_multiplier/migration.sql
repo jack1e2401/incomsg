@@ -4,7 +4,7 @@ ALTER TABLE `PaymentAttempt`
 -- Backfill zero-reserve legacy attempts at the configured maximum tier multiplier.
 -- Preserve positive reservations from the pre-2963b9c schema. Their historical
 -- multiplier/rate cannot be recovered, so set the multiplier ceiling to zero;
--- migration 2300 settles them using the exact reservedPoints fallback award.
+-- migration 2400 marks them to settle using the exact reservedPoints award.
 -- As with that backfill, any signed-INT overflow aborts migration and requires
 -- reconciliation of the affected pending transactions before retrying.
 -- BEGIN MULTIPLIER RESERVATION BACKFILL
