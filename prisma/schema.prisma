@@ -31,6 +31,12 @@ enum OrderStatus {
   PAID
 }
 
+enum PaymentAttemptStatus {
+  CREATED
+  SUCCEEDED
+  FAILED
+}
+
 enum TierLevel {
   BRONZE
   SILVER
@@ -136,9 +142,22 @@ model Order {
   voucher          MemberVoucher?    @relation("AppliedVoucher", fields: [voucherId], references: [id])
   items            OrderItem[]
   pointTransaction PointTransaction?
+  paymentAttempt   PaymentAttempt?
 
   @@index([merchantId, status])
   @@index([memberId, createdAt])
+}
+
+model PaymentAttempt {
+  id                    Int                  @id @default(autoincrement())
+  orderId               Int                  @unique
+  txnRef                String               @unique @db.VarChar(100)
+  expectedAmount        Decimal              @db.Decimal(15, 0)
+  status                PaymentAttemptStatus @default(CREATED)
+  transactionNo         String?              @db.VarChar(64)
+  createdAt             DateTime             @default(now())
+  confirmedAt           DateTime?
+  order                 Order                @relation(fields: [orderId], references: [id])
 }
 
 model OrderItem {
