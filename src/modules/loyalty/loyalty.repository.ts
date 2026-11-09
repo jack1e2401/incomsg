@@ -27,7 +27,7 @@ function serialize(merchantId: number, rule: { vndPerPoint: number; isActive: bo
 }
 
 export const loyaltyRepository = {
-  async reserveOrderPoints(tx: Prisma.TransactionClient, order: { memberId: number; merchantId: number; total: Prisma.Decimal }): Promise<number> {
+  async reserveOrderPoints(tx: Prisma.TransactionClient, order: { memberId: number; merchantId: number; total: Prisma.Decimal }) {
     const [rule, membership] = await Promise.all([
       tx.loyaltyRule.findUnique({ where: { merchantId: order.merchantId } }),
       tx.merchantMembership.upsert({
@@ -39,13 +39,14 @@ export const loyaltyRepository = {
     ]);
     const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
     const configuredTiers = await tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } });
-    const bronzeMultiplier = configuredTiers.length === 4
-      ? configuredTiers.find((tier) => tier.level === "BRONZE")!.multiplier
-      : new Prisma.Decimal(defaultTiers[0]!.multiplier);
-    const multiplier = membership.tier?.multiplier ?? bronzeMultiplier;
+    const maxMultiplier = configuredTiers.length === 4
+      ? configuredTiers.reduce((max, tier) => tier.multiplier.greaterThan(max) ? tier.multiplier : max, configuredTiers[0]!.multiplier)
+      : new Prisma.Decimal(defaultTiers.reduce((max, tier) => Number(tier.multiplier) > Number(max) ? tier.multiplier : max, defaultTiers[0]!.multiplier));
+    const vndPerPoint = rule?.vndPerPoint ?? 10000;
+    const ruleActive = rule?.isActive ?? true;
     let requested: number;
     try {
-      requested = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, multiplier);
+      requested = ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, maxMultiplier) : 0;
     } catch (error) {
       if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
       throw error;
@@ -61,7 +62,7 @@ export const loyaltyRepository = {
       const retry = Object.assign(new Error("Retry loyalty reservation after concurrent wallet update"), { code: "P2034" });
       throw retry;
     }
-    return requested;
+    return { reservedPoints: requested, snapshotVndPerPoint: vndPerPoint, snapshotRuleActive: ruleActive };
   },
 
   async getConfig(merchantId: number): Promise<LoyaltyConfigDto> {
@@ -94,7 +95,7 @@ export const loyaltyRepository = {
     return this.getConfig(merchantId);
   },
 
-  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earnedPointsSnapshot?: number): Promise<OrderDto | "missing" | "already_paid"> {
+  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earningRuleSnapshot?: { vndPerPoint: number; ruleActive: boolean }): Promise<OrderDto | "missing" | "already_paid"> {
     const changed = await tx.order.updateMany({
       where: { id: orderId, memberId, status: "PENDING" },
       data: { status: "PAID", paidAt: new Date() },
@@ -146,7 +147,9 @@ export const loyaltyRepository = {
     const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
     let earnedPoints: number;
     try {
-      earnedPoints = earnedPointsSnapshot ?? (rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier));
+      const ruleActive = earningRuleSnapshot?.ruleActive ?? rule?.isActive ?? true;
+      const vndPerPoint = earningRuleSnapshot?.vndPerPoint ?? rule?.vndPerPoint ?? 10000;
+      earnedPoints = ruleActive ? calculateEarnedPoints(order.total, vndPerPoint, earningMultiplier) : 0;
     } catch (error) {
       if (error instanceof RangeError) throw new HttpError(409, "LOYALTY_LIMIT_EXCEEDED");
       throw error;

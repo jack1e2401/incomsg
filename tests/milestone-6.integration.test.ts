@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import type { Server } from "node:http";
@@ -9,9 +10,9 @@ process.env.VNPAY_TMN_CODE = "TESTCODE";
 process.env.VNPAY_HASH_SECRET = "test-vnpay-hash-secret-long-enough";
 process.env.VNPAY_RETURN_URL = "https://merchant.example/api/payments/vnpay/return";
 
-const [{ app }, { prisma }, { signAccessToken }, { signVnpay }] = await Promise.all([
+const [{ app }, { prisma }, { signAccessToken }, { signVnpay }, { env }] = await Promise.all([
   import("../src/app.js"), import("../src/lib/prisma.js"), import("../src/lib/access-token.js"),
-  import("../src/modules/payments/vnpay-signature.js"),
+  import("../src/modules/payments/vnpay-signature.js"), import("../src/config/env.js"),
 ]);
 const suffix = randomUUID();
 const emails = [`m6-owner-${suffix}@test.local`, `m6-member-${suffix}@test.local`, `m6-other-${suffix}@test.local`];
@@ -85,7 +86,11 @@ async function request(path: string, method = "GET", token?: string, body?: unkn
 }
 
 async function createOrder() {
-  const created = await request("/api/orders", "POST", memberToken, { productId, quantity: 1 });
+  return createOrderFor(memberToken);
+}
+
+async function createOrderFor(token: string) {
+  const created = await request("/api/orders", "POST", token, { productId, quantity: 1 });
   assert.equal(created.response.status, 201);
   return created.json.order;
 }
@@ -119,6 +124,12 @@ test("creates a server-priced sandbox URL and keeps status scoped to the member"
   assert.equal(url.searchParams.get("vnp_TxnRef"), created.json.txnRef);
   assert.equal(url.searchParams.has("vnp_IpnUrl"), false);
   assert.equal(url.searchParams.get("vnp_SecureHash"), signVnpay(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "vnp_SecureHash")), process.env.VNPAY_HASH_SECRET!));
+  env.paymentMode = "mock";
+  const mockRace = await request(`/api/orders/${order.id}/pay`, "POST", memberToken);
+  assert.equal(mockRace.response.status, 409);
+  assert.equal(mockRace.json.error, "VNPAY_ATTEMPT_EXISTS");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
+  env.paymentMode = "vnpay";
   const repeated = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
   assert.equal(repeated.json.txnRef, created.json.txnRef);
   assert.equal((await request(`/api/orders/${order.id}/payment-status`, "GET", otherToken)).response.status, 404);
@@ -294,8 +305,8 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   });
   await prisma.loyaltyWallet.upsert({
     where: { membershipId: membership.id },
-    create: { membershipId: membership.id, availablePoints: 2_147_483_632, lifetimeEarnedPoints: 2_147_483_632 },
-    update: { availablePoints: 2_147_483_632, lifetimeEarnedPoints: 2_147_483_632, reservedPoints: 0 },
+    create: { membershipId: membership.id, availablePoints: 2_147_483_617, lifetimeEarnedPoints: 2_147_483_617 },
+    update: { availablePoints: 2_147_483_617, lifetimeEarnedPoints: 2_147_483_617, reservedPoints: 0 },
   });
   const orders = await Promise.all([createOrder(), createOrder()]);
   const responses = await Promise.all(orders.map((order) => request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken)));
@@ -306,7 +317,7 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   assert.equal(responses[rejectedIndex]!.json.error, "LOYALTY_LIMIT_EXCEEDED");
   const acceptedOrderId = orders[acceptedIndex]!.id;
   assert.equal(await prisma.paymentAttempt.count({ where: { orderId: { in: orders.map((order) => order.id) } } }), 1);
-  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 12);
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 24);
 
   await prisma.loyaltyRule.update({ where: { merchantId }, data: { vndPerPoint: 1, isActive: false } });
   const ipn = signedIpn(accepted.json.txnRef, "12000000");
@@ -314,4 +325,102 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: acceptedOrderId } })).status, "PAID");
   assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: acceptedOrderId } })).delta, 12);
   assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 0);
+});
+
+test("payment settlement uses the member's current tier multiplier", async () => {
+  const user = await prisma.user.create({ data: { email: `m6-tier-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
+  fixtureUserIds.push(user.id);
+  const token = await signAccessToken(user.id);
+  const membership = await prisma.merchantMembership.create({ data: { memberId: user.id, merchantId } });
+  await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 990, lifetimeEarnedPoints: 990 } });
+  const tiers = [
+    { level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" },
+    { level: "SILVER" as const, minLifetimePoints: 1000, multiplier: "1.20" },
+    { level: "GOLD" as const, minLifetimePoints: 5000, multiplier: "1.50" },
+    { level: "PLATINUM" as const, minLifetimePoints: 10000, multiplier: "2.00" },
+  ];
+  for (const tier of tiers) {
+    await prisma.loyaltyTier.upsert({
+      where: { merchantId_level: { merchantId, level: tier.level } },
+      create: { merchantId, ...tier },
+      update: { minLifetimePoints: tier.minLifetimePoints, multiplier: tier.multiplier },
+    });
+  }
+  const bronze = await prisma.loyaltyTier.findUniqueOrThrow({ where: { merchantId_level: { merchantId, level: "BRONZE" } } });
+  await prisma.merchantMembership.update({ where: { id: membership.id }, data: { tierId: bronze.id } });
+  await prisma.loyaltyRule.upsert({ where: { merchantId }, create: { merchantId, vndPerPoint: 10000, isActive: true }, update: { vndPerPoint: 10000, isActive: true } });
+
+  const firstOrder = await createOrderFor(token);
+  const secondOrder = await createOrderFor(token);
+  const firstPayment = await request(`/api/orders/${firstOrder.id}/payments/vnpay`, "POST", token);
+  const secondPayment = await request(`/api/orders/${secondOrder.id}/payments/vnpay`, "POST", token);
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).reservedPoints, 24);
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).reservedPoints, 24);
+  assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(firstPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
+  assert.equal((await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } })).tier?.level, "SILVER");
+  assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(secondPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).delta, 12);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).delta, 14);
+});
+
+test("legacy CREATED attempts receive a safe wallet reservation during SQL backfill", async () => {
+  const user = await prisma.user.create({ data: { email: `m6-legacy-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
+  fixtureUserIds.push(user.id);
+  await prisma.loyaltyRule.upsert({ where: { merchantId }, create: { merchantId, vndPerPoint: 10000, isActive: true }, update: { vndPerPoint: 10000, isActive: true } });
+  const tiers = [
+    { level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" },
+    { level: "SILVER" as const, minLifetimePoints: 1000, multiplier: "1.20" },
+    { level: "GOLD" as const, minLifetimePoints: 5000, multiplier: "1.50" },
+    { level: "PLATINUM" as const, minLifetimePoints: 10000, multiplier: "2.00" },
+  ];
+  for (const tier of tiers) {
+    await prisma.loyaltyTier.upsert({ where: { merchantId_level: { merchantId, level: tier.level } }, create: { merchantId, ...tier }, update: { minLifetimePoints: tier.minLifetimePoints, multiplier: tier.multiplier } });
+  }
+  const order = await prisma.order.create({ data: {
+    memberId: user.id, merchantId, status: "PENDING", subtotal: "120000", discountAmount: "0", total: "120000",
+    items: { create: { productId, productName: "Legacy order", unitPrice: "120000", quantity: 1, lineTotal: "120000" } },
+  } });
+  const legacyAttempt = await prisma.paymentAttempt.create({ data: { orderId: order.id, txnRef: `legacy-${suffix}`, expectedAmount: "12000000" } });
+  assert.equal(legacyAttempt.reservedPoints, 0);
+  await prisma.paymentAttempt.updateMany({ where: { status: "CREATED", id: { not: legacyAttempt.id } }, data: { status: "FAILED" } });
+  const migration = readFileSync(new URL("../prisma/migrations/20261109200000_vnpay_reservation_backfill/migration.sql", import.meta.url), "utf8");
+  const body = migration.split("-- BEGIN LEGACY RESERVATION BACKFILL")[1]?.split("-- END LEGACY RESERVATION BACKFILL")[0];
+  assert.ok(body);
+  await prisma.$transaction(async (tx) => {
+    for (const statement of body.split(";").map((sql) => sql.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+      await tx.$executeRawUnsafe(statement);
+    }
+  });
+  const backfilled = await prisma.paymentAttempt.findUniqueOrThrow({ where: { id: legacyAttempt.id } });
+  assert.equal(backfilled.snapshotVndPerPoint, 10000);
+  assert.equal(backfilled.snapshotRuleActive, true);
+  assert.equal(backfilled.reservedPoints, 24);
+  const wallet = await prisma.loyaltyWallet.findFirstOrThrow({ where: { membership: { memberId: user.id, merchantId } } });
+  assert.equal(wallet.reservedPoints, 24);
+});
+
+test("mock finalization and VNPay attempt creation cannot both win concurrently", async () => {
+  const [{ paymentsRepository }, { ordersRepository }] = await Promise.all([
+    import("../src/modules/payments/payments.repository.js"),
+    import("../src/modules/orders/orders.repository.js"),
+  ]);
+  const user = await prisma.user.create({ data: { email: `m6-race-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
+  fixtureUserIds.push(user.id);
+  const token = await signAccessToken(user.id);
+  const order = await createOrderFor(token);
+  const [attemptResult, mockResult] = await Promise.all([
+    paymentsRepository.createAttempt(user.id, order.id),
+    ordersRepository.markPaid(user.id, order.id),
+  ]);
+  const attempt = await prisma.paymentAttempt.findUnique({ where: { orderId: order.id } });
+  const finalOrder = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+  if (attempt) {
+    assert.equal(attempt.status, "CREATED");
+    assert.equal(finalOrder.status, "PENDING");
+    assert.equal(mockResult, "vnpay_attempt_exists");
+  } else {
+    assert.equal(attemptResult, "already_paid");
+    assert.equal(finalOrder.status, "PAID");
+    assert.equal(mockResult !== "vnpay_attempt_exists", true);
+  }
 });

@@ -113,10 +113,14 @@ export const ordersRepository = {
     return toOrderDto(order);
   },
 
-  async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid"> {
-    return withTransactionRetry(() => prisma.$transaction(
-      (tx) => loyaltyRepository.completePaidOrder(tx, orderId, memberId),
-      { isolationLevel: "Serializable" },
-    ));
+  async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid" | "vnpay_attempt_exists"> {
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const order = await tx.order.findFirst({ where: { id: orderId, memberId }, select: { id: true, status: true } });
+      if (!order) return "missing";
+      if (order.status !== "PENDING") return "already_paid";
+      const attempt = await tx.paymentAttempt.findUnique({ where: { orderId }, select: { id: true } });
+      if (attempt) return "vnpay_attempt_exists";
+      return loyaltyRepository.completePaidOrder(tx, orderId, memberId);
+    }, { isolationLevel: "Serializable" }));
   },
 };

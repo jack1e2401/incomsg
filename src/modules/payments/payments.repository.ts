@@ -15,15 +15,24 @@ export const paymentsRepository = {
         const order = await tx.order.findFirst({ where: { id: orderId, memberId } });
         if (!order) return null;
         if (order.status !== "PENDING") return "already_paid" as const;
+        const orderFence = await tx.order.updateMany({ where: { id: orderId, memberId, status: "PENDING" }, data: { status: "PENDING" } });
+        if (orderFence.count !== 1) return "already_paid" as const;
         if (order.total.isZero()) {
           const paid = await loyaltyRepository.completePaidOrder(tx, orderId, memberId);
           return paid === "missing" || paid === "already_paid" ? paid : { zeroTotal: true, order: paid } as const;
         }
         const amount = BigInt(order.total.toFixed(0)) * 100n;
         if (amount > maxVnpayAmount) return "amount_limit" as const;
-        const reservedPoints = await loyaltyRepository.reserveOrderPoints(tx, order);
+        const reservation = await loyaltyRepository.reserveOrderPoints(tx, order);
         return tx.paymentAttempt.create({
-          data: { orderId, txnRef: randomUUID().replaceAll("-", ""), expectedAmount: new Prisma.Decimal(amount.toString()), reservedPoints },
+          data: {
+            orderId,
+            txnRef: randomUUID().replaceAll("-", ""),
+            expectedAmount: new Prisma.Decimal(amount.toString()),
+            reservedPoints: reservation.reservedPoints,
+            snapshotVndPerPoint: reservation.snapshotVndPerPoint,
+            snapshotRuleActive: reservation.snapshotRuleActive,
+          },
           include: { order: true },
         });
       }, { isolationLevel: "Serializable" }));
@@ -93,7 +102,10 @@ export const paymentsRepository = {
         if (input.responseCode !== "00" || input.transactionStatus !== "00") {
           return { code: "00", message: "Confirm Success" };
         }
-        const paid = await loyaltyRepository.completePaidOrder(tx, attempt.orderId, attempt.order.memberId, attempt.reservedPoints);
+        const paid = await loyaltyRepository.completePaidOrder(tx, attempt.orderId, attempt.order.memberId, {
+          vndPerPoint: attempt.snapshotVndPerPoint,
+          ruleActive: attempt.snapshotRuleActive,
+        });
         if (paid === "missing") return { code: "01", message: "Order not found" };
         if (paid === "already_paid") return { code: "02", message: "Order already confirmed" };
         return { code: "00", message: "Confirm Success" };
