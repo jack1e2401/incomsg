@@ -8,7 +8,7 @@ const [{ app }, { prisma }, { signAccessToken }] = await Promise.all([
   import("../src/app.js"), import("../src/lib/prisma.js"), import("../src/lib/access-token.js"),
 ]);
 const suffix = randomUUID();
-const emails = ["admin", "merchant", "member", "applicant"].map((role) => `admin-read-${role}-${suffix}@test.local`);
+const emails = ["admin", "merchant", "member", "applicant", "dashboard-owner"].map((role) => `admin-read-${role}-${suffix}@test.local`);
 let server: Server | undefined;
 let baseUrl: string;
 let adminToken: string;
@@ -16,7 +16,6 @@ let merchantToken: string;
 let memberToken: string;
 let merchantId: number;
 let inactiveMerchantId: number;
-let ownerId: number;
 let memberId: number;
 
 before(async () => {
@@ -32,7 +31,6 @@ before(async () => {
   ]);
   merchantId = active.id;
   inactiveMerchantId = inactive.id;
-  ownerId = owner.id;
   memberId = member.id;
   await prisma.merchantApplication.create({ data: { applicantId: applicant.id, storeName: "Pending admin read" } });
   const product = await prisma.product.create({ data: { merchantId, name: "Admin stats product", price: "250000" } });
@@ -105,8 +103,11 @@ test("admin dashboard reports exact deltas and excludes pending orders", async (
   const before = await request("/api/admin/dashboard", adminToken);
   assert.equal(before.response.status, 200);
 
+  const dashboardOwner = await prisma.user.create({
+    data: { email: emails[4], passwordHash: "fixture", role: "MERCHANT" },
+  });
   const merchant = await prisma.merchant.create({
-    data: { ownerId, name: "Dashboard delta fixture", slug: `dashboard-delta-${suffix}` },
+    data: { ownerId: dashboardOwner.id, name: "Dashboard delta fixture", slug: `dashboard-delta-${suffix}` },
   });
   const product = await prisma.product.create({ data: { merchantId: merchant.id, name: "Delta product", price: "250000" } });
   const paidTotal = 200000;
