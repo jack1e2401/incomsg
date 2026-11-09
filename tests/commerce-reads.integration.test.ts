@@ -138,6 +138,10 @@ test("public merchant directory lists active stores only", async () => {
 test("member order list is scoped to member and merchant; foreign detail is hidden", async () => {
   const own = await request(`/api/member/orders?merchantId=${merchantAId}`, memberAToken);
   assert.equal(own.response.status, 200);
+  assert.deepEqual(
+    own.json.orders.map((order: { id: number }) => order.id).sort((a: number, b: number) => a - b),
+    [orderAId, pendingOrderId].sort((a, b) => a - b),
+  );
   const paidOrder = own.json.orders.find((order: { id: number }) => order.id === orderAId);
   const pendingOrder = own.json.orders.find((order: { id: number }) => order.id === pendingOrderId);
   assert.equal(paidOrder.earnedPoints, 2);
@@ -168,8 +172,13 @@ test("member order list validates authentication, role and merchant query IDs", 
 test("merchant order list returns only its own store orders and earned points", async () => {
   const own = await request("/api/merchant/orders", merchantAToken);
   assert.equal(own.response.status, 200);
-  assert.deepEqual(own.json.orders.map((order: { id: number }) => order.id), [orderAId]);
-  assert.equal(own.json.orders[0].earnedPoints, 2);
+  assert.deepEqual(
+    own.json.orders.map((order: { id: number }) => order.id).sort((a: number, b: number) => a - b),
+    [orderAId, pendingOrderId].sort((a, b) => a - b),
+  );
+  assert.equal(own.json.orders.find((order: { id: number }) => order.id === orderAId).earnedPoints, 2);
+  assert.equal(own.json.orders.find((order: { id: number }) => order.id === pendingOrderId).earnedPoints, null);
   const otherStore = await request("/api/merchant/orders", merchantBToken);
   assert.deepEqual(otherStore.json.orders.map((order: { id: number }) => order.id), [orderBId]);
+  assert.ok(!otherStore.json.orders.some((order: { id: number }) => order.id === orderAId));
 });
