@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import { merchantService } from "../merchant/merchant.service.js";
 import { productsService } from "./products.service.js";
 import { readProductInput, readProductPatch, readRouteId } from "./products.validation.js";
 
@@ -24,4 +25,9 @@ export const listPublicProducts: RequestHandler = async (request, response) => {
   const merchantId = readRouteId(request.params.merchantId!);
   const products = await productsService.listPublicProducts(merchantId);
   response.json({ products });
+};
+
+export const listPublicMerchants: RequestHandler = async (_request, response) => {
+  const merchants = await merchantService.listActiveStores();
+  response.json({ merchants });
 };

@@ -7,6 +7,11 @@ import { calculateDiscountedTotal } from "./order-pricing.js";
 import { HttpError } from "../../lib/http-error.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
+type OrderReadRecord = Prisma.OrderGetPayload<{ include: { items: true; pointTransaction: { select: { delta: true } } } }>;
+
+function toOrderReadDto(order: OrderReadRecord) {
+  return { ...toOrderDto(order), earnedPoints: order.status === "PAID" ? (order.pointTransaction?.delta ?? 0) : null };
+}
 
 function toOrderDto(order: OrderWithItems): OrderDto {
   return {
@@ -29,6 +34,32 @@ function toOrderDto(order: OrderWithItems): OrderDto {
 }
 
 export const ordersRepository = {
+  async listMemberOrders(memberId: number, merchantId: number) {
+    const orders = await prisma.order.findMany({
+      where: { memberId, merchantId },
+      include: { items: true, pointTransaction: { select: { delta: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    return orders.map(toOrderReadDto);
+  },
+
+  async findMemberOrder(memberId: number, orderId: number) {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, memberId },
+      include: { items: true, pointTransaction: { select: { delta: true } } },
+    });
+    return order ? toOrderReadDto(order) : null;
+  },
+
+  async listMerchantOrders(merchantId: number) {
+    const orders = await prisma.order.findMany({
+      where: { merchantId },
+      include: { items: true, pointTransaction: { select: { delta: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    return orders.map(toOrderReadDto);
+  },
+
   async createPendingOrder(input: CreatePendingOrderInput): Promise<OrderDto> {
     let order: OrderWithItems;
     try {

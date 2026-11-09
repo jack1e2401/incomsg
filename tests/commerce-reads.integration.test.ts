@@ -1,0 +1,132 @@
+import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
+import { after, before, test } from "node:test";
+import type { Server } from "node:http";
+
+process.env.JWT_SECRET ??= randomBytes(32).toString("hex");
+const [{ app }, { prisma }, { signAccessToken }] = await Promise.all([
+  import("../src/app.js"),
+  import("../src/lib/prisma.js"),
+  import("../src/lib/access-token.js"),
+]);
+const suffix = randomUUID();
+const emails = ["merchant-a", "merchant-b", "merchant-inactive", "member-a", "member-b"].map((role) => `reads-${role}-${suffix}@test.local`);
+let server: Server | undefined;
+let baseUrl: string;
+let merchantAId: number;
+let merchantBId: number;
+let inactiveMerchantId: number;
+let orderAId: number;
+let orderBId: number;
+let memberAToken: string;
+let memberBToken: string;
+let merchantAToken: string;
+let merchantBToken: string;
+let fixtureReady = false;
+
+before(async () => {
+  const [ownerA, ownerB, inactiveOwner, memberA, memberB] = await Promise.all([
+    prisma.user.create({ data: { email: emails[0], passwordHash: "fixture", role: "MERCHANT" } }),
+    prisma.user.create({ data: { email: emails[1], passwordHash: "fixture", role: "MERCHANT" } }),
+    prisma.user.create({ data: { email: emails[2], passwordHash: "fixture", role: "MERCHANT" } }),
+    prisma.user.create({ data: { email: emails[3], passwordHash: "fixture", role: "MEMBER" } }),
+    prisma.user.create({ data: { email: emails[4], passwordHash: "fixture", role: "MEMBER" } }),
+  ]);
+  const [merchantA, merchantB, inactiveMerchant] = await Promise.all([
+    prisma.merchant.create({ data: { ownerId: ownerA.id, name: "Reads A", slug: `reads-a-${suffix}` } }),
+    prisma.merchant.create({ data: { ownerId: ownerB.id, name: "Reads B", slug: `reads-b-${suffix}` } }),
+    prisma.merchant.create({ data: { ownerId: inactiveOwner.id, name: "Reads inactive", slug: `reads-inactive-${suffix}`, isActive: false } }),
+  ]);
+  merchantAId = merchantA.id;
+  merchantBId = merchantB.id;
+  inactiveMerchantId = inactiveMerchant.id;
+  const [productA, productB] = await Promise.all([
+    prisma.product.create({ data: { merchantId: merchantAId, name: "Reads product A", price: "20000" } }),
+    prisma.product.create({ data: { merchantId: merchantBId, name: "Reads product B", price: "30000" } }),
+  ]);
+  const [orderA, orderB] = await Promise.all([
+    prisma.order.create({
+      data: {
+        merchantId: merchantAId, memberId: memberA.id, status: "PAID", subtotal: 20000,
+        discountAmount: 0, total: 20000, paidAt: new Date(),
+        items: { create: { productId: productA.id, productName: productA.name, unitPrice: 20000, quantity: 1, lineTotal: 20000 } },
+      },
+    }),
+    prisma.order.create({
+      data: {
+        merchantId: merchantBId, memberId: memberA.id, status: "PAID", subtotal: 30000,
+        discountAmount: 0, total: 30000, paidAt: new Date(),
+        items: { create: { productId: productB.id, productName: productB.name, unitPrice: 30000, quantity: 1, lineTotal: 30000 } },
+      },
+    }),
+  ]);
+  orderAId = orderA.id;
+  orderBId = orderB.id;
+  const membership = await prisma.merchantMembership.create({ data: { memberId: memberA.id, merchantId: merchantAId } });
+  const wallet = await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 2, lifetimeEarnedPoints: 2 } });
+  await prisma.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN", delta: 2, balanceAfter: 2, reason: "test read", orderId: orderAId } });
+  fixtureReady = true;
+  [merchantAToken, merchantBToken, memberAToken, memberBToken] = await Promise.all([
+    signAccessToken(ownerA.id), signAccessToken(ownerB.id), signAccessToken(memberA.id), signAccessToken(memberB.id),
+  ]);
+  server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server!.once("listening", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  baseUrl = `http://127.0.0.1:${address.port}`;
+});
+
+after(async () => {
+  if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+  if (!fixtureReady) return;
+  const users = await prisma.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
+  const userIds = users.map((user) => user.id);
+  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
+  const merchantIds = merchants.map((merchant) => merchant.id);
+  const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
+  const membershipIds = memberships.map((membership) => membership.id);
+  const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
+  await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((wallet) => wallet.id) } } });
+  await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: userIds } } } });
+  await prisma.order.deleteMany({ where: { memberId: { in: userIds } } });
+  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
+  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
+  await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.$disconnect();
+});
+
+async function request(path: string, token?: string) {
+  const response = await fetch(`${baseUrl}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  return { response, json: await response.json() as Record<string, any> };
+}
+
+test("public merchant directory lists active stores only", async () => {
+  const { response, json } = await request("/api/merchants");
+  assert.equal(response.status, 200);
+  const merchantIds = json.merchants.map((merchant: { id: number }) => merchant.id);
+  assert.ok(merchantIds.includes(merchantAId));
+  assert.ok(merchantIds.includes(merchantBId));
+  assert.ok(!merchantIds.includes(inactiveMerchantId));
+  assert.deepEqual(Object.keys(json.merchants[0]).sort(), ["id", "name", "slug"]);
+});
+
+test("member order list is scoped to member and merchant; foreign detail is hidden", async () => {
+  const own = await request(`/api/member/orders?merchantId=${merchantAId}`, memberAToken);
+  assert.equal(own.response.status, 200);
+  assert.deepEqual(own.json.orders.map((order: { id: number }) => order.id), [orderAId]);
+  assert.equal(own.json.orders[0].earnedPoints, 2);
+  const foreign = await request(`/api/member/orders/${orderAId}`, memberBToken);
+  assert.equal(foreign.response.status, 404);
+  assert.equal(foreign.json.error, "ORDER_NOT_FOUND");
+});
+
+test("merchant order list returns only its own store orders and earned points", async () => {
+  const own = await request("/api/merchant/orders", merchantAToken);
+  assert.equal(own.response.status, 200);
+  assert.deepEqual(own.json.orders.map((order: { id: number }) => order.id), [orderAId]);
+  assert.equal(own.json.orders[0].earnedPoints, 2);
+  const otherStore = await request("/api/merchant/orders", merchantBToken);
+  assert.deepEqual(otherStore.json.orders.map((order: { id: number }) => order.id), [orderBId]);
+});
