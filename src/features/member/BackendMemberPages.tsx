@@ -379,7 +379,7 @@ export function MemberCheckout() {
                 {reservedDiscounts.length > 0 && (
                   <p className="mt-3 rounded-lg bg-[#fff1d6] p-3 text-xs leading-5 text-[#97682a]">
                     {reservedDiscounts.map((voucher) => `“${voucher.title}”`).join(", ")} đang được giữ bởi
-                    đơn chờ thanh toán. Voucher chỉ dùng lại được nếu đơn đó được hủy hoặc hết hạn.
+                    đơn chờ thanh toán nên không thể dùng cho đơn hàng này hoặc ở cửa hàng khác.
                   </p>
                 )}
               </Field>
@@ -432,12 +432,8 @@ export function MemberOrderResult() {
     key: pollKey,
     count: 0,
     failed: false,
-    active: Boolean(location.search),
   }));
-  const currentPollState =
-    pollState.key === pollKey
-      ? pollState
-      : { key: pollKey, count: 0, failed: false, active: Boolean(location.search) };
+  const currentPollState = pollState.key === pollKey ? pollState : { key: pollKey, count: 0, failed: false };
   const pollCount = currentPollState.count;
   const paymentFailed = currentPollState.failed;
 
@@ -445,38 +441,32 @@ export function MemberOrderResult() {
     async (reset = false) => {
       if (!accessToken) return;
       const previous =
-        reset || pollState.key !== pollKey ? { count: 0, failed: false, active: true } : pollState;
+        reset || pollState.key !== pollKey ? { key: pollKey, count: 0, failed: false } : pollState;
       try {
         const status = await commerce.getPaymentStatus(orderId, accessToken);
         if (pollKeyRef.current !== pollKey) return;
         if (status.orderStatus === "PAID") {
-          setPollState({ key: pollKey, count: previous.count, failed: false, active: false });
+          setPollState({ key: pollKey, count: previous.count, failed: false });
           orderResource.reload();
         } else if (status.paymentStatus === "FAILED") {
-          setPollState({ key: pollKey, count: previous.count + 1, failed: true, active: false });
+          setPollState({ key: pollKey, count: previous.count + 1, failed: true });
         } else {
-          setPollState({ key: pollKey, count: previous.count + 1, failed: false, active: true });
+          setPollState({ key: pollKey, count: previous.count + 1, failed: false });
         }
       } catch {
         if (pollKeyRef.current === pollKey)
-          setPollState({ key: pollKey, count: previous.count + 1, failed: false, active: true });
+          setPollState({ key: pollKey, count: previous.count + 1, failed: false });
       }
     },
     [accessToken, orderId, orderResource.reload, pollKey, pollState],
   );
 
   useEffect(() => {
-    if (
-      !order ||
-      order.status !== "PENDING" ||
-      paymentMode !== "vnpay" ||
-      !currentPollState.active ||
-      pollCount >= 30
-    )
+    if (!order || order.status !== "PENDING" || paymentMode !== "vnpay" || paymentFailed || pollCount >= 30)
       return;
     const timer = window.setTimeout(() => void pollPaymentStatus(), 2000);
     return () => window.clearTimeout(timer);
-  }, [currentPollState.active, order, paymentMode, pollCount, pollPaymentStatus]);
+  }, [order, paymentFailed, paymentMode, pollCount, pollPaymentStatus]);
 
   async function pay() {
     if (!order || !accessToken || busy || order.status !== "PENDING") return;
@@ -487,7 +477,7 @@ export function MemberOrderResult() {
         const response = await commerce.payMockOrder(order.id, accessToken);
         orderResource.setData(response.order);
       } else {
-        setPollState({ key: pollKey, count: 0, failed: false, active: false });
+        setPollState({ key: pollKey, count: 0, failed: false });
         const response = await commerce.createVnpayPayment(order.id, accessToken);
         if ("paymentUrl" in response) {
           window.location.assign(response.paymentUrl);
@@ -503,13 +493,8 @@ export function MemberOrderResult() {
   }
 
   function checkAgain() {
-    setPollState({ key: pollKey, count: 0, failed: false, active: true });
+    setPollState({ key: pollKey, count: 0, failed: false });
     void pollPaymentStatus(true);
-  }
-
-  async function retryVnpay() {
-    setPollState({ key: pollKey, count: 0, failed: false, active: false });
-    await pay();
   }
 
   if (orderResource.loading) return <LoadingState cards={1} />;
@@ -564,7 +549,7 @@ export function MemberOrderResult() {
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a]">
               {paymentFailed
-                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng; bạn có thể thử thanh toán lại."
+                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng. Hãy tạo một đơn hàng mới để thanh toán lại."
                 : "Đơn đang chờ thanh toán. Chưa có điểm thưởng. Trạng thái chỉ đổi sau khi máy chủ xác nhận."}
             </p>
             {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
@@ -585,8 +570,8 @@ export function MemberOrderResult() {
               </Button>
             )}
             {paymentFailed && (
-              <Button className="mt-4" disabled={busy} onClick={() => void retryVnpay()}>
-                Thử thanh toán VNPay lại
+              <Button asChild className="mt-4">
+                <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
               </Button>
             )}
             {paymentMode === "vnpay" && (
@@ -939,6 +924,8 @@ function transactionTypeLabel(type: PointTransactionType) {
 }
 
 function voucherStatusLabel(voucher: MemberVoucherDto) {
+  if (voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && voucher.reserved)
+    return "Đang giữ cho đơn chờ";
   if (voucher.type === "REWARD" && voucher.status === "AVAILABLE") return "Chờ cửa hàng trao";
   if (voucher.status === "AVAILABLE") return "Còn hiệu lực";
   return voucher.status === "USED" ? "Đã sử dụng" : "Đã trao";

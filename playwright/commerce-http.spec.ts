@@ -54,7 +54,6 @@ test("Member discovers a real merchant and catalog from HTTP", async ({ page }) 
       }),
     }),
   );
-
   await page.goto("/member");
   await page.getByRole("combobox", { name: "Cửa hàng" }).selectOption("7");
   await page.getByRole("button", { name: /Mở/ }).click();
@@ -160,6 +159,9 @@ test("a discount voucher reserved by a pending order is not selectable at checko
       }),
     }),
   );
+  await page.route("**/api/merchants/7/vouchers", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ definitions: [] }) }),
+  );
   await page.route("**/api/member/merchants/7/vouchers", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -184,6 +186,22 @@ test("a discount voucher reserved by a pending order is not selectable at checko
       }),
     }),
   );
+  await page.route("**/api/member/merchants/7/wallet", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        wallet: {
+          merchantId: 7,
+          availablePoints: 0,
+          lifetimeEarnedPoints: 0,
+          tier: "UNRANKED",
+          transactions: [],
+        },
+      }),
+    }),
+  );
+  await page.goto("/member/7/vouchers");
+  await expect(page.getByText("Đang giữ cho đơn chờ")).toBeVisible();
   await page.goto("/member/7");
   await page.getByRole("button", { name: "Chọn mua" }).click();
   await page.getByRole("link", { name: "Tiếp tục" }).click();

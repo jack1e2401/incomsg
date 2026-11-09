@@ -42,7 +42,7 @@ async function setup(
   });
 }
 
-test("VNPay CREATED polling eventually refetches and displays backend PAID", async ({ page }) => {
+test("queryless VNPay return polls CREATED until backend confirms PAID", async ({ page }) => {
   await page.clock.install();
   let polls = 0;
   await setup(
@@ -53,24 +53,26 @@ test("VNPay CREATED polling eventually refetches and displays backend PAID", asy
     }),
     () => polls++,
   );
-  await page.goto("/member/7/orders/41?vnp_ResponseCode=00");
+  await page.goto("/member/7/orders/41");
   await expect(page.getByText("Chờ thanh toán")).toBeVisible();
   await page.clock.runFor(6_100);
   await expect(page.getByText("Đã thanh toán")).toBeVisible();
   expect(polls).toBe(3);
 });
 
-test("VNPay FAILED is shown and allows starting a retry", async ({ page }) => {
+test("VNPay FAILED directs the member to create a new order without retrying the failed order", async ({
+  page,
+}) => {
   await page.clock.install();
   let polls = 0;
-  let attempts = 0;
+  let paymentAttempts = 0;
   await setup(
     page,
     () => ({ orderStatus: "PENDING", paymentStatus: "FAILED" }),
     () => polls++,
   );
   await page.route("**/api/orders/41/payments/vnpay", async (route) => {
-    attempts++;
+    paymentAttempts++;
     await route.fulfill({
       status: 201,
       contentType: "application/json",
@@ -84,8 +86,9 @@ test("VNPay FAILED is shown and allows starting a retry", async ({ page }) => {
   await page.goto("/member/7/orders/41?vnp_ResponseCode=24");
   await page.clock.runFor(2_100);
   await expect(page.getByText(/Giao dịch VNPay không thành công/)).toBeVisible();
-  await page.getByRole("button", { name: "Thử thanh toán VNPay lại" }).click();
-  await expect.poll(() => attempts).toBe(1);
+  await expect(page.getByRole("link", { name: "Tạo đơn mới" })).toHaveAttribute("href", "/member/7");
+  await expect(page.getByRole("button", { name: /Thanh toán qua VNPay/ })).toHaveCount(0);
+  expect(paymentAttempts).toBe(0);
   expect(polls).toBe(1);
 });
 
