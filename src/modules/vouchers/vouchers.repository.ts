@@ -74,4 +74,27 @@ export const vouchersRepository = {
       return { voucher: toMemberVoucherDto(fullVoucher), wallet: { availablePoints: updatedWallet.availablePoints, lifetimeEarnedPoints: updatedWallet.lifetimeEarnedPoints } };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
+  async listRewardFulfillments(merchantId: number): Promise<MemberVoucherDto[]> {
+    const records = await prisma.memberVoucher.findMany({
+      where: { membership: { merchantId }, definition: { type: "REWARD" }, status: "AVAILABLE" },
+      include: { membership: true, definition: true },
+      orderBy: [{ redeemedAt: "asc" }, { id: "asc" }],
+    });
+    return records.map(toMemberVoucherDto);
+  },
+  async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<MemberVoucherDto | "missing" | "already_fulfilled"> {
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const voucher = await tx.memberVoucher.findFirst({
+        where: { id: memberVoucherId, membership: { merchantId }, definition: { type: "REWARD" } },
+        include: { membership: true, definition: true },
+      });
+      if (!voucher) return "missing";
+      if (voucher.status !== "AVAILABLE") return "already_fulfilled";
+      const changed = await tx.memberVoucher.updateMany({ where: { id: voucher.id, status: "AVAILABLE" }, data: { status: "FULFILLED" } });
+      if (changed.count !== 1) return "already_fulfilled";
+      await tx.rewardFulfillment.create({ data: { voucherId: voucher.id, fulfilledById: ownerId, note: note ?? null } });
+      const updated = await tx.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id }, include: { membership: true, definition: true } });
+      return toMemberVoucherDto(updated);
+    }, { isolationLevel: "Serializable" }));
+  },
 };

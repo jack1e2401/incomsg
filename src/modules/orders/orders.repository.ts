@@ -3,6 +3,8 @@ import { prisma } from "../../lib/prisma.js";
 import type { CreatePendingOrderInput, OrderDto } from "./orders.types.js";
 import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
+import { calculateDiscountedTotal } from "./order-pricing.js";
+import { HttpError } from "../../lib/http-error.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -28,15 +30,35 @@ function toOrderDto(order: OrderWithItems): OrderDto {
 
 export const ordersRepository = {
   async createPendingOrder(input: CreatePendingOrderInput): Promise<OrderDto> {
-    const order = await prisma.order.create({
+    let order: OrderWithItems;
+    try {
+      order = await withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      let requestedDiscount = new Prisma.Decimal(0);
+      if (input.voucherId !== null) {
+        const existingOrder = await tx.order.findFirst({ where: { voucherId: input.voucherId }, select: { id: true } });
+        if (existingOrder) throw new HttpError(409, "VOUCHER_ALREADY_RESERVED");
+        const voucher = await tx.memberVoucher.findFirst({
+          where: {
+            id: input.voucherId,
+            status: "AVAILABLE",
+            membership: { memberId: input.memberId, merchantId: input.merchantId },
+            definition: { type: "DISCOUNT", isActive: true },
+          },
+          include: { definition: true },
+        });
+        if (!voucher) throw new HttpError(404, "VOUCHER_NOT_FOUND");
+        requestedDiscount = voucher.definition.discountAmount ?? new Prisma.Decimal(0);
+      }
+      const { discountAmount, total } = calculateDiscountedTotal(input.total, requestedDiscount);
+      const order = await tx.order.create({
       data: {
         memberId: input.memberId,
         merchantId: input.merchantId,
         status: "PENDING",
         subtotal: input.total,
-        discountAmount: new Prisma.Decimal(0),
-        total: input.total,
-        voucherId: null,
+        discountAmount,
+        total,
+        voucherId: input.voucherId,
         paidAt: null,
         items: {
           create: {
@@ -49,7 +71,15 @@ export const ordersRepository = {
         },
       },
       include: { items: true },
-    });
+      });
+      return order;
+      }, { isolationLevel: "Serializable" }));
+    } catch (error) {
+      if (input.voucherId !== null && typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+        throw new HttpError(409, "VOUCHER_ALREADY_RESERVED");
+      }
+      throw error;
+    }
     return toOrderDto(order);
   },
 

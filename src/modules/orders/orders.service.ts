@@ -22,6 +22,7 @@ export const ordersService = {
       unitPrice: product.price,
       quantity: input.quantity,
       total,
+      voucherId: input.voucherId ?? null,
     });
   },
 

@@ -50,3 +50,12 @@ export function readDefinitionPatch(value: unknown): DefinitionPatch {
     ...(input.isActive !== undefined ? { isActive: input.isActive as boolean } : {}),
   };
 }
+
+export function readFulfillmentNote(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const input = record(value);
+  if (Object.keys(input).some((key) => key !== "note")) invalid();
+  if (input.note === undefined || input.note === null) return undefined;
+  if (typeof input.note !== "string" || input.note.length > 255) invalid();
+  return input.note.trim() || undefined;
+}

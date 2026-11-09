@@ -8,7 +8,7 @@ import { applicationRoutes } from "./modules/merchant-applications/application.r
 import { merchantRoutes } from "./modules/merchant/merchant.routes.js";
 import { merchantProductRoutes, publicProductRoutes } from "./modules/products/products.routes.js";
 import { orderRoutes } from "./modules/orders/orders.routes.js";
-import { merchantVoucherRoutes, publicVoucherRoutes, memberVoucherRoutes, memberRedemptionRoutes } from "./modules/vouchers/vouchers.routes.js";
+import { merchantVoucherRoutes, publicVoucherRoutes, memberVoucherRoutes, memberRedemptionRoutes, merchantRewardRoutes } from "./modules/vouchers/vouchers.routes.js";
 import { merchantLoyaltyRoutes, memberLoyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
 
 export const app = express();
@@ -24,6 +24,7 @@ app.use("/api/merchant/products", merchantProductRoutes);
 app.use("/api/merchants", publicProductRoutes);
 app.use("/api/merchants", publicVoucherRoutes);
 app.use("/api/merchant/vouchers", merchantVoucherRoutes);
+app.use("/api/merchant/rewards", merchantRewardRoutes);
 app.use("/api/member/merchants", memberVoucherRoutes);
 app.use("/api/member/vouchers", memberRedemptionRoutes);
 app.use("/api/orders", orderRoutes);

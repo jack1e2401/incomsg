@@ -66,8 +66,23 @@ export const loyaltyRepository = {
       return existing ? "already_paid" : "missing";
     }
 
-    const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, voucher: { include: { membership: true, definition: true } } },
+    });
     if (!order) return "missing";
+    if (order.voucherId !== null) {
+      const voucher = order.voucher;
+      if (!voucher || voucher.status !== "AVAILABLE" || voucher.definition.type !== "DISCOUNT" ||
+        voucher.membership.memberId !== memberId || voucher.membership.merchantId !== order.merchantId) {
+        throw new HttpError(409, "VOUCHER_NOT_AVAILABLE");
+      }
+      const used = await tx.memberVoucher.updateMany({
+        where: { id: voucher.id, status: "AVAILABLE" },
+        data: { status: "USED", usedAt: new Date() },
+      });
+      if (used.count !== 1) throw new HttpError(409, "VOUCHER_NOT_AVAILABLE");
+    }
     const [rule, configuredTiers] = await Promise.all([
       tx.loyaltyRule.findUnique({ where: { merchantId: order.merchantId } }),
       tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } }),

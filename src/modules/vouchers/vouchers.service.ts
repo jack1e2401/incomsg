@@ -50,4 +50,17 @@ export const vouchersService = {
   redeemVoucher(memberId: number, definitionId: number) {
     return vouchersRepository.redeemVoucher(memberId, definitionId);
   },
+  async listRewardFulfillments(ownerId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return vouchersRepository.listRewardFulfillments(merchant.id);
+  },
+  async fulfillReward(ownerId: number, memberVoucherId: number, note?: string) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    const result = await vouchersRepository.fulfillReward(merchant.id, ownerId, memberVoucherId, note);
+    if (result === "missing") throw new HttpError(404, "REWARD_NOT_FOUND");
+    if (result === "already_fulfilled") throw new HttpError(409, "REWARD_ALREADY_FULFILLED");
+    return result;
+  },
 };

@@ -14,6 +14,7 @@ let baseUrl: string;
 let merchantAId: number;
 let merchantBId: number;
 let productAId: number;
+let productBId: number;
 let merchantAToken: string;
 let merchantBToken: string;
 let memberToken: string;
@@ -37,6 +38,7 @@ before(async () => {
   merchantAId = a.id;
   merchantBId = b.id;
   productAId = (await prisma.product.create({ data: { merchantId: a.id, name: "M5 Product", price: "200000" } })).id;
+  productBId = (await prisma.product.create({ data: { merchantId: b.id, name: "M5 B Product", price: "100000" } })).id;
   merchantAToken = await signAccessToken(ownerA.id);
   merchantBToken = await signAccessToken(ownerB.id);
   memberToken = await signAccessToken(member.id);
@@ -65,7 +67,7 @@ after(async () => {
   const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureIds } }, select: { id: true } });
   const merchantIds = merchants.map((item) => item.id);
   await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
-  await prisma.product.deleteMany({ where: { id: productAId } });
+  await prisma.product.deleteMany({ where: { id: { in: [productAId, productBId] } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
@@ -123,5 +125,48 @@ test("redemption spends points once and keeps vouchers merchant scoped", async (
   assert.equal((ownVouchers.json.vouchers as any[]).length, 1);
   assert.deepEqual(foreignVouchers.json.vouchers, []);
   assert.notEqual(merchantAId, merchantBId);
+});
+
+test("discount is capped, reserved once, and used only after payment; rewards need merchant fulfillment", async () => {
+  const discountDefinition = await request("/api/merchant/vouchers", "POST", merchantAToken, { type: "DISCOUNT", title: "Giảm 250k", pointsCost: 1, discountAmount: "250000" });
+  const rewardDefinition = await request("/api/merchant/vouchers", "POST", merchantAToken, { type: "REWARD", title: "Quà", pointsCost: 1, rewardDescription: "Quà thử nghiệm" });
+  assert.equal(discountDefinition.response.status, 201);
+  assert.equal(rewardDefinition.response.status, 201);
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId, merchantId: merchantAId } }, include: { wallet: true } });
+  const wallet = await prisma.loyaltyWallet.update({ where: { id: membership.wallet!.id }, data: { availablePoints: 2 } });
+  const discountVoucher = await prisma.memberVoucher.create({ data: { membershipId: membership.id, definitionId: discountDefinition.json.definition.id } });
+  const rewardVoucher = await prisma.memberVoucher.create({ data: { membershipId: membership.id, definitionId: rewardDefinition.json.definition.id } });
+  void wallet;
+
+  const otherMember = await request("/api/orders", "POST", otherToken, { productId: productAId, quantity: 1, voucherId: discountVoucher.id });
+  assert.equal(otherMember.response.status, 404);
+  const crossMerchant = await request("/api/orders", "POST", memberToken, { productId: productBId, quantity: 1, voucherId: discountVoucher.id });
+  assert.equal(crossMerchant.response.status, 404);
+  const rewardAtCheckout = await request("/api/orders", "POST", memberToken, { productId: productAId, quantity: 1, voucherId: rewardVoucher.id });
+  assert.equal(rewardAtCheckout.response.status, 404);
+  const orderResponse = await request("/api/orders", "POST", memberToken, { productId: productAId, quantity: 1, voucherId: discountVoucher.id });
+  assert.equal(orderResponse.response.status, 201);
+  const order = orderResponse.json.order;
+  assert.equal(order.subtotal, "200000");
+  assert.equal(order.discountAmount, "200000");
+  assert.equal(order.total, "0");
+  const reservation = await request("/api/orders", "POST", memberToken, { productId: productAId, quantity: 1, voucherId: discountVoucher.id });
+  assert.equal(reservation.response.status, 409);
+  assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountVoucher.id } })).status, "AVAILABLE");
+  const paid = await request(`/api/orders/${order.id}/pay`, "POST", memberToken);
+  assert.equal(paid.response.status, 200);
+  assert.equal(paid.json.order.total, "0");
+  const usedVoucher = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountVoucher.id } });
+  assert.equal(usedVoucher.status, "USED");
+  assert.ok(usedVoucher.usedAt);
+  const fulfillmentList = await request("/api/merchant/rewards", "GET", merchantAToken);
+  assert.equal((fulfillmentList.json.rewards as any[]).some((voucher) => voucher.id === rewardVoucher.id), true);
+  const foreignFulfillment = await request(`/api/merchant/rewards/${rewardVoucher.id}/fulfill`, "POST", merchantBToken, {});
+  assert.equal(foreignFulfillment.response.status, 404);
+  const fulfilled = await request(`/api/merchant/rewards/${rewardVoucher.id}/fulfill`, "POST", merchantAToken, { note: "Đã trao" });
+  assert.equal(fulfilled.response.status, 200);
+  assert.equal(fulfilled.json.reward.status, "FULFILLED");
+  const repeated = await request(`/api/merchant/rewards/${rewardVoucher.id}/fulfill`, "POST", merchantAToken, {});
+  assert.equal(repeated.response.status, 409);
 });
 

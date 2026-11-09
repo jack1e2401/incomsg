@@ -4,6 +4,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 export type CreateOrderInput = {
   productId: number;
   quantity: number;
+  voucherId?: number;
 };
 
 export type CreatePendingOrderInput = {
@@ -14,6 +15,7 @@ export type CreatePendingOrderInput = {
   unitPrice: Prisma.Decimal;
   quantity: number;
   total: Prisma.Decimal;
+  voucherId: number | null;
 };
 
 export type OrderItemDto = {
