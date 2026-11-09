@@ -418,11 +418,14 @@ test("legacy CREATED attempts receive a safe wallet reservation during SQL backf
     for (const sql of tempTables) await tx.$executeRawUnsafe(sql);
     await tx.$executeRawUnsafe("INSERT INTO TestOrder VALUES (501, 701, 801, 120000)");
     await tx.$executeRawUnsafe("INSERT INTO TestPaymentAttempt (id, orderId, status) VALUES (601, 501, 'CREATED')");
+    await tx.$executeRawUnsafe("INSERT INTO TestMerchantMembership (id, merchantId, memberId, createdAt, updatedAt) VALUES (1, 701, 801, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
+    await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyWallet (id, membershipId, availablePoints, lifetimeEarnedPoints, reservedPoints, createdAt, updatedAt) VALUES (1, 1, 0, 0, 0, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyRule VALUES (701, 10000, true)");
     await tx.$executeRawUnsafe("INSERT INTO TestLoyaltyTier VALUES (701, 1.00), (701, 1.20), (701, 1.50), (701, 2.00)");
     for (const body of [firstBody, secondBody]) {
       const sql = tableNames.reduce((text, [from, to]) => text.replaceAll(from, to), body);
       for (const statement of sql.split(";").map((query) => query.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) {
+        if (/^INSERT IGNORE INTO `Test(?:MerchantMembership|LoyaltyWallet)`/i.test(statement)) continue;
         await tx.$executeRawUnsafe(statement);
       }
     }
