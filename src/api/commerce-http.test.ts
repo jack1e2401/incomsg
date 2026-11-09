@@ -108,4 +108,62 @@ describe("commerce HTTP contract", () => {
       rewardDescription: null,
     });
   });
+
+  it("connects voucher redemption and reward fulfillment with backend results", async () => {
+    const voucher = {
+      id: 33,
+      definitionId: 5,
+      merchantId: 22,
+      memberId: 9,
+      title: "Quà tặng",
+      type: "REWARD",
+      status: "AVAILABLE",
+      pointsCost: 100,
+      discountAmount: null,
+      rewardDescription: "Một phần quà",
+      redeemedAt: "2026-11-09T10:00:00.000Z",
+      usedAt: null,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            voucher,
+            wallet: { availablePoints: 20, lifetimeEarnedPoints: 120 },
+          },
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ rewards: [voucher] }))
+      .mockResolvedValueOnce(Response.json({ reward: { ...voucher, status: "FULFILLED" } }));
+    const client = createCommerceClient("", fetcher);
+
+    const redeemed = await client.redeemVoucher(5, "member-token");
+    const rewards = await client.listMerchantRewards("merchant-token");
+    const fulfilled = await client.fulfillReward(33, { note: "Trao tại quầy" }, "merchant-token");
+
+    expect(fetcher.mock.calls.map(([url, options]) => [url, options?.method])).toEqual([
+      ["/api/member/vouchers/5/redeem", "POST"],
+      ["/api/merchant/rewards", "GET"],
+      ["/api/merchant/rewards/33/fulfill", "POST"],
+    ]);
+    expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body))).toEqual({ note: "Trao tại quầy" });
+    expect(redeemed.wallet).toEqual({ availablePoints: 20, lifetimeEarnedPoints: 120 });
+    expect(rewards.rewards).toEqual([voucher]);
+    expect(fulfilled.reward.status).toBe("FULFILLED");
+  });
+
+  it("sends the selected owned discount voucher when creating an order", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ order: {} }, { status: 201 }));
+    const client = createCommerceClient("", fetcher);
+
+    await client.createOrder({ productId: 12, quantity: 2, voucherId: 33 }, "member-token");
+
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
+      productId: 12,
+      quantity: 2,
+      voucherId: 33,
+    });
+  });
 });

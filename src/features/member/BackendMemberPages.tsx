@@ -40,6 +40,7 @@ import {
   Input,
   LoadingState,
   PageHeader,
+  Select,
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
 
@@ -302,19 +303,32 @@ export function MemberCheckout() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [voucherId, setVoucherId] = useState("");
+  const vouchers = useResource(
+    () => commerce.listMemberVouchers(merchantId, accessToken!).then((response) => response.vouchers),
+    [merchantId, accessToken],
+  );
+  const availableDiscounts = (vouchers.data ?? []).filter(
+    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE",
+  );
   async function submit() {
     if (!cart || !accessToken || busy) return;
     setBusy(true);
     setError("");
     try {
       const { order } = await commerce.createOrder(
-        { productId: cart.product.id, quantity: cart.quantity },
+        {
+          productId: cart.product.id,
+          quantity: cart.quantity,
+          ...(voucherId ? { voucherId: Number(voucherId) } : {}),
+        },
         accessToken,
       );
       setCart(null);
       navigate(`/member/${merchantId}/orders/${order.id}`, { state: { order } });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo đơn");
+      if (reason instanceof Error && reason.message.includes("VOUCHER")) vouchers.reload();
     } finally {
       setBusy(false);
     }
@@ -338,16 +352,43 @@ export function MemberCheckout() {
             <h2 className="font-extrabold">{cart.product.name}</h2>
             <p className="mt-2 text-sm muted">Số lượng: {cart.quantity}</p>
             <p className="mt-2 text-sm muted">Cửa hàng #{merchantId}</p>
+            {vouchers.loading ? (
+              <p className="mt-4 text-sm muted">Đang tải voucher khả dụng…</p>
+            ) : vouchers.error ? (
+              <div className="mt-4 rounded-xl bg-[#fff1d6] p-4">
+                <p className="text-sm text-[#97682a]">Không tải được voucher: {vouchers.error}</p>
+                <Button className="mt-2" size="sm" variant="outline" onClick={vouchers.reload}>
+                  Thử lại
+                </Button>
+              </div>
+            ) : (
+              <Field label="Voucher giảm giá">
+                <Select value={voucherId} onChange={(event) => setVoucherId(event.target.value)}>
+                  <option value="">Không sử dụng voucher</option>
+                  {availableDiscounts.map((voucher) => (
+                    <option key={voucher.id} value={voucher.id}>
+                      {voucher.title} · giảm {voucher.discountAmount ? money(voucher.discountAmount) : "—"}
+                    </option>
+                  ))}
+                </Select>
+                {!availableDiscounts.length && (
+                  <span className="mt-2 block text-xs muted">Bạn chưa có voucher giảm giá khả dụng.</span>
+                )}
+              </Field>
+            )}
           </Card>
           <Card className="h-fit p-5">
             <p className="font-extrabold">Đơn chờ thanh toán</p>
-            <p className="mt-2 text-xs leading-5 muted">Thanh toán chưa khả dụng.</p>
             {error && (
               <p role="alert" className="mt-4 text-sm text-red-700">
                 {error}
               </p>
             )}
-            <Button className="mt-5 w-full" disabled={busy} onClick={submit}>
+            <Button
+              className="mt-5 w-full"
+              disabled={busy || vouchers.loading || Boolean(vouchers.error)}
+              onClick={submit}
+            >
               {busy ? (
                 <BusyLabel>Đang tạo đơn</BusyLabel>
               ) : (
@@ -392,7 +433,17 @@ export function MemberOrderResult() {
             </div>
           ))}
         </div>
-        <div className="mt-5 flex justify-between border-t border-[#e5ece3] pt-5 font-extrabold">
+        <div className="mt-5 space-y-2 border-t border-[#e5ece3] pt-5 text-sm">
+          <div className="flex justify-between gap-3">
+            <span className="muted">Tạm tính</span>
+            <span>{money(order.subtotal)}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="muted">Voucher giảm giá</span>
+            <span>−{money(order.discountAmount)}</span>
+          </div>
+        </div>
+        <div className="mt-3 flex justify-between border-t border-[#e5ece3] pt-4 font-extrabold">
           <span>Tổng cộng</span>
           <span>{money(order.total)}</span>
         </div>
@@ -495,6 +546,9 @@ export function MemberWallet() {
 export function MemberVouchers() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
   const catalog = useResource(
     () => commerce.listPublicVoucherDefinitions(merchantId).then((response) => response.definitions),
     [merchantId],
@@ -507,6 +561,33 @@ export function MemberVouchers() {
     () => commerce.getMemberWallet(merchantId, accessToken!).then((response) => response.wallet),
     [merchantId, accessToken],
   );
+  async function redeem(definition: VoucherDefinitionDto) {
+    if (!accessToken || busyId !== null) return;
+    setBusyId(definition.id);
+    setActionError("");
+    setNotice("");
+    try {
+      const response = await commerce.redeemVoucher(definition.id, accessToken);
+      owned.setData((current) => [response.voucher, ...(current ?? [])]);
+      wallet.setData((current) =>
+        current
+          ? {
+              ...current,
+              availablePoints: response.wallet.availablePoints,
+              lifetimeEarnedPoints: response.wallet.lifetimeEarnedPoints,
+            }
+          : current,
+      );
+      wallet.reload();
+      setNotice(
+        `Đã đổi “${response.voucher.title}”. Số dư điểm mới: ${response.wallet.availablePoints.toLocaleString("vi-VN")} điểm.`,
+      );
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : "Không thể đổi voucher");
+    } finally {
+      setBusyId(null);
+    }
+  }
   if (catalog.loading || owned.loading || wallet.loading) return <LoadingState cards={2} />;
   if (catalog.error || owned.error || wallet.error)
     return (
@@ -522,6 +603,16 @@ export function MemberVouchers() {
   return (
     <>
       <PageHeader title="Voucher" />
+      {actionError && (
+        <p role="alert" className="mb-4 text-sm text-[#a4473a]">
+          {actionError}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mb-4 text-sm text-[#357044]">
+          {notice}
+        </p>
+      )}
       {wallet.data && (
         <p className="mb-5 text-sm font-semibold">
           Điểm khả dụng tại cửa hàng này: {wallet.data.availablePoints.toLocaleString("vi-VN")}
@@ -533,12 +624,20 @@ export function MemberVouchers() {
           <EmptyState title="Chưa có voucher" description="Cửa hàng chưa đăng voucher đang hoạt động." />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {catalog.data.map((voucher) => (
-              <VoucherDefinitionCard key={voucher.id} voucher={voucher} />
-            ))}
+            {catalog.data.map((voucher) => {
+              const canRedeem = Boolean(wallet.data && wallet.data.availablePoints >= voucher.pointsCost);
+              return (
+                <VoucherDefinitionCard
+                  key={voucher.id}
+                  voucher={voucher}
+                  busy={busyId === voucher.id}
+                  disabled={busyId !== null || !canRedeem}
+                  onRedeem={() => void redeem(voucher)}
+                />
+              );
+            })}
           </div>
         )}
-        <p className="mt-3 text-sm muted">Đổi voucher chưa khả dụng.</p>
       </section>
       <section>
         <h2 className="mb-3 text-lg font-extrabold">Voucher của bạn</h2>
@@ -588,7 +687,17 @@ export function MemberRewards() {
   );
 }
 
-function VoucherDefinitionCard({ voucher }: { voucher: VoucherDefinitionDto }) {
+function VoucherDefinitionCard({
+  voucher,
+  busy,
+  disabled,
+  onRedeem,
+}: {
+  voucher: VoucherDefinitionDto;
+  busy: boolean;
+  disabled: boolean;
+  onRedeem: () => void;
+}) {
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">
@@ -601,6 +710,9 @@ function VoucherDefinitionCard({ voucher }: { voucher: VoucherDefinitionDto }) {
           : voucher.rewardDescription}
       </p>
       <p className="mt-5 text-sm font-bold">{voucher.pointsCost.toLocaleString("vi-VN")} điểm</p>
+      <Button className="mt-4 w-full" disabled={disabled} onClick={onRedeem}>
+        {busy ? <BusyLabel>Đang đổi</BusyLabel> : "Đổi voucher"}
+      </Button>
     </Card>
   );
 }

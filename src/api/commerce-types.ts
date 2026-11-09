@@ -50,6 +50,7 @@ export interface OrderDto {
 export interface CreateOrderInput {
   productId: number;
   quantity: number;
+  voucherId?: number;
 }
 
 export interface LoyaltyTierDto {
@@ -138,4 +139,11 @@ export type LoyaltyConfigResponse = { config: LoyaltyConfigDto };
 export type VoucherDefinitionsResponse = { definitions: VoucherDefinitionDto[] };
 export type VoucherDefinitionResponse = { definition: VoucherDefinitionDto };
 export type MemberVouchersResponse = { vouchers: MemberVoucherDto[] };
+export type MemberVoucherResponse = {
+  voucher: MemberVoucherDto;
+  wallet: Pick<WalletDto, "availablePoints" | "lifetimeEarnedPoints">;
+};
+export type MerchantRewardsResponse = { rewards: MemberVoucherDto[] };
+export type MerchantRewardResponse = { reward: MemberVoucherDto };
+export type FulfillRewardInput = { note?: string };
 export type WalletResponse = { wallet: WalletDto };

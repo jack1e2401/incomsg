@@ -1,8 +1,12 @@
 import type {
   CreateOrderInput,
+  FulfillRewardInput,
   LoyaltyConfigInput,
   LoyaltyConfigResponse,
   MemberVouchersResponse,
+  MemberVoucherResponse,
+  MerchantRewardResponse,
+  MerchantRewardsResponse,
   OrderResponse,
   OwnMerchantResponse,
   ProductInput,
@@ -121,6 +125,25 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         baseUrl,
         `/api/member/merchants/${merchantId}/vouchers`,
         { token },
+      );
+    },
+    redeemVoucher(definitionId: number, token: string) {
+      return requestJson<MemberVoucherResponse>(
+        fetcher,
+        baseUrl,
+        `/api/member/vouchers/${definitionId}/redeem`,
+        { method: "POST", token },
+      );
+    },
+    listMerchantRewards(token: string) {
+      return requestJson<MerchantRewardsResponse>(fetcher, baseUrl, "/api/merchant/rewards", { token });
+    },
+    fulfillReward(memberVoucherId: number, input: FulfillRewardInput, token: string) {
+      return requestJson<MerchantRewardResponse>(
+        fetcher,
+        baseUrl,
+        `/api/merchant/rewards/${memberVoucherId}/fulfill`,
+        { method: "POST", token, body: input },
       );
     },
   };

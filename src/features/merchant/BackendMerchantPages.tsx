@@ -5,6 +5,7 @@ import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
   LoyaltyConfigInput,
+  MemberVoucherDto,
   ProductDto,
   ProductInput,
   ProductPatch,
@@ -549,7 +550,114 @@ export function MerchantVouchers() {
   );
 }
 export function MerchantRewards() {
-  return <MissingEndpoint title="Trao thưởng" />;
+  const token = useToken();
+  const resource = useResource(
+    () => api.listMerchantRewards(token).then((response) => response.rewards),
+    [token],
+  );
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function fulfill(voucher: MemberVoucherDto) {
+    if (busyId !== null) return;
+    setBusyId(voucher.id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await api.fulfillReward(
+        voucher.id,
+        notes[voucher.id]?.trim() ? { note: notes[voucher.id].trim() } : {},
+        token,
+      );
+      resource.setData((current) =>
+        (current ?? []).map((item) => (item.id === response.reward.id ? response.reward : item)),
+      );
+      setNotice(`Đã xác nhận trao “${response.reward.title}” cho thành viên #${response.reward.memberId}.`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Không thể xác nhận trao quà";
+      setError(message);
+      if (message.includes("REWARD_ALREADY_FULFILLED") || message.includes("REWARD_NOT_FOUND"))
+        resource.reload();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (resource.loading) return <LoadingState cards={2} />;
+  if (resource.error) return <ErrorState message={resource.error} retry={resource.reload} />;
+  const open = (resource.data ?? []).filter((voucher) => voucher.status === "AVAILABLE");
+  const fulfilled = (resource.data ?? []).filter((voucher) => voucher.status === "FULFILLED");
+  return (
+    <>
+      <PageHeader title="Trao thưởng" description="Xác nhận quà đã trao tại cửa hàng." />
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-[#a4473a]">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mb-4 text-sm text-[#357044]">
+          {notice}
+        </p>
+      )}
+      <section>
+        <h2 className="mb-3 text-lg font-extrabold">Đang chờ trao</h2>
+        {!open.length ? (
+          <EmptyState title="Không có quà đang chờ" description="Voucher quà đã đổi sẽ xuất hiện tại đây." />
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {open.map((voucher) => (
+              <Card key={voucher.id} className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-extrabold">{voucher.title}</h3>
+                    <p className="mt-1 text-sm muted">Thành viên #{voucher.memberId}</p>
+                  </div>
+                  <StatusText tone="amber">Đang chờ</StatusText>
+                </div>
+                <p className="mt-3 text-sm muted">{voucher.rewardDescription}</p>
+                <p className="mt-3 text-xs muted">
+                  Đổi ngày {new Date(voucher.redeemedAt).toLocaleDateString("vi-VN")}
+                </p>
+                <Field label="Ghi chú trao quà (không bắt buộc)">
+                  <Textarea
+                    maxLength={255}
+                    value={notes[voucher.id] ?? ""}
+                    onChange={(event) => setNotes((current) => ({ ...current, [voucher.id]: event.target.value }))}
+                  />
+                </Field>
+                <Button
+                  className="mt-4 w-full sm:w-auto"
+                  disabled={busyId !== null}
+                  onClick={() => void fulfill(voucher)}
+                >
+                  {busyId === voucher.id ? <BusyLabel>Đang xác nhận</BusyLabel> : "Xác nhận đã trao"}
+                </Button>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+      {fulfilled.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-lg font-extrabold">Đã trao</h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {fulfilled.map((voucher) => (
+              <Card key={voucher.id} className="flex items-center justify-between gap-3 p-5">
+                <div>
+                  <h3 className="font-extrabold">{voucher.title}</h3>
+                  <p className="mt-1 text-sm muted">Thành viên #{voucher.memberId}</p>
+                </div>
+                <StatusText tone="green">Đã trao</StatusText>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
 }
 
 export function MerchantLoyalty() {
