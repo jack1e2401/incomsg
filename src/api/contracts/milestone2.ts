@@ -1,6 +1,6 @@
 /**
  * Wire contract implemented by apps/backend Milestone 2.
- * Keep these DTOs separate from the richer demo view models in api/types.ts.
+ * Exact JSON contract for the authentication and merchant approval routes.
  */
 export type BackendRole = "ADMIN" | "MERCHANT" | "MEMBER";
 export type BackendApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -67,7 +67,7 @@ export interface BackendErrorResponse {
   error: string;
 }
 
-/** Paths available today; commerce and loyalty endpoints belong to later milestones. */
+/** Authentication and merchant approval paths currently mounted by the backend. */
 export const milestone2Paths = {
   registerMember: "/api/auth/register/member",
   registerMerchant: "/api/auth/register/merchant",

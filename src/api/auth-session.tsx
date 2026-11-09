@@ -1,19 +1,32 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { BackendRole, BackendUserDto, LoginResponse } from "./contracts/milestone2";
+import type {
+  BackendRole,
+  BackendUserDto,
+  LoginResponse,
+  MemberRegistrationResponse,
+  MerchantRegistrationResponse,
+  ApplicationStatusResponse,
+} from "./contracts/milestone2";
 import { createMilestone2Client } from "./milestone2-client";
 
 const SESSION_KEY = "loyalty.m2.session";
+const authApi = createMilestone2Client(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
 interface AuthSessionValue {
   user: BackendUserDto | null;
   accessToken: string | null;
   login(input: { email: string; password: string }): Promise<LoginResponse>;
+  registerMember(input: { email: string; password: string }): Promise<MemberRegistrationResponse>;
+  registerMerchant(input: {
+    email: string;
+    password: string;
+    storeName: string;
+  }): Promise<MerchantRegistrationResponse>;
+  checkApplicationStatus(input: { email: string; password: string }): Promise<ApplicationStatusResponse>;
   logout(): void;
 }
 
 const AuthSessionContext = createContext<AuthSessionValue | null>(null);
-const backendUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
-const authApi = createMilestone2Client(backendUrl);
 
 function readSession(): LoginResponse | null {
   try {
@@ -37,17 +50,19 @@ function readSession(): LoginResponse | null {
 
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<LoginResponse | null>(readSession);
-
   const value = useMemo<AuthSessionValue>(
     () => ({
       user: session?.user ?? null,
       accessToken: session?.accessToken ?? null,
-      async login(credentials) {
-        const result = await authApi.login(credentials);
+      async login(input) {
+        const result = await authApi.login(input);
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
         setSession(result);
         return result;
       },
+      registerMember: (input) => authApi.registerMember(input),
+      registerMerchant: (input) => authApi.registerMerchant(input),
+      checkApplicationStatus: (input) => authApi.checkApplicationStatus(input),
       logout() {
         sessionStorage.removeItem(SESSION_KEY);
         setSession(null);
@@ -55,7 +70,6 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     }),
     [session],
   );
-
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
 }
 

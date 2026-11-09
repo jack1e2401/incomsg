@@ -1,5 +1,24 @@
 import { expect, test } from "@playwright/test";
 
+test("landing keeps the entry flow clear and protects the Admin URL", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Mỗi cửa hàng/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Đăng nhập" })).toHaveAttribute("href", "/login");
+  await expect(page.getByRole("link", { name: "Tạo tài khoản" })).toHaveAttribute("href", "/register");
+  await expect(page.getByRole("link", { name: "Trạng thái hồ sơ" })).toHaveAttribute(
+    "href",
+    "/application/status",
+  );
+  const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  expect(desktopOverflow).toBe(false);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  expect(mobileOverflow).toBe(false);
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/login$/);
+});
+
 test("Member registration posts the M2 request and confirms backend response", async ({ page }) => {
   let requestBody: unknown;
   await page.route("**/api/auth/register/member", async (route) => {
@@ -168,6 +187,13 @@ test("login takes role from API response and sends protected Merchant request wi
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ merchant: { id: 2, name: "Mộc Studio", slug: "store-2", isActive: true } }),
+    });
+  });
+  await page.route("**/api/merchant/products", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ products: [] }),
     });
   });
 

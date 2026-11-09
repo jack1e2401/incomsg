@@ -13,7 +13,7 @@ export { Button } from "./button";
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("surface rounded-[1.7rem]", className)} {...props} />;
 }
-export function Badge({
+export function StatusText({
   children,
   tone = "neutral",
   className,
@@ -23,16 +23,16 @@ export function Badge({
   className?: string;
 }) {
   const tones = {
-    neutral: "bg-[#eff2ed] text-[#637269]",
-    green: "bg-[#e1f2df] text-[#357044]",
-    amber: "bg-[#fff1d6] text-[#97682a]",
-    red: "bg-[#fae7e3] text-[#a4473a]",
-    purple: "bg-[#eee9fa] text-[#7560a1]",
+    neutral: "text-[#637269]",
+    green: "text-[#357044]",
+    amber: "text-[#97682a]",
+    red: "text-[#a4473a]",
+    purple: "text-[#7560a1]",
   };
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold whitespace-nowrap",
+        "inline-flex items-center text-xs font-semibold whitespace-nowrap",
         tones[tone],
         className,
       )}
@@ -128,12 +128,10 @@ export function ErrorState({ message, retry }: { message: string; retry?: () => 
   );
 }
 export function PageHeader({
-  eyebrow,
   title,
   description,
   action,
 }: {
-  eyebrow?: string;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -141,11 +139,6 @@ export function PageHeader({
   return (
     <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        {eyebrow && (
-          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-[.22em] text-[#6d9b6c]">
-            {eyebrow}
-          </p>
-        )}
         <h1 className="text-3xl font-extrabold tracking-[-.055em] text-[#20392a] sm:text-[2.55rem]">
           {title}
         </h1>

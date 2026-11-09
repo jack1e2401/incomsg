@@ -1,12 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CheckCircle, LockKey, Storefront, UserCircle } from "@phosphor-icons/react";
-import { createMilestone2Client } from "../../api/milestone2-client";
+import { ArrowLeft, ArrowRight, CheckCircle, Storefront, UserCircle } from "@phosphor-icons/react";
 import { useAuthSession, routeForRole } from "../../api/auth-session";
-import { Badge, Button, BusyLabel, Card, Field, Input } from "../../components/ui";
+import { LoyaltyIllustration } from "../../components/LoyaltyIllustration";
+import { Button, BusyLabel, Card, Field, Input, StatusText } from "../../components/ui";
 import type { BackendApplicationDto } from "../../api/contracts/milestone2";
-
-const authApi = createMilestone2Client(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
 function explainAuthError(message: string) {
   const explanations: Record<string, string> = {
@@ -18,34 +16,19 @@ function explainAuthError(message: string) {
   return explanations[message] ?? message;
 }
 
-function AuthFrame({
-  children,
-  title,
-  description,
-}: {
-  children: React.ReactNode;
-  title: string;
-  description: string;
-}) {
+function AuthFrame({ children, title }: { children: React.ReactNode; title: string }) {
   return (
-    <main className="grid min-h-[100dvh] bg-[#f7f8f4] lg:grid-cols-[.85fr_1.15fr]">
-      <section className="relative hidden overflow-hidden bg-[#23442e] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <Link to="/" className="flex items-center gap-3 text-xl font-extrabold">
+    <main className="grid min-h-[100dvh] bg-[#f7f8f4] lg:grid-cols-2">
+      <section className="relative hidden min-h-[100dvh] overflow-hidden bg-[#23442e] lg:flex lg:items-center lg:justify-center">
+        <div className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-[#71985c]/25 blur-3xl" />
+        <div className="absolute -bottom-24 -right-20 h-96 w-96 rounded-full bg-[#71985c]/25 blur-3xl" />
+        <div className="absolute left-12 top-10 flex items-center gap-3 text-xl font-extrabold text-white">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#c4f093] text-[#24442c]">L</span>
           loyalty.
-        </Link>
-        <div className="relative z-1 max-w-lg">
-          <Badge tone="green" className="bg-white/10 text-[#cde9b2]">
-            MILESTONE 2 · AUTH & MERCHANT APPROVAL
-          </Badge>
-          <h1 className="serif mt-6 text-5xl leading-tight">Một tài khoản, đúng vai trò, đúng cửa hàng.</h1>
-          <p className="mt-5 text-sm leading-7 text-white/65">
-            Đăng nhập và phân quyền được xác nhận bởi backend. Hồ sơ Merchant cần Admin duyệt trước khi kích
-            hoạt.
-          </p>
         </div>
-        <p className="text-xs text-white/45">Loyalty Commerce · Kết nối API backend</p>
-        <div className="absolute -bottom-20 -right-16 h-80 w-80 rounded-full bg-[#71985c]/30 blur-3xl" />
+        <div className="relative h-[min(62vh,520px)] w-[min(62vh,520px)]">
+          <LoyaltyIllustration />
+        </div>
       </section>
       <section className="flex items-center justify-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-md">
@@ -53,11 +36,7 @@ function AuthFrame({
             <ArrowLeft size={16} /> Về trang đầu
           </Link>
           <Card className="p-6 sm:p-9">
-            <p className="text-[10px] font-extrabold uppercase tracking-[.22em] text-[#6d9b6c]">
-              Loyalty Commerce · M2
-            </p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#20392a]">{title}</h2>
-            <p className="mt-2 text-sm leading-6 muted">{description}</p>
+            <h2 className="text-3xl font-extrabold tracking-tight text-[#20392a]">{title}</h2>
             <div className="mt-7">{children}</div>
           </Card>
         </div>
@@ -85,7 +64,9 @@ export function LoginPage() {
     setErrorCode("");
     try {
       const result = await login({ email, password });
-      navigate(routeForRole(result.user.role), { replace: true });
+      navigate(routeForRole(result.user.role), {
+        replace: true,
+      });
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "";
       setErrorCode(code);
@@ -96,10 +77,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthFrame
-      title="Đăng nhập"
-      description="Dùng tài khoản đã đăng ký. Quyền truy cập được cấp theo role từ backend."
-    >
+    <AuthFrame title="Đăng nhập">
       {searchParams.get("registered") === "member" && (
         <p role="status" className="mb-4 rounded-xl bg-[#edf4e9] p-3 text-sm text-[#376743]">
           Tài khoản Member đã được tạo. Đăng nhập để tiếp tục.
@@ -107,7 +85,7 @@ export function LoginPage() {
       )}
       {searchParams.get("registered") === "merchant-approved" && (
         <p role="status" className="mb-4 rounded-xl bg-[#edf4e9] p-3 text-sm text-[#376743]">
-          Hồ sơ Merchant đã được duyệt. Đăng nhập để vào workspace cửa hàng.
+          Hồ sơ Merchant đã được duyệt. Đăng nhập để tiếp tục.
         </p>
       )}
       <form onSubmit={submit} className="space-y-4">
@@ -163,14 +141,12 @@ export function LoginPage() {
           Tạo tài khoản Member hoặc Merchant
         </Link>
       </p>
-      <p className="mt-5 flex items-center justify-center gap-2 text-[11px] muted">
-        <LockKey size={14} /> Token và role do API cấp sau khi đăng nhập thành công.
-      </p>
     </AuthFrame>
   );
 }
 
 export function RegisterPage() {
+  const { registerMember, registerMerchant } = useAuthSession();
   const [role, setRole] = useState<"MEMBER" | "MERCHANT">("MEMBER");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -190,11 +166,11 @@ export function RegisterPage() {
     setError("");
     try {
       if (role === "MEMBER") {
-        await authApi.registerMember({ email, password });
+        await registerMember({ email, password });
         setRegisteredMember(email);
         return;
       }
-      const result = await authApi.registerMerchant({ email, password, storeName: name });
+      const result = await registerMerchant({ email, password, storeName: name });
       setPendingApplication({
         storeName: result.application.storeName,
         applicationId: result.application.id,
@@ -210,14 +186,14 @@ export function RegisterPage() {
 
   if (registeredMember) {
     return (
-      <AuthFrame title="Tài khoản đã sẵn sàng" description="Backend đã tạo tài khoản Member active.">
+      <AuthFrame title="Tài khoản đã sẵn sàng">
         <div className="rounded-2xl bg-[#edf4e9] p-5">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-white text-[#4c8054]">
             <CheckCircle size={23} />
           </span>
           <h3 className="mt-4 text-lg font-extrabold">Đăng ký thành công</h3>
           <p className="mt-2 text-sm leading-6 text-[#5d715f]">
-            {registeredMember} đã được tạo bằng API. Đăng nhập để tiếp tục.
+            {registeredMember} đã được tạo. Đăng nhập để tiếp tục.
           </p>
         </div>
         <Link
@@ -232,15 +208,14 @@ export function RegisterPage() {
 
   if (pendingApplication) {
     return (
-      <AuthFrame title="Đã gửi hồ sơ" description="Backend đã nhận đăng ký Merchant của bạn.">
+      <AuthFrame title="Đã gửi hồ sơ">
         <div className="rounded-2xl bg-[#edf4e9] p-5">
           <span className="grid h-11 w-11 place-items-center rounded-xl bg-white text-[#4c8054]">
             <CheckCircle size={23} />
           </span>
           <h3 className="mt-4 text-lg font-extrabold">{pendingApplication.storeName}</h3>
           <p className="mt-2 text-sm leading-6 text-[#5d715f]">
-            Hồ sơ #{pendingApplication.applicationId} đang chờ Admin duyệt. Merchant chưa thể đăng nhập hoặc
-            quản lý cửa hàng khi trạng thái còn PENDING.
+            Hồ sơ #{pendingApplication.applicationId} đang chờ Admin phê duyệt.
           </p>
         </div>
         <Link
@@ -255,10 +230,7 @@ export function RegisterPage() {
   }
 
   return (
-    <AuthFrame
-      title="Tạo tài khoản"
-      description="Member có thể dùng ngay. Merchant gửi hồ sơ để Admin xét duyệt."
-    >
+    <AuthFrame title="Tạo tài khoản">
       <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-[#f0f4ed] p-1.5">
         <RoleOption
           selected={role === "MEMBER"}
@@ -340,6 +312,7 @@ export function RegisterPage() {
 }
 
 export function ApplicationStatusPage() {
+  const { checkApplicationStatus } = useAuthSession();
   const location = useLocation();
   const initialEmail = (location.state as { email?: unknown } | null)?.email;
   const [email, setEmail] = useState(typeof initialEmail === "string" ? initialEmail : "");
@@ -354,7 +327,7 @@ export function ApplicationStatusPage() {
     setError("");
     setApplication(null);
     try {
-      const result = await authApi.checkApplicationStatus({ email, password });
+      const result = await checkApplicationStatus({ email, password });
       setApplication(result.application);
     } catch (reason) {
       const code = reason instanceof Error ? reason.message : "Không thể tải trạng thái hồ sơ.";
@@ -366,10 +339,7 @@ export function ApplicationStatusPage() {
   }
 
   return (
-    <AuthFrame
-      title="Trạng thái hồ sơ Merchant"
-      description="Nhập email và mật khẩu đã đăng ký để tải trạng thái mới nhất từ backend."
-    >
+    <AuthFrame title="Trạng thái hồ sơ Merchant">
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email đăng ký">
           <Input
@@ -382,7 +352,7 @@ export function ApplicationStatusPage() {
             placeholder="ban@example.com"
           />
         </Field>
-        <Field label="Mật khẩu" hint="Chỉ dùng để xác minh hồ sơ, không được lưu lại.">
+        <Field label="Mật khẩu">
           <Input
             type="password"
             autoComplete="current-password"
@@ -417,19 +387,22 @@ function ApplicationStatusResult({ application }: { application: BackendApplicat
   const details = {
     PENDING: {
       title: "Hồ sơ đang chờ duyệt",
-      description: "Admin chưa đưa ra quyết định. Bạn có thể quay lại màn này để kiểm tra lại sau.",
+      description: "Bạn có thể kiểm tra lại sau.",
+      status: "Đang chờ",
       tone: "amber" as const,
       icon: <span aria-hidden="true">⌛</span>,
     },
     APPROVED: {
       title: "Hồ sơ đã được phê duyệt",
-      description: "Cửa hàng đã được kích hoạt. Đăng nhập để mở Merchant workspace.",
+      description: "Đăng nhập để tiếp tục.",
+      status: "Đã duyệt",
       tone: "green" as const,
       icon: <CheckCircle size={22} />,
     },
     REJECTED: {
       title: "Hồ sơ chưa được chấp thuận",
-      description: "Quyết định này do Admin ghi nhận. Hãy liên hệ đội hỗ trợ trước khi gửi hồ sơ khác.",
+      description: "Liên hệ hỗ trợ để biết thêm.",
+      status: "Từ chối",
       tone: "red" as const,
       icon: <span aria-hidden="true">×</span>,
     },
@@ -441,7 +414,7 @@ function ApplicationStatusResult({ application }: { application: BackendApplicat
         <span className="grid h-11 w-11 place-items-center rounded-xl bg-white text-[#4b754f]">
           {details.icon}
         </span>
-        <Badge tone={details.tone}>{application.status}</Badge>
+        <StatusText tone={details.tone}>{details.status}</StatusText>
       </div>
       <h2 className="mt-4 text-lg font-extrabold">{details.title}</h2>
       <p className="mt-2 text-sm leading-6 muted">{details.description}</p>

@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./playwright",
-  testMatch: "commerce.spec.ts",
+  testMatch: "milestone2.spec.ts",
   fullyParallel: false,
   reporter: "list",
   timeout: 25_000,
@@ -13,6 +13,6 @@ export default defineConfig({
     url: "http://127.0.0.1:5175",
     reuseExistingServer: false,
     timeout: 30_000,
-    env: { VITE_API_MODE: "mock" },
+    env: { VITE_API_BASE_URL: "http://localhost:3000" },
   },
 });

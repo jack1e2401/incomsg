@@ -1,11 +1,10 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
-import { ArrowRight, ChartLineUp, ShieldCheck, Storefront, UserCircle } from "@phosphor-icons/react";
-import { ApiProvider } from "../api/client";
-import { AuthSessionProvider } from "../api/auth-session";
-import { Button, Card } from "../components/ui";
-import { ConsoleLayout } from "../layouts/ConsoleLayout";
-import { MemberLayout } from "../layouts/MemberLayout";
-import { AdminApplications, AdminMerchants, AdminOverview } from "../features/admin/AdminPages";
+import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
+import { Button, Card, PageHeader } from "../components/ui";
+import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
+import { LoyaltyIllustration } from "../components/LoyaltyIllustration";
+import { AdminApplicationsM2, RequireRole } from "../features/auth/Milestone2Pages";
+import { BackendConsoleLayout } from "../layouts/BackendConsoleLayout";
 import {
   MerchantLoyalty,
   MerchantOrders,
@@ -14,332 +13,174 @@ import {
   MerchantRewards,
   MerchantStore,
   MerchantVouchers,
-} from "../features/merchant/MerchantPages";
-import { MemberCart, MemberCheckout, MemberProduct, MemberStorefront } from "../features/member/MemberShop";
+} from "../features/merchant/BackendMerchantPages";
 import {
+  BackendMemberLayout,
+  MemberCart,
+  MemberCheckout,
+  MemberLanding,
   MemberOrderResult,
   MemberOrders,
+  MemberProduct,
   MemberRewards,
+  MemberStorefront,
   MemberVouchers,
   MemberWallet,
-} from "../features/member/MemberLoyalty";
-import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
-import {
-  AdminApplicationsM2,
-  MemberHomeM2,
-  MerchantHomeM2,
-  Milestone2Workspace,
-  RequireRole,
-} from "../features/auth/Milestone2Pages";
-import { routeForRole, useAuthSession } from "../api/auth-session";
-
-const useBackend = import.meta.env.VITE_API_MODE === "http";
+} from "../features/member/BackendMemberPages";
 
 export function App() {
-  return <AuthSessionProvider>{useBackend ? <BackendRoutes /> : <DemoRoutes />}</AuthSessionProvider>;
-}
-
-function DemoRoutes() {
   return (
-    <ApiProvider>
+    <AuthSessionProvider>
       <Routes>
-        <Route path="/" element={<DemoWelcome />} />
-        <Route path="/admin" element={<ConsoleLayout role="admin" />}>
-          <Route index element={<AdminOverview />} />
-          <Route path="applications" element={<AdminApplications />} />
-          <Route path="merchants" element={<AdminMerchants />} />
+        <Route path="/" element={<Welcome />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/application/status" element={<ApplicationStatusPage />} />
+        <Route element={<RequireRole role="ADMIN" />}>
+          <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
+            <Route index element={<AdminOverview />} />
+            <Route path="applications" element={<AdminApplicationsM2 />} />
+            <Route path="merchants" element={<AdminMerchants />} />
+          </Route>
         </Route>
-        <Route path="/merchant/:merchantId" element={<ConsoleLayout role="merchant" />}>
-          <Route index element={<MerchantOverview />} />
-          <Route path="store" element={<MerchantStore />} />
-          <Route path="products" element={<MerchantProducts />} />
-          <Route path="orders" element={<MerchantOrders />} />
-          <Route path="loyalty" element={<MerchantLoyalty />} />
-          <Route path="vouchers" element={<MerchantVouchers />} />
-          <Route path="rewards" element={<MerchantRewards />} />
+        <Route element={<RequireRole role="MERCHANT" />}>
+          <Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}>
+            <Route index element={<MerchantOverview />} />
+            <Route path="store" element={<MerchantStore />} />
+            <Route path="products" element={<MerchantProducts />} />
+            <Route path="orders" element={<MerchantOrders />} />
+            <Route path="loyalty" element={<MerchantLoyalty />} />
+            <Route path="vouchers" element={<MerchantVouchers />} />
+            <Route path="rewards" element={<MerchantRewards />} />
+          </Route>
         </Route>
-        <Route path="/member/:merchantId" element={<MemberLayout />}>
-          <Route index element={<MemberStorefront />} />
-          <Route path="product/:productId" element={<MemberProduct />} />
-          <Route path="cart" element={<MemberCart />} />
-          <Route path="checkout" element={<MemberCheckout />} />
-          <Route path="wallet" element={<MemberWallet />} />
-          <Route path="vouchers" element={<MemberVouchers />} />
-          <Route path="rewards" element={<MemberRewards />} />
-          <Route path="orders" element={<MemberOrders />} />
-          <Route path="orders/:orderId" element={<MemberOrderResult />} />
+        <Route element={<RequireRole role="MEMBER" />}>
+          <Route path="/member" element={<MemberLanding />} />
+          <Route path="/member/:merchantId" element={<BackendMemberLayout />}>
+            <Route index element={<MemberStorefront />} />
+            <Route path="product/:productId" element={<MemberProduct />} />
+            <Route path="cart" element={<MemberCart />} />
+            <Route path="checkout" element={<MemberCheckout />} />
+            <Route path="wallet" element={<MemberWallet />} />
+            <Route path="vouchers" element={<MemberVouchers />} />
+            <Route path="rewards" element={<MemberRewards />} />
+            <Route path="orders" element={<MemberOrders />} />
+            <Route path="orders/:orderId" element={<MemberOrderResult />} />
+          </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </ApiProvider>
+    </AuthSessionProvider>
   );
 }
 
-function BackendRoutes() {
-  return (
-    <Routes>
-      <Route path="/" element={<BackendWelcome />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/application/status" element={<ApplicationStatusPage />} />
-      <Route element={<RequireRole role="ADMIN" />}>
-        <Route path="/admin" element={<Milestone2Workspace role="ADMIN" />}>
-          <Route index element={<Navigate to="applications" replace />} />
-          <Route path="applications" element={<AdminApplicationsM2 />} />
-        </Route>
-      </Route>
-      <Route element={<RequireRole role="MERCHANT" />}>
-        <Route path="/merchant" element={<Milestone2Workspace role="MERCHANT" />}>
-          <Route index element={<MerchantHomeM2 />} />
-        </Route>
-      </Route>
-      <Route element={<RequireRole role="MEMBER" />}>
-        <Route path="/member" element={<Milestone2Workspace role="MEMBER" />}>
-          <Route index element={<MemberHomeM2 />} />
-        </Route>
-      </Route>
-      <Route path="*" element={<BackendFallback />} />
-    </Routes>
-  );
-}
-
-function BackendWelcome() {
+function Welcome() {
   const { user } = useAuthSession();
-  if (user) return <Navigate to={routeForRole(user.role)} replace />;
+  if (user)
+    return (
+      <Navigate
+        to={user.role === "ADMIN" ? "/admin" : user.role === "MERCHANT" ? "/merchant" : "/member"}
+        replace
+      />
+    );
   return (
-    <main className="min-h-[100dvh] bg-[#f7f8f4] px-4 py-12 sm:px-8 sm:py-20">
-      <div className="mx-auto max-w-5xl">
-        <Brand />
-        <div className="mt-14 grid items-center gap-10 lg:grid-cols-[1.1fr_.9fr]">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[.25em] text-[#81a57b]">
-              Backend-connected · Milestone 2
-            </p>
-            <h1 className="serif mt-5 max-w-2xl text-5xl leading-[1.04] tracking-[-.055em] text-[#264632] sm:text-7xl">
-              Loyalty that feels <span className="text-[#83a969]">personal.</span>
+    <main className="min-h-[100dvh] overflow-hidden bg-[#f7f8f4] px-5 pb-12 pt-7 sm:px-8 sm:pb-16 sm:pt-9">
+      <div className="mx-auto max-w-7xl">
+        <header className="flex items-center justify-between">
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 text-lg font-extrabold tracking-[-.06em] text-[#24452f]"
+          >
+            <span className="grid h-10 w-10 place-items-center rounded-[15px] bg-[#335e3d] text-lg text-[#c9f097]">
+              L
+            </span>
+            loyalty<span className="text-[#89b461]">.</span>
+          </Link>
+          <Link
+            to="/application/status"
+            className="rounded-full px-4 py-2.5 text-sm font-semibold text-[#54725a] transition-colors duration-300 hover:bg-white hover:text-[#24452f]"
+          >
+            Trạng thái hồ sơ
+          </Link>
+        </header>
+
+        <section className="grid min-h-[calc(100dvh-7rem)] items-center gap-10 py-12 md:gap-14 lg:grid-cols-[1.05fr_.95fr] lg:gap-20 lg:py-8">
+          <div className="relative z-10 max-w-2xl">
+            <h1 className="serif text-[clamp(3.25rem,7.5vw,6.5rem)] leading-[.98] tracking-[-.055em] text-[#24452f]">
+              Mỗi cửa hàng,
+              <span className="mt-2 block text-[#83a969]">một hành trình</span>
+              thân thiết.
             </h1>
-            <p className="mt-6 max-w-lg text-sm leading-7 text-[#738276]">
-              Tạo tài khoản, đăng nhập theo role và gửi hồ sơ Merchant để Admin phê duyệt. Dữ liệu tài khoản
-              và quyết định duyệt được lưu từ backend.
+            <p className="mt-7 max-w-lg text-base leading-7 text-[#738276] sm:text-lg sm:leading-8">
+              Mua sắm và nhận ưu đãi từ những cửa hàng bạn yêu thích.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild size="lg">
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <Button
+                asChild
+                size="lg"
+                className="group rounded-full px-6 shadow-[0_12px_28px_rgba(47,88,58,.16)] transition-transform duration-300 ease-[cubic-bezier(.32,.72,0,1)] hover:-translate-y-0.5 active:scale-[.98]"
+              >
                 <Link to="/login">
-                  Đăng nhập <ArrowRight size={17} />
+                  Đăng nhập{" "}
+                  <span
+                    aria-hidden="true"
+                    className="ml-2 transition-transform duration-300 group-hover:translate-x-1"
+                  >
+                    →
+                  </span>
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="rounded-full border-[#dce6d7] bg-white/70 px-6 transition-transform duration-300 ease-[cubic-bezier(.32,.72,0,1)] hover:-translate-y-0.5 active:scale-[.98]"
+              >
                 <Link to="/register">Tạo tài khoản</Link>
               </Button>
             </div>
-            <Link
-              to="/application/status"
-              className="mt-4 inline-flex text-xs font-bold text-[#527353] underline underline-offset-4"
-            >
-              Theo dõi hồ sơ Merchant
-            </Link>
-            <p className="mt-4 text-[11px] text-[#9aa69b]">
-              M2 API thật · Chưa có thanh toán hoặc điểm loyalty trong backend
-            </p>
           </div>
-          <Card className="p-6 sm:p-8">
-            <h2 className="text-lg font-extrabold text-[#294a32]">Các luồng đã kết nối</h2>
-            <div className="mt-5 space-y-3">
-              <RoleSummary
-                icon={<UserCircle size={20} />}
-                title="Member"
-                text="Đăng ký active ngay và đăng nhập bằng JWT."
-              />
-              <RoleSummary
-                icon={<Storefront size={20} />}
-                title="Merchant"
-                text="Nộp hồ sơ, chờ duyệt, xem cửa hàng sau khi được duyệt."
-              />
-              <RoleSummary
-                icon={<ShieldCheck size={20} />}
-                title="Admin"
-                text="Đăng nhập bằng tài khoản đã seed và duyệt hồ sơ thật."
-              />
+
+          <div className="relative mx-auto w-full max-w-[34rem] lg:mr-0">
+            <div className="absolute -inset-5 rotate-[-4deg] rounded-[2.75rem] bg-[#e7eedf] sm:-inset-7" />
+            <div className="relative aspect-[.92] overflow-hidden rounded-[2.4rem] bg-[#31583a] p-3 shadow-[0_32px_80px_rgba(47,88,58,.16)] sm:rounded-[2.8rem] sm:p-4">
+              <div className="relative h-full overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_50%_36%,rgba(194,228,163,.26),transparent_55%),linear-gradient(145deg,#31583a,#24452f)] sm:rounded-[2.3rem]">
+                <div className="absolute left-[12%] top-[14%] h-24 w-24 rounded-full border border-white/10" />
+                <div className="absolute right-[9%] top-[23%] h-14 w-14 rounded-full border border-[#c9f097]/25" />
+                <div className="absolute bottom-[12%] left-[12%] h-px w-[76%] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+                <div className="absolute inset-[10%]">
+                  <LoyaltyIllustration />
+                </div>
+                <div className="absolute bottom-[8%] right-[8%] h-16 w-16 rounded-[1.35rem] bg-[#c9f097] shadow-[0_16px_32px_rgba(13,38,20,.18)] sm:h-20 sm:w-20 sm:rounded-[1.7rem]" />
+                <div className="absolute bottom-[12%] right-[12%] h-8 w-8 rounded-full border-[5px] border-[#31583a] sm:h-10 sm:w-10" />
+              </div>
             </div>
-          </Card>
-        </div>
-        <p className="mt-12 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#a2ada1]">
-          <ChartLineUp size={15} /> API mode · {import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000"}
-        </p>
+          </div>
+        </section>
       </div>
     </main>
   );
 }
 
-function BackendFallback() {
-  const { user } = useAuthSession();
-  return <Navigate to={user ? routeForRole(user.role) : "/login"} replace />;
-}
-
-function DemoWelcome() {
+function AdminOverview() {
   return (
-    <div className="min-h-[100dvh] bg-[#f7f8f4] px-4 py-10 sm:px-8 sm:py-16">
-      <div className="mx-auto max-w-6xl">
-        <Brand />
-        <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_.9fr]">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[.25em] text-[#81a57b]">
-              A more thoughtful way to shop
-            </p>
-            <h1 className="serif mt-5 max-w-2xl text-5xl leading-[1.04] tracking-[-.055em] text-[#264632] sm:text-7xl">
-              Loyalty that feels <span className="text-[#83a969]">personal.</span>
-            </h1>
-            <p className="mt-6 max-w-lg text-sm leading-7 text-[#738276]">
-              Một không gian thương mại đa cửa hàng, nơi mỗi điểm thưởng và trải nghiệm đều thuộc về đúng cửa
-              hàng bạn yêu thích.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild size="lg">
-                <Link to="/member/moc">
-                  Mở gian hàng Member <ArrowRight size={17} />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link to="/admin">Vào Admin</Link>
-              </Button>
-            </div>
-            <p className="mt-4 text-[11px] text-[#9aa69b]">
-              Demo mode · Không có thanh toán thật · Member-first responsive experience
-            </p>
-          </div>
-          <DemoWalletCard />
-        </div>
-        <div className="mt-16 grid gap-4 md:grid-cols-3">
-          <RoleCard
-            to="/admin"
-            icon={<ShieldCheck size={24} />}
-            title="Admin"
-            text="Duyệt Merchant và giám sát nền tảng."
-            tone="bg-[#e5efdf]"
-          />
-          <RoleCard
-            to="/merchant/moc"
-            icon={<Storefront size={24} />}
-            title="Merchant"
-            text="Quản lý cửa hàng, sản phẩm, loyalty và đơn hàng."
-            tone="bg-[#f6ebdc]"
-          />
-          <RoleCard
-            to="/member/moc"
-            icon={<UserCircle size={24} />}
-            title="Member"
-            text="Mua sắm, tích điểm và đổi phần thưởng."
-            tone="bg-[#e9e4f2]"
-          />
-        </div>
-        <div className="mt-7 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#a2ada1]">
-          <ChartLineUp size={15} /> Multi-merchant · Points scoped per store
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Brand() {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#335e3d] text-xl font-extrabold text-[#c9f097]">
-        L
-      </span>
-      <span className="text-2xl font-extrabold tracking-[-.06em] text-[#24452f]">
-        loyalty<span className="text-[#89b461]">.</span>
-      </span>
-      <span className="ml-1 rounded-full bg-[#e8f1e2] px-3 py-1.5 text-[10px] font-bold text-[#527353]">
-        COMMERCE PLATFORM
-      </span>
-    </div>
-  );
-}
-
-function RoleSummary({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
-  return (
-    <div className="flex items-start gap-3 rounded-xl bg-[#f5f7f2] p-4">
-      <span className="text-[#55775a]">{icon}</span>
-      <div>
-        <p className="text-sm font-bold">{title}</p>
-        <p className="mt-1 text-xs leading-5 muted">{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function DemoWalletCard() {
-  return (
-    <div className="relative">
-      <div className="member-gradient absolute inset-4 rotate-3 rounded-[2.5rem]" />
-      <Card className="relative overflow-hidden rounded-[2rem] p-5 sm:p-7">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold muted">YOUR LOYALTY WALLET</p>
-            <p className="mt-1 text-3xl font-extrabold text-[#294a32]">
-              540 <span className="text-base accent">pts</span>
-            </p>
-          </div>
-          <span className="rounded-full bg-[#e7f3dd] px-3 py-1.5 text-xs font-bold text-[#5a7f55]">
-            Silver
-          </span>
-        </div>
-        <div className="mt-5 h-2 rounded-full bg-[#edf2e8]">
-          <div className="h-full w-2/3 rounded-full bg-[#83aa6c]" />
-        </div>
-        <div className="mt-2 flex justify-between text-[10px] muted">
-          <span>Lifetime points</span>
-          <span>1,840 / 2,500</span>
-        </div>
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <div className="aspect-[1.25] rounded-2xl bg-[#f0f4ed] p-4">
-            <span className="text-xl">🏺</span>
-            <p className="mt-3 text-xs font-bold">Bình gốm Sớm Mai</p>
-            <p className="mt-1 text-xs accent">289.000đ</p>
-          </div>
-          <div className="aspect-[1.25] rounded-2xl bg-[#f7efe6] p-4">
-            <span className="text-xl">✦</span>
-            <p className="mt-3 text-xs font-bold">Voucher Mộc Studio</p>
-            <p className="mt-1 text-xs text-[#ad8151]">200 pts</p>
-          </div>
-        </div>
-        <div className="mt-4 flex items-center justify-between rounded-xl bg-[#2f583a] p-4 text-white">
-          <div>
-            <p className="text-[10px] text-white/60">NEXT REWARD</p>
-            <p className="mt-1 text-xs font-bold">A little gift for you</p>
-          </div>
-          <span className="text-xl text-[#cfefa5]">✧</span>
-        </div>
+    <>
+      <PageHeader title="Tổng quan" />
+      <Card className="p-6">
+        <p className="text-sm muted">Giám sát giao dịch chưa khả dụng.</p>
+        <Button asChild className="mt-5">
+          <Link to="/admin/applications">Mở hàng chờ duyệt</Link>
+        </Button>
       </Card>
-    </div>
+    </>
   );
 }
 
-function RoleCard({
-  to,
-  icon,
-  title,
-  text,
-  tone,
-}: {
-  to: string;
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-  tone: string;
-}) {
+function AdminMerchants() {
   return (
-    <Link to={to}>
-      <Card className="card-hover flex h-full items-start gap-4 p-5">
-        <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[#48694d] ${tone}`}>
-          {icon}
-        </span>
-        <span className="flex-1">
-          <span className="block font-extrabold text-[#2b4632]">{title}</span>
-          <span className="mt-1 block text-xs leading-5 muted">{text}</span>
-        </span>
-        <ArrowRight size={17} className="mt-1 muted" />
-      </Card>
-    </Link>
+    <>
+      <PageHeader title="Danh sách cửa hàng" />
+      <Card className="p-6 text-sm muted">Danh sách chưa khả dụng.</Card>
+    </>
   );
 }

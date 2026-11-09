@@ -1,52 +1,42 @@
-# Frontend
+# Loyalty Commerce Frontend
 
-React 19 + TypeScript + Vite 8, React Router và Tailwind CSS v4. UI dùng các component theo mẫu shadcn/ui, chia theo `app/`, `api/`, `layouts/` và `features/`.
+React 19, TypeScript, Vite 8, Tailwind CSS v4, React Router và các component dựa trên Radix/shadcn/ui. Ứng dụng chỉ gọi API thật của `apps/backend`; không seed hay hiển thị dữ liệu mẫu.
 
 ## Chạy local
 
-1. Cài Node.js >= 22.12.
-2. Chạy `npm install` và `npm run dev`.
-3. Mở `http://localhost:5173`.
+1. Cài Node.js >= 22.12 và chạy `npm install` trong `apps/frontend`.
+2. Chạy backend theo `apps/backend/README.md`, với `FRONTEND_ORIGIN=http://localhost:5173`.
+3. Đặt `VITE_API_BASE_URL=http://localhost:3000` trong `.env` nếu API chạy tại địa chỉ khác giá trị mặc định.
+4. Chạy `npm run dev`, mở `http://localhost:5173`.
 
-## Kết nối Backend Milestone 2
+Đăng ký Member/Merchant qua UI. Merchant chỉ đăng nhập sau khi Admin duyệt hồ sơ. Admin dùng tài khoản được tạo ở backend. JWT được lưu trong `sessionStorage` của tab và gửi bằng Bearer token.
 
-1. Chạy Backend theo hướng dẫn trong `apps/backend/README.md`, cấu hình `FRONTEND_ORIGIN=http://localhost:5173`, database và JWT secret.
-2. Sao chép `.env.example` thành `.env` (hoặc khai báo hai biến tương ứng trong shell):
-   - `VITE_API_MODE=http`
-   - `VITE_API_BASE_URL=http://localhost:3000`
-3. Khởi động lại Vite, rồi mở `http://localhost:5173`. Dùng Member/Merchant signup hoặc đăng nhập bằng tài khoản Admin đã seed ở BE.
+## Màn hình và API
 
-Trong HTTP mode, router chỉ hiển thị các màn M2 nối API thật. Màn commerce demo không thể truy cập ở mode này. Để dùng giao diện demo hiện tại, đặt `VITE_API_MODE=mock` hoặc bỏ biến mode.
+| Vai trò | Route | Nguồn dữ liệu hiện có |
+| --- | --- | --- |
+| Public | `/login`, `/register`, `/application/status` | Auth và trạng thái hồ sơ |
+| Admin | `/admin/applications` | Hàng chờ PENDING, approve/reject |
+| Admin | `/admin`, `/admin/merchants` | Tổng quan/danh sách chờ endpoint monitoring và directory |
+| Merchant | `/merchant`, `/merchant/store`, `/merchant/products`, `/merchant/loyalty` | Cửa hàng của owner, sản phẩm, cấu hình loyalty |
+| Merchant | `/merchant/vouchers` | CRUD mẫu voucher qua API Merchant |
+| Merchant | `/merchant/orders`, `/merchant/rewards` | Chờ API danh sách đơn và xác nhận trao thưởng |
+| Member | `/member` | Nhập Merchant ID vì chưa có directory công khai |
+| Member | `/member/:merchantId`, `product/:productId`, `cart`, `checkout` | Sản phẩm ACTIVE và tạo đơn một sản phẩm qua API |
+| Member | `/member/:merchantId/orders/:orderId` | Chỉ hiển thị response vừa tạo đơn; chưa có GET order |
+| Member | `/member/:merchantId/wallet` | Số dư, lifetime points, tier và lịch sử từ API ví |
+| Member | `/member/:merchantId/vouchers` | Danh mục và voucher sở hữu từ API; đổi điểm chờ endpoint redeem |
+| Member | `/member/:merchantId/rewards` | Quà sở hữu từ API; fulfillment chờ endpoint Merchant |
+| Member | `/member/:merchantId/orders` | Chờ API danh sách đơn |
 
-## Demo
+Checkout chỉ gọi `POST /api/orders` và dùng đúng response `PENDING`. UI không gọi endpoint `/pay` giả lập của backend. Trạng thái điểm, tier và voucher đọc từ API; FE chưa giả định việc đổi điểm hoặc xác nhận trao thưởng khi endpoint tương ứng chưa có.
 
-Ứng dụng hiện chạy bằng mock API (`src/api/mock.ts`) và hiển thị nhãn Demo/Mock API. Checkout tạo đơn `PENDING`; frontend không tự xác nhận thanh toán hoặc phát điểm. Điểm, tier và trạng thái đổi quà hiển thị theo response từ adapter mock.
+Schema tham chiếu: `apps/backend/prisma/schema.prisma`. DTO thật của API hiện tại nằm trong `src/api/contracts/milestone2.ts` và `src/api/commerce-types.ts`; transport nằm trong `src/api/milestone2-client.ts` và `src/api/commerce-http.ts`.
 
-Backend Milestone 2 hiện chỉ có đăng ký Member/Merchant, login JWT, Admin duyệt hồ sơ và Merchant lấy cửa hàng của mình. DTO và các path đó được khai báo riêng tại `src/api/contracts/milestone2.ts`; `src/api/milestone2-client.ts` cung cấp HTTP client có kiểu cho đúng các endpoint này và giữ nguyên thông báo lỗi `{error}` từ BE. HTTP mode có login/register thật, lưu session theo tab, điều hướng và guard theo role backend.
+## Rive tùy chọn
 
-Các luồng catalog, checkout, wallet, loyalty, voucher và fulfillment vẫn dùng mock cho tới khi endpoint backend tương ứng được triển khai. Không bật HTTP mode cho toàn bộ `CommerceApi` trong Milestone 2 vì API chưa cung cấp các phần này. Khi tích hợp auth, cần dùng token theo Bearer và backend vẫn là nơi chặn tài khoản chưa active/role sai.
-
-### Route chính (demo mode)
-
-- `/admin` — tổng quan, duyệt Merchant, danh sách cửa hàng.
-- `/merchant/moc` — quản trị cửa hàng, sản phẩm, đơn hàng, loyalty, voucher và trao quà.
-- `/member/moc` — storefront, giỏ hàng, checkout, ví, voucher, reward và đơn hàng.
-
-Member có thể chọn Merchant ở thanh đầu trang. Ví, tier và voucher được phân tách theo Merchant.
-
-### Rive (tùy chọn)
-
-Đặt file `.riv` đã tải và kiểm tra trong `public/rive/`, rồi khai báo `VITE_MEMBER_RIVE_SRC=/rive/your-file.riv` trong `.env`. Nếu không cấu hình, tải lỗi hoặc thiết bị bật reduced motion, giao diện dùng mascot tĩnh. Runtime Rive được lazy-load và chỉ dùng trong khu vực Member.
+Đặt file `.riv` tại `public/rive/` rồi khai báo `VITE_MEMBER_RIVE_SRC=/rive/your-file.riv`. Chỉ Member tải runtime Rive. Khi thiếu asset, tải lỗi hoặc bật reduced motion, UI dùng mascot tĩnh.
 
 ## Kiểm tra
 
-- `npm run typecheck`
-- `npm run build`
-- `npm test`
-- `npm run format:check`
-- `npm run test:e2e` — Playwright demo suite (cần Chromium; `npx playwright install chromium` nếu máy chưa có)
-- `npm run test:e2e:m2` — Playwright HTTP-mode suite, stub API contract responses
-
-Thiết kế đầy đủ M2 theo màn hình và endpoint nằm tại [docs/milestone-2-interface-plan.md](docs/milestone-2-interface-plan.md).
-
-`npm run build` tạo bản production trong `dist/`.
+`npm run typecheck`, `npm test`, `npm run build`. Playwright M2 dùng server API stub theo hợp đồng và không cần dữ liệu mẫu trong ứng dụng.
