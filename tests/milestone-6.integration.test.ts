@@ -8,7 +8,6 @@ process.env.PAYMENT_MODE = "vnpay";
 process.env.VNPAY_TMN_CODE = "TESTCODE";
 process.env.VNPAY_HASH_SECRET = "test-vnpay-hash-secret-long-enough";
 process.env.VNPAY_RETURN_URL = "https://merchant.example/api/payments/vnpay/return";
-process.env.VNPAY_IPN_URL = "https://merchant.example/api/payments/vnpay/ipn";
 
 const [{ app }, { prisma }, { signAccessToken }, { signVnpay }] = await Promise.all([
   import("../src/app.js"), import("../src/lib/prisma.js"), import("../src/lib/access-token.js"),
@@ -57,10 +56,11 @@ after(async () => {
   await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
   await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
   await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
   const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureUserIds } }, select: { id: true } });
   const merchantIds = merchants.map((item) => item.id);
+  await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
+  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
@@ -117,6 +117,7 @@ test("creates a server-priced sandbox URL and keeps status scoped to the member"
   assert.equal(url.searchParams.get("vnp_Amount"), "12000000");
   assert.equal(url.searchParams.get("vnp_TmnCode"), "TESTCODE");
   assert.equal(url.searchParams.get("vnp_TxnRef"), created.json.txnRef);
+  assert.equal(url.searchParams.has("vnp_IpnUrl"), false);
   assert.equal(url.searchParams.get("vnp_SecureHash"), signVnpay(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "vnp_SecureHash")), process.env.VNPAY_HASH_SECRET!));
   const repeated = await request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken);
   assert.equal(repeated.json.txnRef, created.json.txnRef);

@@ -38,7 +38,6 @@ export const paymentsService = {
       vnp_ReturnUrl: env.vnpay.returnUrl!,
       vnp_IpAddr: ipAddress || "127.0.0.1",
       vnp_CreateDate: vnpayDate(attempt.createdAt),
-      vnp_IpnUrl: env.vnpay.ipnUrl!,
     };
     const url = new URL(env.vnpay.paymentUrl);
     for (const [key, value] of Object.entries(params).sort(([a], [b]) => a.localeCompare(b, "en"))) {

@@ -16,16 +16,13 @@ const vnpay = {
   tmnCode: process.env.VNPAY_TMN_CODE,
   hashSecret: process.env.VNPAY_HASH_SECRET,
   returnUrl: process.env.VNPAY_RETURN_URL,
-  ipnUrl: process.env.VNPAY_IPN_URL,
 };
 if (paymentMode === "vnpay") {
   if (!vnpay.tmnCode || !/^[A-Za-z0-9]{8}$/.test(vnpay.tmnCode)) throw new Error("VNPAY_TMN_CODE must contain 8 alphanumeric characters");
   if (!vnpay.hashSecret || Buffer.byteLength(vnpay.hashSecret, "utf8") < 16) throw new Error("VNPAY_HASH_SECRET must contain at least 16 bytes");
-  for (const [name, value] of [["VNPAY_RETURN_URL", vnpay.returnUrl], ["VNPAY_IPN_URL", vnpay.ipnUrl]] as const) {
-    if (!value) throw new Error(`${name} is required when PAYMENT_MODE=vnpay`);
-    const parsed = new URL(value);
-    if (parsed.protocol !== "https:") throw new Error(`${name} must use HTTPS`);
-  }
+  if (!vnpay.returnUrl) throw new Error("VNPAY_RETURN_URL is required when PAYMENT_MODE=vnpay");
+  const returnUrl = new URL(vnpay.returnUrl);
+  if (returnUrl.protocol !== "https:") throw new Error("VNPAY_RETURN_URL must use HTTPS");
   const paymentUrl = new URL(vnpay.paymentUrl);
   if (paymentUrl.protocol !== "https:" || paymentUrl.hostname !== "sandbox.vnpayment.vn") {
     throw new Error("VNPAY_PAYMENT_URL must be the VNPay Sandbox HTTPS endpoint");

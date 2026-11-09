@@ -102,7 +102,7 @@ Gọi lại bước 9 với cùng đơn trả `409 ORDER_ALREADY_PAID`. Đơn gi
 
 ## Milestone 6 — VNPay Sandbox
 
-Mặc định `PAYMENT_MODE=mock`; route `POST /api/orders/:orderId/pay` xác nhận thanh toán giả lập. Khi bật `PAYMENT_MODE=vnpay`, cấu hình `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL` và `VNPAY_IPN_URL` trong `.env`. URL thanh toán bị giới hạn vào endpoint HTTPS Sandbox `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`; không dùng hash secret production trong cấu hình này.
+Mặc định `PAYMENT_MODE=mock`; route `POST /api/orders/:orderId/pay` xác nhận thanh toán giả lập. Khi bật `PAYMENT_MODE=vnpay`, cấu hình `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET` và `VNPAY_RETURN_URL` trong `.env`. URL thanh toán bị giới hạn vào endpoint HTTPS Sandbox `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`; không dùng hash secret production trong cấu hình này.
 
 Chạy `npx prisma migrate deploy` để tạo `PaymentAttempt`. Khai báo Return URL trong cấu hình `.env`, sau đó đăng nhập trang quản trị Sandbox và cấu hình IPN URL công khai trên HTTPS cho merchant/TmnCode tương ứng. IPN URL được cấu hình tại tài khoản VNPay; không gửi `vnp_IpnUrl` như một tham số thanh toán. Return URL chỉ đưa Member về trang kết quả, còn IPN có chữ ký HMAC-SHA512 mới quyết định PAID. Member khởi tạo thanh toán qua `POST /api/orders/:orderId/payments/vnpay`, giao diện đọc lại `GET /api/orders/:orderId/payment-status`. Thành công cần cả `vnp_ResponseCode=00` và `vnp_TransactionStatus=00`; trạng thái `01` giữ attempt mở để nhận kết quả hoàn tất sau đó, còn IPN lặp không phát điểm lần hai. Đơn tổng bằng 0 được hoàn tất trong backend mà không chuyển sang VNPay.
 
