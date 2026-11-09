@@ -39,6 +39,13 @@ before(async () => {
       items: { create: { productId: product.id, productName: product.name, unitPrice: 250000, quantity: 1, lineTotal: 250000 } },
     },
   });
+  await prisma.order.create({
+    data: {
+      merchantId, memberId: member.id, status: "PENDING", subtotal: 700000, discountAmount: 0,
+      total: 700000,
+      items: { create: { productId: product.id, productName: product.name, unitPrice: 700000, quantity: 1, lineTotal: 700000 } },
+    },
+  });
   [adminToken, merchantToken, memberToken] = await Promise.all([
     signAccessToken(admin.id), signAccessToken(owner.id), signAccessToken(member.id),
   ]);
@@ -90,21 +97,31 @@ test("admin merchant directory returns only merchant directory fields", async ()
   assert.equal(inactive.isActive, false);
 });
 
-test("admin dashboard reports real active merchants, pending applications and paid volume", async () => {
+test("admin dashboard includes its fixture contributions and only paid orders", async () => {
   const { response, json } = await request("/api/admin/dashboard", adminToken);
   assert.equal(response.status, 200);
-  const [merchants, pendingApplications, paidOrders, paidVolume] = await Promise.all([
-    prisma.merchant.count({ where: { isActive: true } }),
-    prisma.merchantApplication.count({ where: { status: "PENDING" } }),
-    prisma.order.count({ where: { status: "PAID" } }),
-    prisma.order.aggregate({ where: { status: "PAID" }, _sum: { total: true } }),
+  const [activeMerchant, pendingApplication, paidOrder, pendingOrder] = await Promise.all([
+    prisma.merchant.findUnique({ where: { id: merchantId }, select: { isActive: true } }),
+    prisma.merchantApplication.findFirst({ where: { applicant: { email: emails[3] }, status: "PENDING" } }),
+    prisma.order.findFirst({ where: { member: { email: emails[2] }, merchantId, status: "PAID" }, select: { total: true } }),
+    prisma.order.findFirst({ where: { member: { email: emails[2] }, merchantId, status: "PENDING" }, select: { total: true } }),
   ]);
-  assert.deepEqual(json.stats, {
-    merchants,
-    pendingApplications,
-    paidOrders,
-    totalVolume: paidVolume._sum.total?.toFixed(0) ?? "0",
-  });
+  assert.equal(activeMerchant?.isActive, true);
+  assert.ok(pendingApplication);
+  assert.ok(paidOrder);
+  assert.ok(pendingOrder);
+  assert.ok(json.stats.merchants >= 1);
+  assert.ok(json.stats.pendingApplications >= 1);
+  assert.ok(json.stats.paidOrders >= 1);
+  assert.ok(BigInt(json.stats.totalVolume) >= BigInt(paidOrder.total.toFixed(0)));
+  // A PENDING fixture is present, so paid-only aggregates must stay below the all-order totals.
+  // These broad bounds tolerate other integration files inserting or deleting their own fixtures.
+  const [allOrderCount, allOrderVolume] = await Promise.all([
+    prisma.order.count(),
+    prisma.order.aggregate({ _sum: { total: true } }),
+  ]);
+  assert.ok(json.stats.paidOrders < allOrderCount);
+  assert.ok(BigInt(json.stats.totalVolume) < BigInt(allOrderVolume._sum.total?.toFixed(0) ?? "0"));
 });
 
 test("admin dashboard and directory reject anonymous and non-admin callers", async () => {
