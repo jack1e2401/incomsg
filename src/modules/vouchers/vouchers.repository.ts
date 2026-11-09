@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 import type { DefinitionDto, DefinitionInput, DefinitionPatch, MemberVoucherDto } from "./vouchers.types.js";
+import { snapshotVoucherTerms } from "./vouchers.snapshot.js";
 
 type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{}>;
 type OwnedVoucherRecord = Prisma.MemberVoucherGetPayload<{ include: { membership: true; definition: true } }>;
@@ -10,7 +11,7 @@ function toDefinitionDto(item: DefinitionRecord): DefinitionDto {
   return { id: item.id, merchantId: item.merchantId, type: item.type, title: item.title, pointsCost: item.pointsCost, discountAmount: item.discountAmount?.toFixed(0) ?? null, rewardDescription: item.rewardDescription, isActive: item.isActive };
 }
 function toMemberVoucherDto(item: OwnedVoucherRecord): MemberVoucherDto {
-  return { id: item.id, definitionId: item.definitionId, merchantId: item.membership.merchantId, memberId: item.membership.memberId, title: item.definition.title, type: item.definition.type, status: item.status, pointsCost: item.definition.pointsCost, discountAmount: item.definition.discountAmount?.toFixed(0) ?? null, rewardDescription: item.definition.rewardDescription, redeemedAt: item.redeemedAt.toISOString(), usedAt: item.usedAt?.toISOString() ?? null };
+  return { id: item.id, definitionId: item.definitionId, merchantId: item.membership.merchantId, memberId: item.membership.memberId, title: item.snapshotTitle, type: item.snapshotType, status: item.status, pointsCost: item.snapshotPointsCost, discountAmount: item.snapshotDiscountAmount?.toFixed(0) ?? null, rewardDescription: item.snapshotRewardDescription, redeemedAt: item.redeemedAt.toISOString(), usedAt: item.usedAt?.toISOString() ?? null };
 }
 
 export const vouchersRepository = {
@@ -60,14 +61,25 @@ export const vouchersRepository = {
       if (!debit.count) throw new HttpError(409, "INSUFFICIENT_POINTS");
       const [updatedWallet, voucher] = await Promise.all([
         tx.loyaltyWallet.findUniqueOrThrow({ where: { id: wallet.id } }),
-        tx.memberVoucher.create({ data: { membershipId: membership.id, definitionId: definition.id } }),
+        tx.memberVoucher.create({ data: {
+          membershipId: membership.id,
+          definitionId: definition.id,
+          ...snapshotVoucherTerms({
+            type: definition.type,
+            title: definition.title,
+            pointsCost: definition.pointsCost,
+            discountAmount: definition.discountAmount?.toFixed(0) ?? null,
+            rewardDescription: definition.rewardDescription,
+          }),
+          snapshotDiscountAmount: definition.discountAmount,
+        } }),
       ]);
       await tx.pointTransaction.create({ data: {
         walletId: wallet.id,
-        type: definition.type === "DISCOUNT" ? "REDEEM_DISCOUNT" : "REDEEM_REWARD",
-        delta: -definition.pointsCost,
+        type: voucher.snapshotType === "DISCOUNT" ? "REDEEM_DISCOUNT" : "REDEEM_REWARD",
+        delta: -voucher.snapshotPointsCost,
         balanceAfter: updatedWallet.availablePoints,
-        reason: `Redeemed ${definition.title}`,
+        reason: `Redeemed ${voucher.snapshotTitle}`,
         memberVoucherId: voucher.id,
       } });
       const fullVoucher = await tx.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id }, include: { membership: true, definition: true } });
@@ -76,7 +88,7 @@ export const vouchersRepository = {
   },
   async listRewardFulfillments(merchantId: number): Promise<MemberVoucherDto[]> {
     const records = await prisma.memberVoucher.findMany({
-      where: { membership: { merchantId }, definition: { type: "REWARD" }, status: "AVAILABLE" },
+      where: { membership: { merchantId }, snapshotType: "REWARD", status: "AVAILABLE" },
       include: { membership: true, definition: true },
       orderBy: [{ redeemedAt: "asc" }, { id: "asc" }],
     });
@@ -85,7 +97,7 @@ export const vouchersRepository = {
   async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<MemberVoucherDto | "missing" | "already_fulfilled"> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const voucher = await tx.memberVoucher.findFirst({
-        where: { id: memberVoucherId, membership: { merchantId }, definition: { type: "REWARD" } },
+        where: { id: memberVoucherId, membership: { merchantId }, snapshotType: "REWARD" },
         include: { membership: true, definition: true },
       });
       if (!voucher) return "missing";

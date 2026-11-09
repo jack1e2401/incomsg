@@ -242,17 +242,22 @@ model VoucherDefinition {
 }
 
 model MemberVoucher {
-  id               Int                 @id @default(autoincrement())
-  membershipId     Int
-  definitionId     Int
-  status           MemberVoucherStatus @default(AVAILABLE)
-  redeemedAt       DateTime            @default(now())
-  usedAt           DateTime?
-  membership       MerchantMembership  @relation(fields: [membershipId], references: [id])
-  definition       VoucherDefinition   @relation(fields: [definitionId], references: [id])
-  appliedOrder     Order?              @relation("AppliedVoucher")
-  pointTransaction PointTransaction?
-  fulfillment      RewardFulfillment?
+  id                        Int                 @id @default(autoincrement())
+  membershipId              Int
+  definitionId              Int
+  snapshotType              VoucherType
+  snapshotTitle             String              @db.VarChar(191)
+  snapshotPointsCost        Int
+  snapshotDiscountAmount    Decimal?            @db.Decimal(15, 0)
+  snapshotRewardDescription String?             @db.Text
+  status                    MemberVoucherStatus @default(AVAILABLE)
+  redeemedAt                DateTime            @default(now())
+  usedAt                    DateTime?
+  membership                MerchantMembership  @relation(fields: [membershipId], references: [id])
+  definition                VoucherDefinition   @relation(fields: [definitionId], references: [id])
+  appliedOrder              Order?              @relation("AppliedVoucher")
+  pointTransaction          PointTransaction?
+  fulfillment               RewardFulfillment?
 
   @@index([membershipId, status])
   @@index([definitionId])
