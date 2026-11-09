@@ -15,7 +15,6 @@ import { useApi } from "../../api/client";
 import { useResource } from "../../api/useResource";
 import type { LoyaltyConfig, Product, VoucherDefinition } from "../../api/types";
 import {
-  Badge,
   Button,
   BusyLabel,
   Card,
@@ -27,6 +26,7 @@ import {
   PageHeader,
   Select,
   StatCard,
+  StatusText,
   Textarea,
 } from "../../components/ui";
 import { money, number, shortDate } from "../../lib/utils";
@@ -40,17 +40,26 @@ export function MerchantOverview() {
   const products = useResource(() => api.listProducts(id), [id]);
   const orders = useResource(() => api.listOrders(id), [id]);
   const rewards = useResource(() => api.listRewardFulfillments(id), [id]);
-  if (merchant.loading || products.loading || orders.loading || rewards.loading)
+  const loyalty = useResource(() => api.getLoyaltyConfig(id), [id]);
+  if (merchant.loading || products.loading || orders.loading || rewards.loading || loyalty.loading)
     return <LoadingState cards={4} />;
-  if (merchant.error || products.error || orders.error || rewards.error)
+  if (merchant.error || products.error || orders.error || rewards.error || loyalty.error)
     return (
       <ErrorState
-        message={merchant.error ?? products.error ?? orders.error ?? rewards.error ?? "Lỗi tải dữ liệu"}
+        message={
+          merchant.error ??
+          products.error ??
+          orders.error ??
+          rewards.error ??
+          loyalty.error ??
+          "Lỗi tải dữ liệu"
+        }
         retry={() => {
           merchant.reload();
           products.reload();
           orders.reload();
           rewards.reload();
+          loyalty.reload();
         }}
       />
     );
@@ -58,9 +67,7 @@ export function MerchantOverview() {
   return (
     <>
       <PageHeader
-        eyebrow="Merchant workspace"
-        title={`Chào mừng đến ${merchant.data?.name}`}
-        description="Quản lý cửa hàng và theo dõi chương trình khách hàng thân thiết ở một nơi."
+        title={merchant.data?.name ?? "Cửa hàng"}
         action={
           <Button asChild>
             <Link to={`/member/${id}`}>
@@ -74,7 +81,6 @@ export function MerchantOverview() {
           label="Doanh số đã thanh toán"
           value={money(paid.reduce((n, o) => n + o.total, 0))}
           icon={<TrendUp size={20} />}
-          note="Chỉ từ đơn PAID"
         />
         <StatCard
           label="Đơn hàng"
@@ -86,13 +92,11 @@ export function MerchantOverview() {
           label="Sản phẩm"
           value={products.data?.filter((p) => p.active).length ?? 0}
           icon={<Package size={20} />}
-          note="Đang hiển thị"
         />
         <StatCard
           label="Quà chờ trao"
           value={rewards.data?.filter((r) => r.status === "PENDING_FULFILLMENT").length ?? 0}
           icon={<Gift size={20} />}
-          note="Cần Merchant xác nhận"
         />
       </div>
       <div className="mt-7 grid gap-5 xl:grid-cols-[1.35fr_.85fr]">
@@ -120,9 +124,9 @@ export function MerchantOverview() {
                     </p>
                   </div>
                   <p className="text-sm font-extrabold">{money(o.total)}</p>
-                  <Badge tone={o.status === "PAID" ? "green" : "amber"}>
-                    {o.status === "PAID" ? "PAID" : "PENDING"}
-                  </Badge>
+                  <StatusText tone={o.status === "PAID" ? "green" : "amber"}>
+                    {o.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
+                  </StatusText>
                 </div>
               ))}
             </div>
@@ -130,23 +134,29 @@ export function MerchantOverview() {
             <EmptyState title="Chưa có đơn hàng" description="Đơn mới sẽ xuất hiện tại đây." />
           )}
         </Card>
-        <Card className="overflow-hidden">
-          <div className="member-gradient p-7">
-            <span className="inline-flex rounded-full bg-white/65 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#5b8657]">
-              Loyalty program
-            </span>
-            <h2 className="serif mt-5 text-[2rem] leading-tight text-[#2f5138]">
-              Khách quay lại, niềm vui ở lại.
-            </h2>
-            <p className="mt-3 text-xs leading-6 text-[#627665]">
-              Thiết lập tier, điểm thưởng và voucher để mỗi lần mua sắm đều đáng nhớ.
-            </p>
-            <Button asChild className="mt-6">
-              <Link to={`/merchant/${id}/loyalty`}>
-                Cấu hình loyalty <ArrowRight size={16} />
-              </Link>
-            </Button>
+        <Card className="h-fit p-6 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-extrabold">Hạng thành viên</h2>
+              <p className="mt-1 text-sm muted">1 điểm cơ bản mỗi {number(loyalty.data!.baseAmount)} ₫</p>
+            </div>
+            <Medal size={23} weight="light" className="shrink-0 text-[#5d8055]" />
           </div>
+          <div className="mt-5 divide-y divide-[#edf1ea]">
+            {loyalty.data!.tiers.map((tier) => (
+              <div key={tier.tier} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <span className="font-semibold">{tier.tier}</span>
+                <span className="text-right text-xs muted">
+                  {number(tier.threshold)} điểm · ×{tier.multiplier}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Button asChild variant="outline" className="mt-4 w-full">
+            <Link to={`/merchant/${id}/loyalty`}>
+              Cấu hình điểm <ArrowRight size={16} />
+            </Link>
+          </Button>
         </Card>
       </div>
     </>
@@ -185,11 +195,7 @@ export function MerchantStore() {
   }
   return (
     <>
-      <PageHeader
-        eyebrow="Cửa hàng / Hồ sơ"
-        title="Thông tin cửa hàng"
-        description="Giới thiệu cửa hàng của bạn với Member."
-      />
+      <PageHeader title="Thông tin cửa hàng" description="Giới thiệu cửa hàng của bạn với Member." />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -241,9 +247,9 @@ export function MerchantStore() {
               <h2 className="mt-4 text-xl font-extrabold">{form.name}</h2>
               <p className="mt-1 text-sm muted">{form.tagline}</p>
               <p className="mt-5 text-xs leading-6 muted">{form.description}</p>
-              <Badge tone="green" className="mt-5">
+              <StatusText tone="green" className="mt-5">
                 Cửa hàng đang hoạt động
-              </Badge>
+              </StatusText>
             </div>
           </Card>
         </div>
@@ -315,7 +321,6 @@ export function MerchantProducts() {
   return (
     <>
       <PageHeader
-        eyebrow="Cửa hàng / Danh mục"
         title="Sản phẩm"
         description="Tạo, chỉnh sửa và ẩn sản phẩm trong gian hàng của bạn."
         action={
@@ -430,7 +435,9 @@ export function MerchantProducts() {
                     <td className="p-5 font-bold">{money(p.price)}</td>
                     <td className="p-5">{p.stock}</td>
                     <td className="p-5">
-                      <Badge tone={p.active ? "green" : "neutral"}>{p.active ? "Hiển thị" : "Đã ẩn"}</Badge>
+                      <StatusText tone={p.active ? "green" : "neutral"}>
+                        {p.active ? "Hiển thị" : "Đã ẩn"}
+                      </StatusText>
                     </td>
                     <td className="p-5">
                       <div className="flex gap-2">
@@ -462,9 +469,8 @@ export function MerchantOrders() {
   return (
     <>
       <PageHeader
-        eyebrow="Cửa hàng / Giao dịch"
         title="Đơn hàng"
-        description="Theo dõi đơn. Trạng thái thanh toán và điểm thưởng chỉ đến từ API."
+        description="Lọc theo trạng thái thanh toán."
         action={
           <Select
             className="w-44"
@@ -494,9 +500,9 @@ export function MerchantOrders() {
                   </p>
                   <h2 className="mt-1 text-lg font-extrabold">Đơn {o.id}</h2>
                 </div>
-                <Badge tone={o.status === "PAID" ? "green" : "amber"}>
+                <StatusText tone={o.status === "PAID" ? "green" : "amber"}>
                   {o.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
-                </Badge>
+                </StatusText>
               </div>
               <div className="mt-5 border-y border-[#edf1ea] py-3">
                 {o.items.map((i) => (
@@ -555,7 +561,6 @@ export function MerchantLoyalty() {
     return (
       <>
         <PageHeader
-          eyebrow="Loyalty / Cấu hình"
           title="Chương trình tích điểm"
           description="Tier dựa trên tổng điểm từng kiếm được. Tiêu điểm không làm giảm tier."
         />
@@ -566,7 +571,6 @@ export function MerchantLoyalty() {
     return (
       <>
         <PageHeader
-          eyebrow="Loyalty / Cấu hình"
           title="Chương trình tích điểm"
           description="Tier dựa trên tổng điểm từng kiếm được. Tiêu điểm không làm giảm tier."
         />
@@ -577,7 +581,6 @@ export function MerchantLoyalty() {
   return (
     <>
       <PageHeader
-        eyebrow="Loyalty / Cấu hình"
         title="Chương trình tích điểm"
         description="Tier dựa trên tổng điểm từng kiếm được. Tiêu điểm không làm giảm tier."
       />
@@ -603,11 +606,11 @@ export function MerchantLoyalty() {
                   key={t.tier}
                   className="grid grid-cols-[1fr_1fr_1fr] items-center gap-3 border-t border-[#edf1ea] py-3"
                 >
-                  <Badge
+                  <StatusText
                     tone={index === 0 ? "neutral" : index === 1 ? "green" : index === 2 ? "amber" : "purple"}
                   >
                     {t.tier}
-                  </Badge>
+                  </StatusText>
                   <Input
                     aria-label={`Ngưỡng ${t.tier}`}
                     type="number"
@@ -652,15 +655,11 @@ export function MerchantLoyalty() {
         </Card>
         <Card className="h-fit bg-[#2e5539] p-7 text-white">
           <Medal size={31} weight="light" className="text-[#c8ea9f]" />
-          <h2 className="serif mt-5 text-3xl">Mỗi điểm đều có ý nghĩa.</h2>
-          <p className="mt-4 text-xs leading-6 text-white/70">
-            Member mới là Unranked. Lần mua PAID đầu tiên tính theo hệ số Bronze; tier sau đó được xác định
-            bằng lifetime earned points.
-          </p>
-          <div className="mt-6 rounded-2xl bg-white/10 p-4 text-xs leading-6 text-white/75">
-            Sử dụng điểm để đổi voucher hoặc quà không làm giảm tier. Giao dịch đã hoàn tất không bị tính lại
-            khi đổi cấu hình.
-          </div>
+          <h2 className="mt-5 text-lg font-bold">Quy tắc tính hạng</h2>
+          <ul className="mt-4 space-y-3 text-sm leading-6 text-white/75">
+            <li>Đơn đã thanh toán đầu tiên áp dụng hệ số Bronze.</li>
+            <li>Hạng tính theo tổng điểm đã tích lũy; tiêu điểm không làm giảm hạng.</li>
+          </ul>
         </Card>
       </div>
     </>
@@ -732,7 +731,6 @@ export function MerchantVouchers() {
   return (
     <>
       <PageHeader
-        eyebrow="Loyalty / Ưu đãi"
         title="Voucher & quà tặng"
         description="Thiết kế quyền lợi để Member đổi bằng điểm trong cửa hàng của bạn."
         action={
@@ -825,7 +823,9 @@ export function MerchantVouchers() {
                     <Gift size={23} weight="light" />
                   )}
                 </span>
-                <Badge tone={v.active ? "green" : "neutral"}>{v.active ? "Đang bật" : "Đã tắt"}</Badge>
+                <StatusText tone={v.active ? "green" : "neutral"}>
+                  {v.active ? "Đang bật" : "Đã tắt"}
+                </StatusText>
               </div>
               <h2 className="mt-5 text-lg font-extrabold">{v.title}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 muted">{v.description}</p>
@@ -873,7 +873,6 @@ export function MerchantRewards() {
   return (
     <>
       <PageHeader
-        eyebrow="Loyalty / Fulfillment"
         title="Trao thưởng"
         description="Chỉ xác nhận sau khi Merchant đã trao quà thực tế cho Member."
       />
@@ -899,16 +898,13 @@ export function MerchantRewards() {
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#f3ebdf] text-[#a27646]">
                   <Gift size={23} />
                 </span>
-                <Badge tone={v.status === "FULFILLED" ? "green" : "amber"}>
+                <StatusText tone={v.status === "FULFILLED" ? "green" : "amber"}>
                   {v.status === "FULFILLED" ? "Đã trao quà" : "Chờ trao quà"}
-                </Badge>
+                </StatusText>
               </div>
               <h2 className="mt-5 text-lg font-extrabold">{v.title}</h2>
               <p className="mt-1 text-xs muted">
                 Mã {v.id} · Đổi ngày {shortDate(v.issuedAt)}
-              </p>
-              <p className="mt-4 text-xs leading-6 muted">
-                Member đã đổi điểm lấy quyền nhận quà. Việc xác nhận trao quà phải dựa vào kết quả API.
               </p>
               {v.status === "PENDING_FULFILLMENT" && (
                 <Button className="mt-5" disabled={!!busy} onClick={() => fulfill(v.id)}>

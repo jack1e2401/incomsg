@@ -7,7 +7,7 @@ export default defineConfig({
   use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:5195" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5195 --strictPort",
+    command: `"${process.execPath}" node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5195 --strictPort`,
     url: "http://127.0.0.1:5195",
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

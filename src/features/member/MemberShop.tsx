@@ -3,10 +3,10 @@ import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom
 import {
   ArrowLeft,
   ArrowRight,
+  ImageSquare,
   Minus,
   Plus,
   ShoppingCart,
-  Sparkle,
   Ticket,
   Trash,
 } from "@phosphor-icons/react";
@@ -14,7 +14,6 @@ import { useApi } from "../../api/client";
 import { useResource } from "../../api/useResource";
 import type { Product } from "../../api/types";
 import {
-  Badge,
   Button,
   BusyLabel,
   Card,
@@ -39,11 +38,13 @@ function ProductCard({ product, add }: { product: Product; add: () => void }) {
             className="h-full w-full object-cover transition-transform duration-700 ease-[cubic-bezier(.32,.72,0,1)] group-hover:scale-105"
           />
         ) : (
-          <div className="grid h-full place-items-center text-5xl">✦</div>
+          <div className="grid h-full place-items-center text-[#9dad99]">
+            <ImageSquare size={34} weight="light" aria-hidden="true" />
+          </div>
         )}
       </Link>
       <div className="p-5">
-        <p className="text-[10px] font-bold uppercase tracking-[.17em] text-[#86a184]">{product.category}</p>
+        <p className="text-[11px] font-semibold text-[#6b826b]">{product.category}</p>
         <Link
           to={`product/${product.id}`}
           className="mt-2 block text-base font-extrabold text-[#294432] hover:text-[#5b8059]"
@@ -78,9 +79,7 @@ export function MemberStorefront() {
     <>
       <section className="member-gradient relative overflow-hidden rounded-[2rem] px-6 py-9 sm:px-10 sm:py-12 lg:min-h-[330px]">
         <div className="relative z-1 max-w-[630px]">
-          <Badge tone="green" className="bg-white/70">
-            ✦ {merchant.category}
-          </Badge>
+          <p className="text-xs font-semibold tracking-wide text-[#527b56]">{merchant.category}</p>
           <h1 className="serif mt-5 max-w-[580px] text-[2.6rem] leading-[1.05] tracking-[-.045em] text-[#2b4f36] sm:text-[3.4rem]">
             {merchant.tagline}
           </h1>
@@ -103,29 +102,6 @@ export function MemberStorefront() {
         </div>
         <div className="pointer-events-none absolute -right-20 -top-20 h-70 w-70 rounded-full bg-white/25 blur-3xl" />
       </section>
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <Card className="flex items-center gap-3 p-4">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#e8f1e2] text-xl">✦</span>
-          <div>
-            <p className="text-xs font-bold">Tích điểm mỗi đơn</p>
-            <p className="text-[11px] muted">Sau khi thanh toán thành công</p>
-          </div>
-        </Card>
-        <Card className="flex items-center gap-3 p-4">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#f6e9dd] text-xl">♡</span>
-          <div>
-            <p className="text-xs font-bold">Nâng hạng theo thời gian</p>
-            <p className="text-[11px] muted">Tier riêng cho từng cửa hàng</p>
-          </div>
-        </Card>
-        <Card className="flex items-center gap-3 p-4">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#ede9f7] text-xl">✧</span>
-          <div>
-            <p className="text-xs font-bold">Đổi điểm lấy quà</p>
-            <p className="text-[11px] muted">Voucher và reward hấp dẫn</p>
-          </div>
-        </Card>
-      </div>
       <section id="products" className="scroll-mt-28 pt-11">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -205,9 +181,7 @@ export function MemberProduct() {
               )}
             </div>
             <div className="flex flex-col justify-center">
-              <Badge tone="green" className="w-fit">
-                {product.category}
-              </Badge>
+              <p className="text-xs font-semibold text-[#527b56]">{product.category}</p>
               <h1 className="serif mt-5 text-4xl leading-tight text-[#294432] sm:text-5xl">{product.name}</h1>
               <p className="mt-4 text-2xl font-extrabold accent">{money(product.price)}</p>
               <p className="mt-7 text-sm leading-8 muted">{product.description}</p>
@@ -240,11 +214,7 @@ export function MemberCart() {
   const subtotal = items.reduce((n, i) => n + (i.product?.price ?? 0) * i.quantity, 0);
   return (
     <>
-      <PageHeader
-        eyebrow="Member / Giỏ hàng"
-        title="Giỏ hàng của bạn"
-        description={`Sản phẩm tại ${merchant.name}. Mỗi đơn chỉ thuộc một Merchant.`}
-      />
+      <PageHeader title={`Giỏ hàng · ${merchant.name}`} />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -274,9 +244,7 @@ export function MemberCart() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-bold uppercase tracking-wider muted">
-                        {product.category}
-                      </p>
+                      <p className="text-[10px] font-semibold muted">{product.category}</p>
                       <h2 className="mt-1 text-sm font-extrabold">{product.name}</h2>
                       <p className="mt-2 text-sm font-bold accent">{money(product.price)}</p>
                       <div className="mt-3 flex items-center gap-3">
@@ -318,9 +286,6 @@ export function MemberCart() {
               <span className="muted">Tạm tính</span>
               <span className="font-bold">{money(subtotal)}</span>
             </div>
-            <p className="mt-3 text-xs leading-5 muted">
-              Voucher và tổng thanh toán sẽ được backend xác nhận ở bước checkout.
-            </p>
             <div className="mt-5 border-t border-[#edf1ea] pt-5">
               <Button asChild className="w-full">
                 <Link to={`/member/${merchant.id}/checkout`}>
@@ -367,11 +332,7 @@ export function MemberCheckout() {
   }
   return (
     <>
-      <PageHeader
-        eyebrow="Member / Checkout"
-        title="Xác nhận đơn hàng"
-        description="Đơn sẽ ở trạng thái PENDING. Chỉ backend mới xác nhận thanh toán và phát điểm."
-      />
+      <PageHeader title="Xác nhận đơn hàng" />
       {products.loading || vouchers.loading ? (
         <LoadingState cards={2} />
       ) : products.error || vouchers.error ? (
@@ -437,9 +398,7 @@ export function MemberCheckout() {
                     </option>
                   ))}
               </Select>
-              <p className="mt-3 text-xs leading-5 muted">
-                Chỉ voucher của {merchant.name} mới dùng được. Voucher được đánh dấu Used khi đơn PAID.
-              </p>
+              <p className="mt-3 text-xs leading-5 muted">Chỉ dùng voucher tại {merchant.name}.</p>
             </Card>
           </div>
           <Card className="h-fit p-6">
@@ -449,12 +408,6 @@ export function MemberCheckout() {
               <span className="font-bold">
                 {money(items.reduce((n, i) => n + (i.product?.price ?? 0) * i.quantity, 0))}
               </span>
-            </div>
-            <p className="mt-3 text-xs leading-6 muted">
-              Giảm giá và tổng cuối cùng sẽ được trả về từ API khi tạo đơn. Chưa có thanh toán thật trong MVP.
-            </p>
-            <div className="mt-5 rounded-xl bg-[#fff4de] p-4 text-xs leading-6 text-[#8a6c3f]">
-              <ClockIcon /> Đơn được tạo sẽ ở trạng thái chờ. Không phát điểm hoặc nâng tier tại bước này.
             </div>
             {error && (
               <p role="alert" className="mt-4 rounded-xl bg-[#fae7e3] p-3 text-xs text-[#a4473a]">
@@ -466,7 +419,7 @@ export function MemberCheckout() {
                 <BusyLabel>Đang tạo đơn</BusyLabel>
               ) : (
                 <>
-                  Tạo đơn chờ thanh toán <ArrowRight size={16} />
+                  Tạo đơn <ArrowRight size={16} />
                 </>
               )}
             </Button>
@@ -475,8 +428,4 @@ export function MemberCheckout() {
       )}
     </>
   );
-}
-
-function ClockIcon() {
-  return <Sparkle size={15} className="mr-1 inline" />;
 }

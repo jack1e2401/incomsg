@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("landing keeps the entry flow clear and protects the Admin URL", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Mỗi cửa hàng/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Mua ở nơi bạn yêu/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Gốm thủ công trong một cửa hàng độc lập" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Đăng nhập" })).toHaveAttribute("href", "/login");
   await expect(page.getByRole("link", { name: "Tạo tài khoản" })).toHaveAttribute("href", "/register");
   await expect(page.getByRole("link", { name: "Trạng thái hồ sơ" })).toHaveAttribute(
@@ -260,12 +261,12 @@ test("Admin reviews applications through authenticated endpoints", async ({ page
   await page.getByLabel("Email").fill("admin@test.local");
   await page.getByLabel("Mật khẩu").fill("seeded-admin-password");
   await page.getByRole("button", { name: "Đăng nhập" }).click();
-  await expect(page.getByText("Nhà Mây", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nhà Mây", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Duyệt", exact: false }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận duyệt" }).click();
 
-  await expect(page.getByText("Đã duyệt", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Đã duyệt Nhà Mây");
   expect(approvalAuthorization).toBe("Bearer signed-admin-token");
 });
 
@@ -321,7 +322,7 @@ test("Admin confirms rejection in an in-app dialog before sending the API reques
   await page.getByLabel("Email").fill("admin@test.local");
   await page.getByLabel("Mật khẩu").fill("seeded-admin-password");
   await page.getByRole("button", { name: "Đăng nhập" }).click();
-  await expect(page.getByText("Gốm Mây", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Gốm Mây", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Từ chối", exact: false }).click();
 
   const dialog = page.getByRole("dialog");
@@ -329,7 +330,7 @@ test("Admin confirms rejection in an in-app dialog before sending the API reques
   await expect(dialog).toContainText("sẽ khóa tài khoản Merchant");
   await page.getByRole("button", { name: "Xác nhận từ chối" }).click();
 
-  await expect(page.getByText("Đã từ chối", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Đã từ chối Gốm Mây");
   expect(rejectionAuthorization).toBe("Bearer signed-admin-token");
 });
 

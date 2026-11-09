@@ -74,6 +74,7 @@ export function MerchantOverview() {
     <>
       <PageHeader
         title={merchant.name}
+        description={`Mã cửa hàng #${merchant.id}`}
         action={
           <Button asChild>
             <Link to="/merchant/products">
@@ -91,10 +92,6 @@ export function MerchantOverview() {
         />
         <StatCard label="Trạng thái cửa hàng" value={merchant.isActive ? "Hoạt động" : "Không hoạt động"} />
       </div>
-      <Card className="mt-5 p-6">
-        <h2 className="font-bold">Thông tin cửa hàng</h2>
-        <p className="mt-2 text-sm muted">Mã cửa hàng: #{merchant.id}</p>
-      </Card>
     </>
   );
 }
@@ -355,10 +352,7 @@ export function MerchantOrders() {
   const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
   return (
     <>
-      <PageHeader
-        title="Đơn hàng"
-        description="Đơn hàng thuộc cửa hàng của bạn, với trạng thái từ backend."
-      />
+      <PageHeader title="Đơn hàng" description="Lọc và theo dõi trạng thái đơn hàng." />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -380,7 +374,6 @@ export function MerchantOrders() {
                   </StatusText>
                 </div>
                 <p className="mt-2 text-xs muted">
-                  Member #{order.memberId} ·{" "}
                   {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
                 </p>
                 {order.paidAt && (

@@ -65,9 +65,6 @@ export function MemberLayout() {
   ];
   return (
     <div className="min-h-[100dvh] bg-[#fcfcf8] pb-20 lg:pb-0">
-      <div className="bg-[#24452f] px-4 py-2 text-center text-[10px] font-semibold tracking-wide text-[#e6f3d8]">
-        BẢN DEMO · Dữ liệu từ mock API · Thanh toán chỉ tạo đơn chờ xử lý
-      </div>
       <header className="sticky top-0 z-10 border-b border-[#e9eee7] bg-[#fcfcf8]/95 backdrop-blur-xl">
         <div className="mx-auto flex h-17 max-w-[1320px] items-center justify-between gap-4 px-4 sm:px-8 lg:h-20">
           <Link to="/" className="flex items-center gap-2">
@@ -113,9 +110,6 @@ export function MemberLayout() {
               </NavLink>
             ))}
           </nav>
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-[#f2dfcb] text-xs font-extrabold text-[#805b3b]">
-            MA
-          </span>
         </div>
       </header>
       <main className="mx-auto min-h-[75dvh] max-w-[1320px] px-4 pb-12 pt-6 sm:px-8 lg:pt-10 fade-in">

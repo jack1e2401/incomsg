@@ -13,7 +13,7 @@ import { useApi } from "../../api/client";
 import { useResource } from "../../api/useResource";
 import type { Application } from "../../api/types";
 import {
-  Badge,
+  StatusText,
   Button,
   BusyLabel,
   Card,
@@ -25,13 +25,13 @@ import {
 } from "../../components/ui";
 import { money, shortDate } from "../../lib/utils";
 
-const statusBadge = (status: Application["status"]) =>
+const applicationStatus = (status: Application["status"]) =>
   status === "PENDING" ? (
-    <Badge tone="amber">Đang chờ</Badge>
+    <StatusText tone="amber">Đang chờ</StatusText>
   ) : status === "APPROVED" ? (
-    <Badge tone="green">Đã duyệt</Badge>
+    <StatusText tone="green">Đã duyệt</StatusText>
   ) : (
-    <Badge tone="red">Đã từ chối</Badge>
+    <StatusText tone="red">Đã từ chối</StatusText>
   );
 
 export function AdminOverview() {
@@ -55,7 +55,6 @@ export function AdminOverview() {
   return (
     <>
       <PageHeader
-        eyebrow="Loyalty Commerce / Admin"
         title="Tổng quan hệ thống"
         description="Theo dõi hoạt động cửa hàng, đơn hàng và hồ sơ đang chờ xử lý."
         action={
@@ -86,10 +85,10 @@ export function AdminOverview() {
           note="Chỉ tính trạng thái PAID"
         />
         <StatCard
-          label="Doanh số demo"
+          label="Doanh số"
           value={money(s.totalVolume)}
           icon={<TrendUp size={20} weight="light" />}
-          note="Từ đơn PAID trong mock API"
+          note="Từ đơn đã thanh toán"
         />
       </div>
       <div className="mt-7 grid gap-5 xl:grid-cols-[1.35fr_.85fr]">
@@ -99,7 +98,6 @@ export function AdminOverview() {
               <h2 className="text-lg font-extrabold">Đơn hàng gần đây</h2>
               <p className="mt-1 text-xs muted">Toàn bộ cửa hàng</p>
             </div>
-            <Badge tone="green">Live overview</Badge>
           </div>
           <div className="divide-y divide-[#eef1ec]">
             {orders.data?.slice(0, 4).map((o) => (
@@ -117,9 +115,9 @@ export function AdminOverview() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-extrabold">{money(o.total)}</p>
-                  <Badge tone={o.status === "PAID" ? "green" : "amber"}>
+                  <StatusText tone={o.status === "PAID" ? "green" : "amber"}>
                     {o.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
-                  </Badge>
+                  </StatusText>
                 </div>
               </div>
             ))}
@@ -141,7 +139,7 @@ export function AdminOverview() {
               <div key={a.id} className="rounded-2xl bg-[#f7f9f4] p-4">
                 <div className="flex justify-between gap-3">
                   <p className="text-sm font-bold">{a.owner}</p>
-                  {statusBadge(a.status)}
+                  {applicationStatus(a.status)}
                 </div>
                 <p className="mt-1 text-xs muted">{a.email}</p>
                 <p className="mt-4 text-xs leading-5 text-[#637569]">{a.note}</p>
@@ -186,12 +184,8 @@ export function AdminApplications() {
   return (
     <>
       <PageHeader
-        eyebrow="Quản trị / Onboarding"
         title="Duyệt cửa hàng"
         description="Merchant chỉ quản lý cửa hàng sau khi hồ sơ được duyệt."
-        action={
-          <Badge tone="amber">{applications.filter((a) => a.status === "PENDING").length} hồ sơ chờ</Badge>
-        }
       />
       {resource.loading ? (
         <LoadingState cards={2} />
@@ -210,7 +204,7 @@ export function AdminApplications() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold">{a.owner}</p>
-                  {statusBadge(a.status)}
+                  {applicationStatus(a.status)}
                 </div>
                 <p className="mt-1 text-xs muted">{a.email}</p>
                 <p className="mt-3 text-xs muted">Gửi ngày {shortDate(a.submittedAt)}</p>
@@ -223,11 +217,8 @@ export function AdminApplications() {
                 <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#e8f1e2] text-[#416a47]">
                   <Storefront size={27} weight="light" />
                 </span>
-                {statusBadge(current.status)}
+                {applicationStatus(current.status)}
               </div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[.2em] text-[#7a9a78]">
-                Hồ sơ Merchant
-              </p>
               <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
                 {current.merchantId === "gommay" ? "Gốm Mây" : current.merchantId}
               </h2>
@@ -283,11 +274,7 @@ export function AdminMerchants() {
   const resource = useResource(() => api.listMerchants(), []);
   return (
     <>
-      <PageHeader
-        eyebrow="Quản trị / Merchant"
-        title="Cửa hàng trên hệ thống"
-        description="Giám sát trạng thái hoạt động và truy cập từng cửa hàng demo."
-      />
+      <PageHeader title="Cửa hàng trên hệ thống" />
       {resource.loading ? (
         <LoadingState />
       ) : resource.error ? (
@@ -305,9 +292,11 @@ export function AdminMerchants() {
                 >
                   {m.initials}
                 </span>
-                <Badge tone={m.status === "APPROVED" ? "green" : m.status === "PENDING" ? "amber" : "red"}>
+                <StatusText
+                  tone={m.status === "APPROVED" ? "green" : m.status === "PENDING" ? "amber" : "red"}
+                >
                   {m.status === "APPROVED" ? "Hoạt động" : m.status === "PENDING" ? "Chờ duyệt" : "Từ chối"}
-                </Badge>
+                </StatusText>
               </div>
               <h2 className="mt-5 text-lg font-extrabold">{m.name}</h2>
               <p className="mt-1 text-xs muted">
@@ -326,9 +315,7 @@ export function AdminMerchants() {
                       <Link to={`/member/${m.id}`}>Gian hàng</Link>
                     </Button>
                   </>
-                ) : (
-                  <Badge tone="amber">Chưa kích hoạt</Badge>
-                )}
+                ) : null}
               </div>
             </Card>
           ))}

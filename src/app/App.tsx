@@ -1,8 +1,9 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { ArrowRight } from "@phosphor-icons/react";
 import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
 import { Button, Card, PageHeader, ErrorState, LoadingState, EmptyState } from "../components/ui";
 import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
-import { LoyaltyIllustration } from "../components/LoyaltyIllustration";
+import { EditorialArtPanel } from "../components/EditorialArtPanel";
 import { AdminApplicationsM2, RequireRole } from "../features/auth/Milestone2Pages";
 import { BackendConsoleLayout } from "../layouts/BackendConsoleLayout";
 import { ApiProvider } from "../api/client";
@@ -60,7 +61,8 @@ import {
   MemberWallet,
 } from "../features/member/BackendMemberPages";
 
-const useBackend = import.meta.env.VITE_API_MODE === "http";
+// Production and local development use real endpoints. Fixtures are opt-in only.
+const useBackend = import.meta.env.VITE_API_MODE !== "mock";
 
 export function App() {
   return <AuthSessionProvider>{useBackend ? <BackendRoutes /> : <DemoRoutes />}</AuthSessionProvider>;
@@ -148,18 +150,24 @@ function DemoRoutes() {
 
 function DemoWelcome() {
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <PageHeader title="Loyalty commerce demo" description="Demo mode · dữ liệu mẫu chạy offline" />
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Button asChild>
-          <Link to="/member/moc">Mở trải nghiệm Member</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link to="/merchant/moc">Mở Merchant</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link to="/admin">Mở Admin</Link>
-        </Button>
+    <main className="min-h-dvh overflow-x-clip bg-[#f5f5ef] px-5 py-6 sm:px-9 sm:py-8">
+      <div className="mx-auto max-w-7xl">
+        <LandingHeader demo />
+        <LandingBody>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild size="lg" className="rounded-full px-7">
+              <Link to="/member/moc">
+                Trải nghiệm Member <span aria-hidden="true">→</span>
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="rounded-full px-7">
+              <Link to="/merchant/moc">Merchant</Link>
+            </Button>
+            <Button asChild size="lg" variant="ghost" className="rounded-full px-7">
+              <Link to="/admin">Admin</Link>
+            </Button>
+          </div>
+        </LandingBody>
       </div>
     </main>
   );
@@ -175,81 +183,70 @@ function Welcome() {
       />
     );
   return (
-    <main className="min-h-[100dvh] overflow-hidden bg-[#f7f8f4] px-5 pb-12 pt-7 sm:px-8 sm:pb-16 sm:pt-9">
+    <main className="min-h-dvh overflow-x-clip bg-[#f5f5ef] px-5 py-6 sm:px-9 sm:py-8">
       <div className="mx-auto max-w-7xl">
-        <header className="flex items-center justify-between">
-          <Link
-            to="/"
-            className="flex items-center gap-2.5 text-lg font-extrabold tracking-[-.06em] text-[#24452f]"
-          >
-            <span className="grid h-10 w-10 place-items-center rounded-[15px] bg-[#335e3d] text-lg text-[#c9f097]">
-              L
-            </span>
-            loyalty<span className="text-[#89b461]">.</span>
-          </Link>
-          <Link
-            to="/application/status"
-            className="rounded-full px-4 py-2.5 text-sm font-semibold text-[#54725a] transition-colors duration-300 hover:bg-white hover:text-[#24452f]"
-          >
-            Trạng thái hồ sơ
-          </Link>
-        </header>
-
-        <section className="grid min-h-[calc(100dvh-7rem)] items-center gap-10 py-12 md:gap-14 lg:grid-cols-[1.05fr_.95fr] lg:gap-20 lg:py-8">
-          <div className="relative z-10 max-w-2xl">
-            <h1 className="serif text-[clamp(3.25rem,7.5vw,6.5rem)] leading-[.98] tracking-[-.055em] text-[#24452f]">
-              Mỗi cửa hàng,
-              <span className="mt-2 block text-[#83a969]">một hành trình</span>
-              thân thiết.
-            </h1>
-            <p className="mt-7 max-w-lg text-base leading-7 text-[#738276] sm:text-lg sm:leading-8">
-              Mua sắm và nhận ưu đãi từ những cửa hàng bạn yêu thích.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Button
-                asChild
-                size="lg"
-                className="group rounded-full px-6 shadow-[0_12px_28px_rgba(47,88,58,.16)] transition-transform duration-300 ease-[cubic-bezier(.32,.72,0,1)] hover:-translate-y-0.5 active:scale-[.98]"
-              >
-                <Link to="/login">
-                  Đăng nhập{" "}
-                  <span
-                    aria-hidden="true"
-                    className="ml-2 transition-transform duration-300 group-hover:translate-x-1"
-                  >
-                    →
-                  </span>
-                </Link>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="rounded-full border-[#dce6d7] bg-white/70 px-6 transition-transform duration-300 ease-[cubic-bezier(.32,.72,0,1)] hover:-translate-y-0.5 active:scale-[.98]"
-              >
-                <Link to="/register">Tạo tài khoản</Link>
-              </Button>
-            </div>
+        <LandingHeader />
+        <LandingBody>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild size="lg" className="group rounded-full px-7">
+              <Link to="/login">
+                Đăng nhập{" "}
+                <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">
+                  →
+                </span>
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="rounded-full px-7">
+              <Link to="/register">Tạo tài khoản</Link>
+            </Button>
           </div>
-
-          <div className="relative mx-auto w-full max-w-[34rem] lg:mr-0">
-            <div className="absolute -inset-5 rotate-[-4deg] rounded-[2.75rem] bg-[#e7eedf] sm:-inset-7" />
-            <div className="relative aspect-[.92] overflow-hidden rounded-[2.4rem] bg-[#31583a] p-3 shadow-[0_32px_80px_rgba(47,88,58,.16)] sm:rounded-[2.8rem] sm:p-4">
-              <div className="relative h-full overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_50%_36%,rgba(194,228,163,.26),transparent_55%),linear-gradient(145deg,#31583a,#24452f)] sm:rounded-[2.3rem]">
-                <div className="absolute left-[12%] top-[14%] h-24 w-24 rounded-full border border-white/10" />
-                <div className="absolute right-[9%] top-[23%] h-14 w-14 rounded-full border border-[#c9f097]/25" />
-                <div className="absolute bottom-[12%] left-[12%] h-px w-[76%] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                <div className="absolute inset-[10%]">
-                  <LoyaltyIllustration />
-                </div>
-                <div className="absolute bottom-[8%] right-[8%] h-16 w-16 rounded-[1.35rem] bg-[#c9f097] shadow-[0_16px_32px_rgba(13,38,20,.18)] sm:h-20 sm:w-20 sm:rounded-[1.7rem]" />
-                <div className="absolute bottom-[12%] right-[12%] h-8 w-8 rounded-full border-[5px] border-[#31583a] sm:h-10 sm:w-10" />
-              </div>
-            </div>
-          </div>
-        </section>
+        </LandingBody>
       </div>
     </main>
+  );
+}
+
+function LandingHeader({ demo = false }: { demo?: boolean }) {
+  return (
+    <header className="flex h-12 items-center justify-between">
+      <Link
+        to="/"
+        className="flex items-center gap-2.5 text-xl font-extrabold tracking-[-.06em] text-[#24452f]"
+      >
+        <span className="grid h-10 w-10 place-items-center rounded-[15px] bg-[#335e3d] text-lg text-[#c9f097]">
+          L
+        </span>
+        loyalty<span className="text-[#89b461]">.</span>
+      </Link>
+      {demo ? (
+        <span className="text-sm font-medium text-[#55705b]">Mua sắm thân quen</span>
+      ) : (
+        <Link to="/application/status" className="text-sm font-semibold text-[#55705b] hover:text-[#24452f]">
+          Trạng thái hồ sơ
+        </Link>
+      )}
+    </header>
+  );
+}
+
+function LandingBody({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="grid min-h-[calc(100dvh-6rem)] items-center gap-9 py-10 lg:grid-cols-[.92fr_1.08fr] lg:gap-16 lg:py-8">
+      <div className="relative z-10 max-w-[36rem] lg:py-12">
+        <h1 className="serif max-w-[11ch] text-[clamp(3.5rem,7.4vw,6.8rem)] leading-[.94] tracking-[-.06em] text-[#24452f]">
+          Mua ở nơi bạn yêu.
+          <span className="mt-2 block text-[#77975e]">Quay lại vì được nhớ.</span>
+        </h1>
+        <p className="mt-6 max-w-md text-base leading-7 text-[#65766a] sm:text-lg sm:leading-8">
+          Tích điểm và nhận ưu đãi riêng tại từng cửa hàng thân quen.
+        </p>
+        <div className="mt-8">{children}</div>
+      </div>
+      <div className="relative mx-auto w-full max-w-[39rem] lg:mr-0">
+        <div className="absolute -inset-4 -rotate-2 rounded-[2.4rem] bg-[#dfe8d5] sm:-inset-6 sm:rounded-[3rem]" />
+        <EditorialArtPanel className="rounded-[2rem] shadow-[0_28px_70px_rgba(38,63,43,.18)] sm:rounded-[2.6rem]" />
+      </div>
+    </section>
   );
 }
 
@@ -262,7 +259,16 @@ function AdminOverview() {
   );
   return (
     <>
-      <PageHeader title="Tổng quan" />
+      <PageHeader
+        title="Tổng quan"
+        action={
+          <Button asChild>
+            <Link to="/admin/applications">
+              Hồ sơ cần duyệt <ArrowRight size={16} />
+            </Link>
+          </Button>
+        }
+      />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -295,11 +301,6 @@ function AdminOverview() {
       ) : (
         <Card className="p-6 text-sm muted">Chưa có số liệu.</Card>
       )}
-      <Card className="mt-5 p-6">
-        <Button asChild className="mt-5">
-          <Link to="/admin/applications">Mở hàng chờ duyệt</Link>
-        </Button>
-      </Card>
     </>
   );
 }

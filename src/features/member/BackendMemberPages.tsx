@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Link,
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useOutletContext,
-  useParams,
-} from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -345,7 +337,7 @@ export function MemberCheckout() {
   }
   return (
     <>
-      <PageHeader title="Xác nhận đơn hàng" description="Đơn được tạo ở trạng thái chờ thanh toán." />
+      <PageHeader title="Xác nhận đơn hàng" />
       {!cart ? (
         <EmptyState
           title="Chưa có sản phẩm"
@@ -361,7 +353,6 @@ export function MemberCheckout() {
           <Card className="p-5">
             <h2 className="font-extrabold">{cart.product.name}</h2>
             <p className="mt-2 text-sm muted">Số lượng: {cart.quantity}</p>
-            <p className="mt-2 text-sm muted">Cửa hàng #{merchantId}</p>
             {vouchers.loading ? (
               <p className="mt-4 text-sm muted">Đang tải voucher khả dụng…</p>
             ) : vouchers.error ? (
@@ -409,7 +400,7 @@ export function MemberCheckout() {
                 <BusyLabel>Đang tạo đơn</BusyLabel>
               ) : (
                 <>
-                  Tạo đơn chờ thanh toán <ArrowRight size={16} />
+                  Tạo đơn <ArrowRight size={16} />
                 </>
               )}
             </Button>
@@ -423,8 +414,7 @@ export function MemberCheckout() {
 export function MemberOrderResult() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
-  const location = useLocation();
-  const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "vnpay" ? "vnpay" : "mock";
+  const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "mock" ? "mock" : "vnpay";
   const orderId = Number(useParams().orderId);
   const pollKey = `${merchantId}:${orderId}`;
   const pollKeyRef = useRef(pollKey);
@@ -560,10 +550,7 @@ export function MemberOrderResult() {
     );
   return (
     <>
-      <PageHeader
-        title={`Đơn #${order.id}`}
-        description={location.search ? "Đang kiểm tra kết quả thanh toán từ máy chủ." : undefined}
-      />
+      <PageHeader title={`Đơn #${order.id}`} />
       <Card className="p-6">
         <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
           {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
@@ -606,13 +593,12 @@ export function MemberOrderResult() {
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a]">
               {paymentFailed
-                ? "Giao dịch VNPay không thành công. Đơn vẫn chờ và chưa có điểm thưởng. Hãy tạo một đơn hàng mới để thanh toán lại."
-                : "Đơn đang chờ thanh toán. Chưa có điểm thưởng. Trạng thái chỉ đổi sau khi máy chủ xác nhận."}
+                ? "Giao dịch VNPay không thành công. Hãy tạo đơn mới để thử lại."
+                : "Đơn đang chờ thanh toán. Điểm được cập nhật sau khi giao dịch hoàn tất."}
             </p>
             {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
               <p role="status" className="mt-2 text-xs text-[#97682a]">
-                Chưa nhận được kết quả từ VNPay sau 30 lần kiểm tra. Dùng “Kiểm tra lại” để bắt đầu kiểm tra
-                mới.
+                Chưa nhận được kết quả sau 30 lần kiểm tra. Bạn có thể kiểm tra lại trạng thái.
               </p>
             )}
             {!paymentFailed && (
@@ -620,9 +606,9 @@ export function MemberOrderResult() {
                 {busy ? (
                   <BusyLabel>Đang chuyển thanh toán</BusyLabel>
                 ) : paymentMode === "vnpay" ? (
-                  "Thanh toán qua VNPay Sandbox"
+                  "Thanh toán qua VNPay"
                 ) : (
-                  "Thanh toán mô phỏng"
+                  "Thanh toán thử"
                 )}
               </Button>
             )}
@@ -709,46 +695,65 @@ export function MemberWallet() {
   const wallet = resource.data;
   return (
     <>
-      <PageHeader title="Ví điểm và hạng" />
+      <PageHeader title="Điểm thưởng" />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
       ) : wallet ? (
-        <div className="space-y-5">
-          <Card className="grid gap-5 p-6 sm:grid-cols-3 sm:p-8">
-            <div>
-              <p className="text-xs muted">Điểm khả dụng</p>
-              <p className="mt-2 text-3xl font-extrabold">{wallet.availablePoints.toLocaleString("vi-VN")}</p>
-            </div>
-            <div>
-              <p className="text-xs muted">Tổng điểm đã tích</p>
-              <p className="mt-2 text-3xl font-extrabold">
-                {wallet.lifetimeEarnedPoints.toLocaleString("vi-VN")}
+        <>
+          <div className="grid gap-5 lg:grid-cols-[1.05fr_.95fr]">
+            <Card
+              className="relative overflow-hidden p-6 text-white sm:p-8"
+              style={{ backgroundColor: "#2f583a", color: "white" }}
+            >
+              <p className="text-sm font-semibold text-white/70">Điểm có thể sử dụng</p>
+              <p className="mt-3 text-5xl font-extrabold tracking-[-.07em] sm:text-6xl">
+                {wallet.availablePoints.toLocaleString("vi-VN")}
+                <span className="ml-2 text-base font-bold tracking-normal text-[#c5e89b]">điểm</span>
               </p>
-            </div>
-            <div>
-              <p className="text-xs muted">Hạng</p>
-              <p className="mt-2 text-2xl font-extrabold">
-                {wallet.tier === "UNRANKED" ? "Chưa xếp hạng" : wallet.tier}
-              </p>
-            </div>
-          </Card>
-          <section>
-            <h2 className="mb-3 text-lg font-extrabold">Lịch sử điểm</h2>
+              <div className="mt-8 flex items-center justify-between gap-4 border-t border-white/15 pt-5">
+                <div>
+                  <p className="text-xs text-white/65">Tổng điểm đã tích lũy</p>
+                  <p className="mt-1 text-xl font-bold">
+                    {wallet.lifetimeEarnedPoints.toLocaleString("vi-VN")}
+                  </p>
+                </div>
+                <Wallet size={24} weight="light" className="shrink-0 text-[#c5e89b]" />
+              </div>
+            </Card>
+            <Card className="member-gradient relative min-h-56 overflow-hidden p-6 sm:p-8">
+              <div className="relative z-1 max-w-[65%]">
+                <p className="text-sm font-semibold text-[#6c8168]">Hạng thành viên</p>
+                <h2 className="serif mt-3 text-3xl leading-tight text-[#294a32]">
+                  {wallet.tier === "UNRANKED" ? "Chưa xếp hạng" : wallet.tier}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-[#647a68]">
+                  {wallet.tier === "UNRANKED"
+                    ? "Đơn đã thanh toán đầu tiên sẽ xác lập hạng theo tổng điểm tích lũy."
+                    : "Hạng dựa trên tổng điểm đã tích lũy; tiêu điểm không làm giảm hạng."}
+                </p>
+              </div>
+              <div className="pointer-events-none absolute -bottom-3 -right-3 h-40 w-40 sm:h-48 sm:w-48">
+                <MemberMascot mood="hello" />
+              </div>
+            </Card>
+          </div>
+          <section className="mt-7">
+            <h2 className="mb-4 text-xl font-extrabold">Lịch sử điểm</h2>
             {!wallet.transactions.length ? (
               <EmptyState
                 title="Chưa có giao dịch điểm"
                 description="Giao dịch sẽ xuất hiện sau hoạt động tại cửa hàng này."
               />
             ) : (
-              <div className="space-y-2">
+              <div className="surface overflow-hidden rounded-[1.5rem] divide-y divide-[#edf1ea]">
                 {wallet.transactions.map((transaction) => (
-                  <Card
+                  <div
                     key={transaction.id}
-                    className="flex flex-wrap items-center justify-between gap-3 p-4"
+                    className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
                   >
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold">{transaction.reason}</p>
                       <p className="mt-1 text-xs muted">
                         {new Date(transaction.createdAt).toLocaleString("vi-VN")} ·{" "}
@@ -762,14 +767,16 @@ export function MemberWallet() {
                         {transaction.delta > 0 ? "+" : ""}
                         {transaction.delta.toLocaleString("vi-VN")}
                       </p>
-                      <p className="text-xs muted">Còn {transaction.balanceAfter.toLocaleString("vi-VN")}</p>
+                      <p className="mt-1 text-xs muted">
+                        Số dư {transaction.balanceAfter.toLocaleString("vi-VN")}
+                      </p>
                     </div>
-                  </Card>
+                  </div>
                 ))}
               </div>
             )}
           </section>
-        </div>
+        </>
       ) : null}
     </>
   );

@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CheckCircle, Storefront, UserCircle } from "@phosphor-icons/react";
 import { useAuthSession, routeForRole } from "../../api/auth-session";
-import { LoyaltyIllustration } from "../../components/LoyaltyIllustration";
 import { Button, BusyLabel, Card, Field, Input, StatusText } from "../../components/ui";
 import type { BackendApplicationDto } from "../../api/contracts/milestone2";
 
@@ -19,15 +18,21 @@ function explainAuthError(message: string) {
 function AuthFrame({ children, title }: { children: React.ReactNode; title: string }) {
   return (
     <main className="grid min-h-[100dvh] bg-[#f7f8f4] lg:grid-cols-2">
-      <section className="relative hidden min-h-[100dvh] overflow-hidden bg-[#23442e] lg:flex lg:items-center lg:justify-center">
-        <div className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-[#71985c]/25 blur-3xl" />
-        <div className="absolute -bottom-24 -right-20 h-96 w-96 rounded-full bg-[#71985c]/25 blur-3xl" />
+      <section className="relative hidden min-h-[100dvh] overflow-hidden bg-[#23442e] p-10 lg:flex lg:items-end">
+        <img
+          src="/images/independent-cafe.jpg"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#142b1c]/45 via-[#183321]/10 to-[#173321]/80" />
         <div className="absolute left-12 top-10 flex items-center gap-3 text-xl font-extrabold text-white">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#c4f093] text-[#24442c]">L</span>
           loyalty.
         </div>
-        <div className="relative h-[min(62vh,520px)] w-[min(62vh,520px)]">
-          <LoyaltyIllustration />
+        <div className="relative mb-12 max-w-md text-white">
+          <p className="serif text-4xl leading-tight tracking-[-.04em]">
+            Thân quen hơn qua từng lần ghé lại.
+          </p>
         </div>
       </section>
       <section className="flex items-center justify-center px-4 py-10 sm:px-8">

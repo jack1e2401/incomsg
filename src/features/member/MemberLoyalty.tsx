@@ -5,7 +5,6 @@ import { useApi } from "../../api/client";
 import { useResource } from "../../api/useResource";
 import type { VoucherDefinition } from "../../api/types";
 import {
-  Badge,
   Button,
   BusyLabel,
   Card,
@@ -13,6 +12,7 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
+  StatusText,
 } from "../../components/ui";
 import { money, number, shortDate } from "../../lib/utils";
 import type { MemberOutlet } from "../../layouts/MemberLayout";
@@ -52,11 +52,7 @@ export function MemberWallet() {
         : 100;
   return (
     <>
-      <PageHeader
-        eyebrow={`Member / ${merchant.name}`}
-        title="Ví điểm của bạn"
-        description="Số dư và hạng thành viên được quản lý riêng tại mỗi cửa hàng."
-      />
+      <PageHeader title={`Ví điểm · ${merchant.name}`} />
       <div className="grid gap-5 lg:grid-cols-[1.05fr_.95fr]">
         <Card className="relative overflow-hidden bg-[#2f583a] p-6 text-white sm:p-8">
           <div className="absolute -right-8 -top-12 h-56 w-56 rounded-full bg-[#537950]/35 blur-3xl" />
@@ -74,24 +70,20 @@ export function MemberWallet() {
           </div>
           <div className="relative mt-8 flex items-center justify-between border-t border-white/15 pt-5">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-white/50">
-                Hạng tại {merchant.name}
-              </p>
+              <p className="text-[10px] font-semibold text-white/65">Hạng tại {merchant.name}</p>
               <p className="mt-1 text-xl font-extrabold">{wallet.data.tier}</p>
             </div>
-            <Badge className="bg-[#d8eeae] text-[#31543a]">
-              {wallet.data.tier === "Unranked"
-                ? "Bắt đầu hành trình"
-                : `${number(wallet.data.lifetimeEarnedPoints)} lifetime pts`}
-            </Badge>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold text-white/65">Tổng điểm đã tích</p>
+              <p className="mt-1 text-lg font-bold">{number(wallet.data.lifetimeEarnedPoints)}</p>
+            </div>
           </div>
         </Card>
         <Card className="member-gradient relative overflow-hidden p-6 sm:p-8">
-          <div className="relative z-1 max-w-[62%]">
-            <Badge tone="green">Tiến trình hạng</Badge>
-            <h2 className="serif mt-5 text-3xl leading-tight text-[#2e5037]">
+          <div className="relative z-1 max-w-[65%]">
+            <h2 className="serif text-3xl leading-tight text-[#2e5037]">
               {wallet.data.tier === "Unranked"
-                ? "Chuyến đi đầu tiên đang chờ bạn."
+                ? "Đơn đã thanh toán đầu tiên sẽ xác lập hạng theo tổng điểm tích lũy."
                 : next
                   ? `Còn ${number(Math.max(0, next.threshold - wallet.data.lifetimeEarnedPoints))} điểm tới ${next.tier}.`
                   : "Bạn đã đạt hạng cao nhất."}
@@ -119,9 +111,8 @@ export function MemberWallet() {
         <div className="flex items-center justify-between border-b border-[#edf1ea] p-5 sm:p-6">
           <div>
             <h2 className="font-extrabold">Lịch sử điểm</h2>
-            <p className="mt-1 text-xs muted">Giao dịch của riêng {merchant.name}</p>
+            <p className="mt-1 text-xs muted">{merchant.name}</p>
           </div>
-          <Badge tone="green">Lifetime {number(wallet.data.lifetimeEarnedPoints)}</Badge>
         </div>
         {wallet.data.transactions.length ? (
           <div className="divide-y divide-[#edf1ea]">
@@ -208,7 +199,6 @@ function Benefits({ kind }: { kind: "DISCOUNT" | "REWARD" }) {
   return (
     <>
       <PageHeader
-        eyebrow={`Member / ${merchant.name}`}
         title={title}
         description={
           kind === "DISCOUNT"
@@ -247,9 +237,9 @@ function Benefits({ kind }: { kind: "DISCOUNT" | "REWARD" }) {
                     <Gift size={24} weight="light" />
                   )}
                 </span>
-                <Badge tone={wallet.data!.availablePoints >= v.pointsCost ? "green" : "neutral"}>
+                <StatusText tone={wallet.data!.availablePoints >= v.pointsCost ? "green" : "neutral"}>
                   {number(v.pointsCost)} điểm
-                </Badge>
+                </StatusText>
               </div>
               <h2 className="serif mt-5 text-2xl text-[#2e5037]">{v.title}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 text-[#66786a]">{v.description}</p>
@@ -287,7 +277,7 @@ function Benefits({ kind }: { kind: "DISCOUNT" | "REWARD" }) {
                     <p className="text-sm font-bold">{v.title}</p>
                     <p className="mt-1 text-xs muted">Mã {v.id}</p>
                   </div>
-                  <Badge
+                  <StatusText
                     tone={
                       v.status === "AVAILABLE"
                         ? "green"
@@ -305,7 +295,7 @@ function Benefits({ kind }: { kind: "DISCOUNT" | "REWARD" }) {
                         : v.status === "FULFILLED"
                           ? "Đã nhận quà"
                           : "Chờ trao quà"}
-                  </Badge>
+                  </StatusText>
                 </Card>
               ))}
           </div>
@@ -327,11 +317,7 @@ export function MemberOrders() {
   const resource = useResource(() => api.listMemberOrders(merchant.id), [merchant.id]);
   return (
     <>
-      <PageHeader
-        eyebrow="Member / Hoạt động"
-        title="Đơn hàng của bạn"
-        description={`Lịch sử mua sắm tại ${merchant.name}.`}
-      />
+      <PageHeader title="Đơn hàng của bạn" description={`Lịch sử mua sắm tại ${merchant.name}.`} />
       {resource.loading ? (
         <LoadingState />
       ) : resource.error ? (
@@ -366,9 +352,9 @@ export function MemberOrders() {
                       {o.status === "PAID" ? `+${o.earnedPoints} điểm` : "Chưa phát điểm"}
                     </p>
                   </div>
-                  <Badge tone={o.status === "PAID" ? "green" : "amber"}>
+                  <StatusText tone={o.status === "PAID" ? "green" : "amber"}>
                     {o.status === "PAID" ? "PAID" : "PENDING"}
-                  </Badge>
+                  </StatusText>
                 </div>
               </div>
             </Card>
@@ -408,16 +394,16 @@ export function MemberOrderResult() {
               <div className="mx-auto h-36 w-36">
                 <MemberMascot mood={order.status === "PAID" ? "success" : "idle"} />
               </div>
-              <Badge tone={order.status === "PAID" ? "green" : "amber"}>
+              <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
                 {order.status === "PAID" ? "Đã thanh toán" : "Đơn đang chờ xử lý"}
-              </Badge>
+              </StatusText>
               <h1 className="serif mt-4 text-3xl text-[#294a32]">
                 {order.status === "PAID" ? "Cảm ơn bạn đã mua sắm!" : "Đơn hàng đã được tạo"}
               </h1>
               <p className="mx-auto mt-3 max-w-md text-sm leading-6 muted">
                 {order.status === "PAID"
                   ? `Bạn nhận ${number(order.earnedPoints)} điểm tại ${merchant.name}.`
-                  : "Thanh toán thật chưa kết nối. Điểm và tier chỉ cập nhật khi backend xác nhận đơn PAID."}
+                  : "Đơn đang chờ xác nhận thanh toán. Điểm được cộng sau khi giao dịch hoàn tất."}
               </p>
             </div>
             <div className="p-6 text-left">
