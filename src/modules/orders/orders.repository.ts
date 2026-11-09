@@ -2,6 +2,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { CreatePendingOrderInput, OrderDto } from "./orders.types.js";
 import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
+import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -53,8 +54,9 @@ export const ordersRepository = {
   },
 
   async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid"> {
-    return prisma.$transaction((tx) => loyaltyRepository.completePaidOrder(tx, orderId, memberId), {
-      isolationLevel: "Serializable",
-    });
+    return withTransactionRetry(() => prisma.$transaction(
+      (tx) => loyaltyRepository.completePaidOrder(tx, orderId, memberId),
+      { isolationLevel: "Serializable" },
+    ));
   },
 };
