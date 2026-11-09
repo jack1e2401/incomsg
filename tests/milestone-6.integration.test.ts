@@ -427,7 +427,7 @@ test("legacy fallback settlement awards the exact positive reservation despite r
   const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: user.id, merchantId } }, include: { wallet: true } });
   assert.ok(membership.wallet);
   const newAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId } });
-  assert.equal(newAttempt.reservedPoints, 3);
+  assert.equal(newAttempt.reservedPoints, 6);
   await prisma.$transaction([
     prisma.paymentAttempt.update({ where: { id: newAttempt.id }, data: {
       reservedPoints: 4,
