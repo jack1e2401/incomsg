@@ -8,7 +8,7 @@ import { applicationRoutes } from "./modules/merchant-applications/application.r
 import { merchantRoutes } from "./modules/merchant/merchant.routes.js";
 import { merchantProductRoutes, publicProductRoutes } from "./modules/products/products.routes.js";
 import { orderRoutes } from "./modules/orders/orders.routes.js";
-import { merchantLoyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
+import { merchantLoyaltyRoutes, memberLoyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
@@ -18,6 +18,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
+app.use("/api/member", memberLoyaltyRoutes);
 app.use("/api/merchant/products", merchantProductRoutes);
 app.use("/api/merchants", publicProductRoutes);
 app.use("/api/orders", orderRoutes);

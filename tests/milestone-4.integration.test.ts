@@ -50,6 +50,18 @@ before(async () => {
 after(async () => {
   if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
   if (!fixturesCreated) return;
+  const users = await prisma.user.findMany({ where: { email: { in: [merchantAEmail, merchantBEmail, memberEmail] } }, select: { id: true } });
+  const memberIds = users.filter((user) => user.id !== undefined).map((user) => user.id);
+  const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: memberIds } }, select: { id: true } });
+  const membershipIds = memberships.map((membership) => membership.id);
+  const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
+  await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((wallet) => wallet.id) } } });
+  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
+  await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
+  const orders = await prisma.order.findMany({ where: { memberId: { in: memberIds } }, select: { id: true } });
+  await prisma.orderItem.deleteMany({ where: { orderId: { in: orders.map((order) => order.id) } } });
+  await prisma.order.deleteMany({ where: { id: { in: orders.map((order) => order.id) } } });
+  await prisma.product.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.merchant.deleteMany({ where: { id: { in: [merchantAId, merchantBId] } } });
@@ -105,4 +117,38 @@ test("merchant can save only a valid loyalty configuration for its own store", a
   const own = await request("/api/merchant/loyalty", "GET", merchantAToken);
   assert.equal(own.response.status, 200);
   assert.equal(own.json.config.merchantId, merchantAId);
+});
+
+test("member becomes Bronze and earns points only after a paid order at that merchant", async () => {
+  const beforeA = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken);
+  assert.equal(beforeA.response.status, 200);
+  assert.equal(beforeA.json.wallet.availablePoints, 0);
+  assert.equal(beforeA.json.wallet.tier, "UNRANKED");
+
+  const beforeB = await request(`/api/member/merchants/${merchantBId}/wallet`, "GET", memberToken);
+  assert.equal(beforeB.json.wallet.tier, "UNRANKED");
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "M4 Coffee", price: "200000" });
+  assert.equal(product.response.status, 201);
+  const created = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
+  assert.equal(created.response.status, 201);
+  const paid = await request(`/api/orders/${created.json.order.id}/pay`, "POST", memberToken);
+  assert.equal(paid.response.status, 200);
+  assert.equal(paid.json.order.status, "PAID");
+
+  const [walletA, walletB] = await Promise.all([
+    request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken),
+    request(`/api/member/merchants/${merchantBId}/wallet`, "GET", memberToken),
+  ]);
+  assert.equal(walletA.json.wallet.availablePoints, 20);
+  assert.equal(walletA.json.wallet.lifetimeEarnedPoints, 20);
+  assert.equal(walletA.json.wallet.tier, "BRONZE");
+  assert.equal(walletA.json.wallet.transactions.length, 1);
+  assert.equal(walletA.json.wallet.transactions[0].orderId, created.json.order.id);
+  assert.equal(walletB.json.wallet.availablePoints, 0);
+  assert.equal(walletB.json.wallet.tier, "UNRANKED");
+
+  const again = await request(`/api/orders/${created.json.order.id}/pay`, "POST", memberToken);
+  assert.equal(again.response.status, 409);
+  const afterAgain = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken);
+  assert.equal(afterAgain.json.wallet.transactions.length, 1);
 });

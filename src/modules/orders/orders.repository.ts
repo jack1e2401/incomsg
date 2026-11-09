@@ -1,6 +1,7 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { CreatePendingOrderInput, OrderDto } from "./orders.types.js";
+import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 
@@ -52,22 +53,8 @@ export const ordersRepository = {
   },
 
   async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid"> {
-    const result = await prisma.order.updateMany({
-      where: { id: orderId, memberId, status: "PENDING" },
-      data: { status: "PAID", paidAt: new Date() },
+    return prisma.$transaction((tx) => loyaltyRepository.completePaidOrder(tx, orderId, memberId), {
+      isolationLevel: "Serializable",
     });
-    if (result.count === 0) {
-      const existing = await prisma.order.findFirst({
-        where: { id: orderId, memberId },
-        select: { status: true },
-      });
-      return existing ? "already_paid" : "missing";
-    }
-
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, memberId },
-      include: { items: true },
-    });
-    return order ? toOrderDto(order) : "missing";
   },
 };

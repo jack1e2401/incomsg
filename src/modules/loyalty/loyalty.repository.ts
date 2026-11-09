@@ -1,6 +1,8 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { LoyaltyConfigDto, LoyaltyConfigInput } from "./loyalty.types.js";
+import { calculateEarnedPoints, selectTier } from "./loyalty.calculation.js";
+import type { OrderDto } from "../orders/orders.types.js";
 
 const defaultTiers = [
   { level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" },
@@ -51,5 +53,91 @@ export const loyaltyRepository = {
       }
     });
     return this.getConfig(merchantId);
+  },
+
+  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number): Promise<OrderDto | "missing" | "already_paid"> {
+    const changed = await tx.order.updateMany({
+      where: { id: orderId, memberId, status: "PENDING" },
+      data: { status: "PAID", paidAt: new Date() },
+    });
+    if (changed.count === 0) {
+      const existing = await tx.order.findFirst({ where: { id: orderId, memberId }, select: { status: true } });
+      return existing ? "already_paid" : "missing";
+    }
+
+    const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+    if (!order) return "missing";
+    const [rule, configuredTiers] = await Promise.all([
+      tx.loyaltyRule.findUnique({ where: { merchantId: order.merchantId } }),
+      tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } }),
+    ]);
+    let tiers = configuredTiers;
+    if (tiers.length !== 4) {
+      for (const tier of defaultTiers) {
+        await tx.loyaltyTier.upsert({
+          where: { merchantId_level: { merchantId: order.merchantId, level: tier.level } },
+          create: { merchantId: order.merchantId, ...tier, multiplier: new Prisma.Decimal(tier.multiplier) },
+          update: {},
+        });
+      }
+      tiers = await tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } });
+    }
+    const membership = await tx.merchantMembership.upsert({
+      where: { memberId_merchantId: { memberId, merchantId: order.merchantId } },
+      create: { memberId, merchantId: order.merchantId },
+      update: {},
+      include: { wallet: true, tier: true },
+    });
+    const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
+    const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
+    const earnedPoints = rule?.isActive === false ? 0 : calculateEarnedPoints(order.total, rule?.vndPerPoint ?? 10000, earningMultiplier);
+    const balanceAfter = wallet.availablePoints + earnedPoints;
+    const lifetimeAfter = wallet.lifetimeEarnedPoints + earnedPoints;
+    await tx.loyaltyWallet.update({
+      where: { id: wallet.id },
+      data: { availablePoints: { increment: earnedPoints }, lifetimeEarnedPoints: { increment: earnedPoints } },
+    });
+    await tx.pointTransaction.create({
+      data: { walletId: wallet.id, type: "EARN", delta: earnedPoints, balanceAfter, reason: `Earned from order #${order.id}`, orderId: order.id },
+    });
+    const nextLevel = selectTier(lifetimeAfter, tiers);
+    const nextTier = nextLevel ? tiers.find((tier) => tier.level === nextLevel) : null;
+    if (nextTier) await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
+    return {
+      id: order.id,
+      merchantId: order.merchantId,
+      memberId: order.memberId,
+      status: "PAID",
+      subtotal: order.subtotal.toFixed(0),
+      discountAmount: order.discountAmount.toFixed(0),
+      total: order.total.toFixed(0),
+      paidAt: order.paidAt?.toISOString() ?? new Date().toISOString(),
+      items: order.items.map((item) => ({ productId: item.productId, productName: item.productName, unitPrice: item.unitPrice.toFixed(0), quantity: item.quantity, lineTotal: item.lineTotal.toFixed(0) })),
+    };
+  },
+
+  async getWallet(memberId: number, merchantId: number) {
+    const merchant = await prisma.merchant.findFirst({ where: { id: merchantId, isActive: true }, select: { id: true } });
+    if (!merchant) return "merchant_missing" as const;
+    const membership = await prisma.merchantMembership.findUnique({
+      where: { memberId_merchantId: { memberId, merchantId } },
+      include: { wallet: { include: { transactions: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] } } }, tier: true },
+    });
+    return {
+      merchantId,
+      availablePoints: membership?.wallet?.availablePoints ?? 0,
+      lifetimeEarnedPoints: membership?.wallet?.lifetimeEarnedPoints ?? 0,
+      tier: membership?.tier?.level ?? "UNRANKED",
+      transactions: (membership?.wallet?.transactions ?? []).map((transaction) => ({
+        id: transaction.id,
+        type: transaction.type,
+        delta: transaction.delta,
+        balanceAfter: transaction.balanceAfter,
+        reason: transaction.reason,
+        orderId: transaction.orderId,
+        memberVoucherId: transaction.memberVoucherId,
+        createdAt: transaction.createdAt.toISOString(),
+      })),
+    };
   },
 };
