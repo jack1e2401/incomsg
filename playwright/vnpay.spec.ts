@@ -54,7 +54,7 @@ test("queryless VNPay return polls CREATED until backend confirms PAID", async (
     () => polls++,
   );
   await page.goto("/member/7/orders/41");
-  await expect(page.getByText("Chờ thanh toán")).toBeVisible();
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
   await page.clock.runFor(6_100);
   await expect(page.getByText("Đã thanh toán")).toBeVisible();
   expect(polls).toBe(3);
@@ -101,11 +101,15 @@ test("VNPay timeout occurs after 30 polls and Kiểm tra lại resets and resume
     () => polls++,
   );
   await page.goto("/member/7/orders/41?vnp_ResponseCode=99");
-  await page.clock.runFor(60_100);
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
+  for (let poll = 1; poll <= 30; poll++) {
+    await page.clock.runFor(2_100);
+    await expect.poll(() => polls).toBe(poll);
+  }
   await expect(page.getByText(/sau 30 lần kiểm tra/)).toBeVisible();
   expect(polls).toBe(30);
   await page.getByRole("button", { name: "Kiểm tra lại" }).click();
   await expect.poll(() => polls).toBe(31);
   await page.clock.runFor(2_100);
-  expect(polls).toBe(32);
+  await expect.poll(() => polls).toBe(32);
 });

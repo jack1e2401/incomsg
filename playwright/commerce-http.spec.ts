@@ -114,9 +114,10 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
 
   await page.goto("/member/7");
   await page.getByRole("button", { name: "Chọn mua" }).click();
+  await page.getByRole("link", { name: "Giỏ hàng" }).click();
   await page.getByRole("link", { name: "Tiếp tục" }).click();
   await page.getByRole("button", { name: /Tạo đơn chờ thanh toán/ }).click();
-  await expect(page.getByText("Chờ thanh toán")).toBeVisible();
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thanh toán mô phỏng" })).toBeVisible();
   expect(orderBody).toEqual({ productId: 12, quantity: 1 });
   await page.getByRole("button", { name: "Thanh toán mô phỏng" }).click();
@@ -135,7 +136,7 @@ test("a VNPay return query never marks a pending order paid by itself", async ({
     }),
   );
   await page.goto("/member/7/orders/41?vnp_ResponseCode=00");
-  await expect(page.getByText("Chờ thanh toán")).toBeVisible();
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
   await expect(page.getByRole("status").getByText("Thanh toán đã được máy chủ xác nhận")).toHaveCount(0);
 });
 
@@ -204,6 +205,7 @@ test("a discount voucher reserved by a pending order is not selectable at checko
   await expect(page.getByText("Đang giữ cho đơn chờ")).toBeVisible();
   await page.goto("/member/7");
   await page.getByRole("button", { name: "Chọn mua" }).click();
+  await page.getByRole("link", { name: "Giỏ hàng" }).click();
   await page.getByRole("link", { name: "Tiếp tục" }).click();
   await expect(page.getByText(/đang được giữ bởi đơn chờ thanh toán/)).toBeVisible();
   await expect(page.getByRole("option", { name: /Giảm 20.000đ/ })).toHaveCount(0);
