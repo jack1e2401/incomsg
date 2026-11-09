@@ -8,3 +8,262 @@ generator client {
 datasource db {
   provider = "mysql"
 }
+
+enum UserRole {
+  ADMIN
+  MERCHANT
+  MEMBER
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProductStatus {
+  ACTIVE
+  HIDDEN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+}
+
+enum TierLevel {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum PointTransactionType {
+  EARN
+  REDEEM_DISCOUNT
+  REDEEM_REWARD
+}
+
+enum VoucherType {
+  DISCOUNT
+  REWARD
+}
+
+enum MemberVoucherStatus {
+  AVAILABLE
+  USED
+  FULFILLED
+}
+
+model User {
+  id                   Int                   @id @default(autoincrement())
+  email                String                @unique @db.VarChar(191)
+  passwordHash         String                @db.VarChar(255)
+  role                 UserRole
+  isActive             Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  application          MerchantApplication?  @relation("Applicant")
+  reviewedApplications MerchantApplication[] @relation("Reviewer")
+  merchant             Merchant?             @relation("MerchantOwner")
+  memberships          MerchantMembership[]  @relation("MemberMemberships")
+  orders               Order[]               @relation("MemberOrders")
+  fulfilledRewards     RewardFulfillment[]   @relation("RewardFulfiller")
+}
+
+model MerchantApplication {
+  id           Int               @id @default(autoincrement())
+  applicantId  Int               @unique
+  storeName    String            @db.VarChar(191)
+  status       ApplicationStatus @default(PENDING)
+  reviewedById Int?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  applicant    User              @relation("Applicant", fields: [applicantId], references: [id])
+  reviewedBy   User?             @relation("Reviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+}
+
+model Merchant {
+  id                 Int                  @id @default(autoincrement())
+  ownerId            Int                  @unique
+  name               String               @db.VarChar(191)
+  slug               String               @unique @db.VarChar(191)
+  isActive           Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  owner              User                 @relation("MerchantOwner", fields: [ownerId], references: [id])
+  products           Product[]
+  orders             Order[]
+  memberships        MerchantMembership[]
+  tiers              LoyaltyTier[]
+  loyaltyRule        LoyaltyRule?
+  voucherDefinitions VoucherDefinition[]
+}
+
+model Product {
+  id          Int           @id @default(autoincrement())
+  merchantId  Int
+  name        String        @db.VarChar(191)
+  description String?       @db.Text
+  price       Decimal       @db.Decimal(15, 0)
+  imageUrl    String?       @db.VarChar(2048)
+  status      ProductStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  merchant    Merchant      @relation(fields: [merchantId], references: [id])
+  orderItems  OrderItem[]
+
+  @@index([merchantId, status])
+}
+
+model Order {
+  id               Int               @id @default(autoincrement())
+  merchantId       Int
+  memberId         Int
+  status           OrderStatus       @default(PENDING)
+  subtotal         Decimal           @db.Decimal(15, 0)
+  discountAmount   Decimal           @default(0) @db.Decimal(15, 0)
+  total            Decimal           @db.Decimal(15, 0)
+  voucherId        Int?              @unique
+  paidAt           DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  merchant         Merchant          @relation(fields: [merchantId], references: [id])
+  member           User              @relation("MemberOrders", fields: [memberId], references: [id])
+  voucher          MemberVoucher?    @relation("AppliedVoucher", fields: [voucherId], references: [id])
+  items            OrderItem[]
+  pointTransaction PointTransaction?
+
+  @@index([merchantId, status])
+  @@index([memberId, createdAt])
+}
+
+model OrderItem {
+  id          Int     @id @default(autoincrement())
+  orderId     Int
+  productId   Int
+  productName String  @db.VarChar(191)
+  unitPrice   Decimal @db.Decimal(15, 0)
+  quantity    Int
+  lineTotal   Decimal @db.Decimal(15, 0)
+  order       Order   @relation(fields: [orderId], references: [id])
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+model MerchantMembership {
+  id         Int             @id @default(autoincrement())
+  merchantId Int
+  memberId   Int
+  tierId     Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  merchant   Merchant        @relation(fields: [merchantId], references: [id])
+  member     User            @relation("MemberMemberships", fields: [memberId], references: [id])
+  tier       LoyaltyTier?    @relation(fields: [tierId], references: [id])
+  wallet     LoyaltyWallet?
+  vouchers   MemberVoucher[]
+
+  @@unique([memberId, merchantId])
+  @@index([merchantId])
+  @@index([tierId])
+}
+
+model LoyaltyTier {
+  id                Int                  @id @default(autoincrement())
+  merchantId        Int
+  level             TierLevel
+  minLifetimePoints Int
+  multiplier        Decimal              @db.Decimal(5, 2)
+  merchant          Merchant             @relation(fields: [merchantId], references: [id])
+  memberships       MerchantMembership[]
+
+  @@unique([merchantId, level])
+  @@unique([merchantId, minLifetimePoints])
+}
+
+model LoyaltyRule {
+  id          Int      @id @default(autoincrement())
+  merchantId  Int      @unique
+  vndPerPoint Int      @default(10000)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  merchant    Merchant @relation(fields: [merchantId], references: [id])
+}
+
+model LoyaltyWallet {
+  id                   Int                @id @default(autoincrement())
+  membershipId         Int                @unique
+  availablePoints      Int                @default(0)
+  lifetimeEarnedPoints Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  membership           MerchantMembership @relation(fields: [membershipId], references: [id])
+  transactions         PointTransaction[]
+}
+
+model PointTransaction {
+  id              Int                  @id @default(autoincrement())
+  walletId        Int
+  type            PointTransactionType
+  delta           Int
+  balanceAfter    Int
+  reason          String               @db.VarChar(255)
+  orderId         Int?                 @unique
+  memberVoucherId Int?                 @unique
+  createdAt       DateTime             @default(now())
+  wallet          LoyaltyWallet        @relation(fields: [walletId], references: [id])
+  order           Order?               @relation(fields: [orderId], references: [id])
+  memberVoucher   MemberVoucher?       @relation(fields: [memberVoucherId], references: [id])
+
+  @@index([walletId, createdAt])
+}
+
+model VoucherDefinition {
+  id                Int             @id @default(autoincrement())
+  merchantId        Int
+  type              VoucherType
+  title             String          @db.VarChar(191)
+  pointsCost        Int
+  discountAmount    Decimal?        @db.Decimal(15, 0)
+  rewardDescription String?         @db.Text
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  merchant          Merchant        @relation(fields: [merchantId], references: [id])
+  memberVouchers    MemberVoucher[]
+
+  @@index([merchantId, type, isActive])
+}
+
+model MemberVoucher {
+  id               Int                 @id @default(autoincrement())
+  membershipId     Int
+  definitionId     Int
+  status           MemberVoucherStatus @default(AVAILABLE)
+  redeemedAt       DateTime            @default(now())
+  usedAt           DateTime?
+  membership       MerchantMembership  @relation(fields: [membershipId], references: [id])
+  definition       VoucherDefinition   @relation(fields: [definitionId], references: [id])
+  appliedOrder     Order?              @relation("AppliedVoucher")
+  pointTransaction PointTransaction?
+  fulfillment      RewardFulfillment?
+
+  @@index([membershipId, status])
+  @@index([definitionId])
+}
+
+model RewardFulfillment {
+  id            Int           @id @default(autoincrement())
+  voucherId     Int           @unique
+  fulfilledById Int
+  fulfilledAt   DateTime      @default(now())
+  note          String?       @db.VarChar(255)
+  voucher       MemberVoucher @relation(fields: [voucherId], references: [id])
+  fulfilledBy   User          @relation("RewardFulfiller", fields: [fulfilledById], references: [id])
+}
