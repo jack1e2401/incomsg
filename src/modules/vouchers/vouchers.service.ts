@@ -47,4 +47,7 @@ export const vouchersService = {
     if (!result) throw new HttpError(404, "MERCHANT_NOT_FOUND");
     return result;
   },
+  redeemVoucher(memberId: number, definitionId: number) {
+    return vouchersRepository.redeemVoucher(memberId, definitionId);
+  },
 };

@@ -97,3 +97,31 @@ test("merchant definitions enforce type-specific fields and ownership", async ()
   assert.equal((publicList.json.definitions as any[]).some((item) => item.id === discount.json.definition.id), false);
 });
 
+test("redemption spends points once and keeps vouchers merchant scoped", async () => {
+  const definition = await request("/api/merchant/vouchers", "POST", merchantAToken, { type: "DISCOUNT", title: "Giảm 20k", pointsCost: 200, discountAmount: "20000" });
+  assert.equal(definition.response.status, 201);
+  const tiers = await prisma.loyaltyTier.createMany({ data: [
+    { merchantId: merchantAId, level: "BRONZE", minLifetimePoints: 0, multiplier: "1.00" },
+    { merchantId: merchantAId, level: "SILVER", minLifetimePoints: 1000, multiplier: "1.20" },
+    { merchantId: merchantAId, level: "GOLD", minLifetimePoints: 5000, multiplier: "1.50" },
+    { merchantId: merchantAId, level: "PLATINUM", minLifetimePoints: 10000, multiplier: "2.00" },
+  ] });
+  assert.equal(tiers.count, 4);
+  const membership = await prisma.merchantMembership.create({ data: { memberId, merchantId: merchantAId } });
+  const wallet = await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 200, lifetimeEarnedPoints: 200 } });
+  await prisma.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN", delta: 200, balanceAfter: 200, reason: "fixture" } });
+  const concurrent = await Promise.all([
+    request(`/api/member/vouchers/${definition.json.definition.id}/redeem`, "POST", memberToken),
+    request(`/api/member/vouchers/${definition.json.definition.id}/redeem`, "POST", memberToken),
+  ]);
+  assert.deepEqual(concurrent.map(({ response }) => response.status).sort(), [201, 409]);
+  const winner = concurrent.find(({ response }) => response.status === 201)!;
+  assert.equal(winner.json.wallet.availablePoints, 0);
+  assert.equal(winner.json.voucher.status, "AVAILABLE");
+  const ownVouchers = await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", memberToken);
+  const foreignVouchers = await request(`/api/member/merchants/${merchantAId}/vouchers`, "GET", otherToken);
+  assert.equal((ownVouchers.json.vouchers as any[]).length, 1);
+  assert.deepEqual(foreignVouchers.json.vouchers, []);
+  assert.notEqual(merchantAId, merchantBId);
+});
+

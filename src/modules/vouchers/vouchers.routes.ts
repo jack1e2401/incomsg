@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireRole } from "../../middleware/auth.js";
-import { createDefinition, listMerchantDefinitions, listPublicDefinitions, updateDefinition, listOwnedVouchers } from "./vouchers.controller.js";
+import { createDefinition, listMerchantDefinitions, listPublicDefinitions, updateDefinition, listOwnedVouchers, redeemVoucher } from "./vouchers.controller.js";
 
 export const merchantVoucherRoutes = Router();
 merchantVoucherRoutes.use(authenticate, requireRole("MERCHANT"));
@@ -14,3 +14,7 @@ publicVoucherRoutes.get("/:merchantId/vouchers", listPublicDefinitions);
 export const memberVoucherRoutes = Router();
 memberVoucherRoutes.use(authenticate, requireRole("MEMBER"));
 memberVoucherRoutes.get("/:merchantId/vouchers", listOwnedVouchers);
+
+export const memberRedemptionRoutes = Router();
+memberRedemptionRoutes.use(authenticate, requireRole("MEMBER"));
+memberRedemptionRoutes.post("/:definitionId/redeem", redeemVoucher);

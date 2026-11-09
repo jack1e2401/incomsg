@@ -31,3 +31,7 @@ export const listOwnedVouchers: RequestHandler = async (request, response) => {
   const vouchers = await vouchersService.listOwnedVouchers(response.locals.user.id, readId(param(request.params.merchantId)));
   response.json({ vouchers });
 };
+export const redeemVoucher: RequestHandler = async (request, response) => {
+  const result = await vouchersService.redeemVoucher(response.locals.user.id, readId(param(request.params.definitionId)));
+  response.status(201).json(result);
+};
