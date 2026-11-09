@@ -17,19 +17,22 @@ React 19, TypeScript, Vite 8, Tailwind CSS v4, React Router và các component d
 | --- | --- | --- |
 | Public | `/login`, `/register`, `/application/status` | Auth và trạng thái hồ sơ |
 | Admin | `/admin/applications` | Hàng chờ PENDING, approve/reject |
-| Admin | `/admin`, `/admin/merchants` | Tổng quan/danh sách chờ endpoint monitoring và directory |
+| Admin | `/admin`, `/admin/merchants` | Chưa có endpoint tổng quan monitoring hoặc directory Merchant |
 | Merchant | `/merchant`, `/merchant/store`, `/merchant/products`, `/merchant/loyalty` | Cửa hàng của owner, sản phẩm, cấu hình loyalty |
 | Merchant | `/merchant/vouchers` | CRUD mẫu voucher qua API Merchant |
-| Merchant | `/merchant/orders`, `/merchant/rewards` | Chờ API danh sách đơn và xác nhận trao thưởng |
+| Merchant | `/merchant/rewards` | Hàng chờ quà và xác nhận trao qua API |
+| Merchant | `/merchant/orders` | Chờ API danh sách đơn |
 | Member | `/member` | Nhập Merchant ID vì chưa có directory công khai |
-| Member | `/member/:merchantId`, `product/:productId`, `cart`, `checkout` | Sản phẩm ACTIVE và tạo đơn một sản phẩm qua API |
+| Member | `/member/:merchantId`, `product/:productId`, `cart`, `checkout` | Sản phẩm ACTIVE, voucher giảm giá của chính Merchant và tạo đơn một sản phẩm qua API |
 | Member | `/member/:merchantId/orders/:orderId` | Chỉ hiển thị response vừa tạo đơn; chưa có GET order |
 | Member | `/member/:merchantId/wallet` | Số dư, lifetime points, tier và lịch sử từ API ví |
-| Member | `/member/:merchantId/vouchers` | Danh mục và voucher sở hữu từ API; đổi điểm chờ endpoint redeem |
-| Member | `/member/:merchantId/rewards` | Quà sở hữu từ API; fulfillment chờ endpoint Merchant |
+| Member | `/member/:merchantId/vouchers` | Danh mục, đổi điểm, số dư ví và voucher sở hữu từ API |
+| Member | `/member/:merchantId/rewards` | Quà đã đổi và trạng thái fulfillment từ API |
 | Member | `/member/:merchantId/orders` | Chờ API danh sách đơn |
 
-Checkout chỉ gọi `POST /api/orders` và dùng đúng response `PENDING`. UI không gọi endpoint `/pay` giả lập của backend. Trạng thái điểm, tier và voucher đọc từ API; FE chưa giả định việc đổi điểm hoặc xác nhận trao thưởng khi endpoint tương ứng chưa có.
+Mọi route API được triển khai trong backend đều có client/UI tương ứng, ngoại trừ health check và `POST /api/orders/:orderId/pay`. UI không gọi endpoint thanh toán giả lập này để tránh hiển thị thanh toán thành công khi chưa có cổng thanh toán thật. Checkout chỉ tạo đơn `PENDING` và hiển thị giá/giảm giá từ response của backend. Đổi điểm nhận voucher và xác nhận trao quà cũng chỉ cập nhật sau khi backend trả kết quả.
+
+Các màn hình vẫn chờ endpoint BE: danh sách Merchant công khai, dashboard/giám sát Admin, danh sách đơn Merchant, lịch sử đơn Member và truy xuất chi tiết đơn sau khi tải lại trang. UI không tạo dữ liệu thay thế cho các màn hình này.
 
 Schema tham chiếu: `apps/backend/prisma/schema.prisma`. DTO thật của API hiện tại nằm trong `src/api/contracts/milestone2.ts` và `src/api/commerce-types.ts`; transport nằm trong `src/api/milestone2-client.ts` và `src/api/commerce-http.ts`.
 
