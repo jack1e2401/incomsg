@@ -33,6 +33,10 @@ export const paymentsRepository = {
             snapshotVndPerPoint: reservation.snapshotVndPerPoint,
             snapshotRuleActive: reservation.snapshotRuleActive,
             snapshotMaxMultiplier: reservation.snapshotMaxMultiplier,
+            snapshotBronzeMultiplier: reservation.snapshotBronzeMultiplier,
+            snapshotSilverMultiplier: reservation.snapshotSilverMultiplier,
+            snapshotGoldMultiplier: reservation.snapshotGoldMultiplier,
+            snapshotPlatinumMultiplier: reservation.snapshotPlatinumMultiplier,
           },
           include: { order: true },
         });
@@ -107,6 +111,12 @@ export const paymentsRepository = {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
           maxMultiplier: attempt.snapshotMaxMultiplier,
+          tierMultipliers: {
+            BRONZE: attempt.snapshotBronzeMultiplier,
+            SILVER: attempt.snapshotSilverMultiplier,
+            GOLD: attempt.snapshotGoldMultiplier,
+            PLATINUM: attempt.snapshotPlatinumMultiplier,
+          },
         });
         if (paid === "missing") return { code: "01", message: "Order not found" };
         if (paid === "already_paid") return { code: "02", message: "Order already confirmed" };

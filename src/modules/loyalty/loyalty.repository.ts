@@ -39,9 +39,16 @@ export const loyaltyRepository = {
     ]);
     const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
     const configuredTiers = await tx.loyaltyTier.findMany({ where: { merchantId: order.merchantId }, orderBy: { minLifetimePoints: "asc" } });
-    const maxMultiplier = configuredTiers.length === 4
-      ? configuredTiers.reduce((max, tier) => tier.multiplier.greaterThan(max) ? tier.multiplier : max, configuredTiers[0]!.multiplier)
-      : new Prisma.Decimal(defaultTiers.reduce((max, tier) => Number(tier.multiplier) > Number(max) ? tier.multiplier : max, defaultTiers[0]!.multiplier));
+    const snapshotTiers = configuredTiers.length === 4
+      ? configuredTiers
+      : defaultTiers.map((tier) => ({ ...tier, multiplier: new Prisma.Decimal(tier.multiplier) }));
+    const snapshotMultipliers = {
+      BRONZE: snapshotTiers.find((tier) => tier.level === "BRONZE")!.multiplier,
+      SILVER: snapshotTiers.find((tier) => tier.level === "SILVER")!.multiplier,
+      GOLD: snapshotTiers.find((tier) => tier.level === "GOLD")!.multiplier,
+      PLATINUM: snapshotTiers.find((tier) => tier.level === "PLATINUM")!.multiplier,
+    };
+    const maxMultiplier = Object.values(snapshotMultipliers).reduce((max, multiplier) => multiplier.greaterThan(max) ? multiplier : max);
     const vndPerPoint = rule?.vndPerPoint ?? 10000;
     const ruleActive = rule?.isActive ?? true;
     let requested: number;
@@ -67,6 +74,10 @@ export const loyaltyRepository = {
       snapshotVndPerPoint: vndPerPoint,
       snapshotRuleActive: ruleActive,
       snapshotMaxMultiplier: maxMultiplier,
+      snapshotBronzeMultiplier: snapshotMultipliers.BRONZE,
+      snapshotSilverMultiplier: snapshotMultipliers.SILVER,
+      snapshotGoldMultiplier: snapshotMultipliers.GOLD,
+      snapshotPlatinumMultiplier: snapshotMultipliers.PLATINUM,
     };
   },
 
@@ -100,7 +111,12 @@ export const loyaltyRepository = {
     return this.getConfig(merchantId);
   },
 
-  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earningSnapshot?: { vndPerPoint: number; ruleActive: boolean; maxMultiplier?: Prisma.Decimal }): Promise<OrderDto | "missing" | "already_paid"> {
+  async completePaidOrder(tx: Prisma.TransactionClient, orderId: number, memberId: number, earningSnapshot?: {
+    vndPerPoint: number;
+    ruleActive: boolean;
+    maxMultiplier?: Prisma.Decimal;
+    tierMultipliers?: Record<"BRONZE" | "SILVER" | "GOLD" | "PLATINUM", Prisma.Decimal>;
+  }): Promise<OrderDto | "missing" | "already_paid"> {
     const changed = await tx.order.updateMany({
       where: { id: orderId, memberId, status: "PENDING" },
       data: { status: "PAID", paidAt: new Date() },
@@ -149,7 +165,9 @@ export const loyaltyRepository = {
       include: { wallet: true, tier: true },
     });
     const wallet = membership.wallet ?? await tx.loyaltyWallet.create({ data: { membershipId: membership.id } });
-    const earningMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
+    const tierLevel = membership.tier?.level ?? "BRONZE";
+    const currentMultiplier = membership.tier?.multiplier ?? tiers.find((tier) => tier.level === "BRONZE")!.multiplier;
+    const earningMultiplier = earningSnapshot?.tierMultipliers?.[tierLevel] ?? currentMultiplier;
     let earnedPoints: number;
     try {
       const ruleActive = earningSnapshot?.ruleActive ?? rule?.isActive ?? true;
