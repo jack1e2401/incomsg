@@ -625,7 +625,9 @@ export function MerchantRewards() {
                   <Textarea
                     maxLength={255}
                     value={notes[voucher.id] ?? ""}
-                    onChange={(event) => setNotes((current) => ({ ...current, [voucher.id]: event.target.value }))}
+                    onChange={(event) =>
+                      setNotes((current) => ({ ...current, [voucher.id]: event.target.value }))
+                    }
                   />
                 </Field>
                 <Button
