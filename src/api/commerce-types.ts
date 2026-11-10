@@ -49,7 +49,8 @@ export interface OrderDto {
   total: string;
   paidAt: string | null;
   items: OrderItemDto[];
-  earnedPoints?: number;
+  earnedPoints?: number | null;
+  promotedToTier?: TierLevel | null;
 }
 
 export type PaymentStatusDto = {
@@ -151,6 +152,7 @@ export interface WalletDto {
   availablePoints: number;
   lifetimeEarnedPoints: number;
   tier: MemberTier;
+  policy?: LoyaltyConfigDto;
   transactions: WalletTransactionDto[];
 }
 

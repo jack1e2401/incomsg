@@ -175,6 +175,13 @@ test("Member cart quantity survives reload and stays separate by account and sto
 
 test("checkout stays pending until the mock payment endpoint confirms PAID", async ({ page }) => {
   await signInAsMember(page);
+  const paidOrder = {
+    ...pendingOrder,
+    status: "PAID",
+    paidAt: "2026-11-09T10:00:00.000Z",
+    earnedPoints: 12,
+    promotedToTier: "GOLD",
+  };
   let paid = false;
   let orderBody: unknown;
   await page.route("**/api/merchants/7/products", (route) =>
@@ -210,7 +217,7 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        order: paid ? { ...pendingOrder, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" } : pendingOrder,
+        order: paid ? paidOrder : pendingOrder,
       }),
     }),
   );
@@ -219,7 +226,7 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        order: { ...pendingOrder, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" },
+        order: paidOrder,
       }),
     });
   });
@@ -231,9 +238,14 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
   await page.getByRole("button", { name: "Tạo đơn" }).click();
   await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thanh toán thử" })).toBeVisible();
+  await expect(page.getByText(/Bạn vừa nhận/)).toHaveCount(0);
   expect(orderBody).toEqual({ productId: 12, quantity: 1 });
   await page.getByRole("button", { name: "Thanh toán thử" }).click();
   await expect(page.getByRole("status").getByText("Thanh toán đã được máy chủ xác nhận")).toBeVisible();
+  await expect(page.getByText("Bạn vừa nhận +12 điểm")).toBeVisible();
+  await expect(page.getByText(/Chúc mừng.*Gold/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Chúc mừng.*Gold/)).toBeVisible();
 });
 
 test("a VNPay return query never marks a pending order paid by itself", async ({ page }) => {

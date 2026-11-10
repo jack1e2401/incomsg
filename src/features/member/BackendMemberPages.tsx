@@ -10,6 +10,7 @@ import {
   Gift,
   Receipt,
   SignOut,
+  Sparkle,
 } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
@@ -30,6 +31,7 @@ import {
   Select,
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
+import { MemberLoyaltyPolicyDialog, memberTierLabel } from "./MemberLoyaltyPolicyDialog";
 import { useMemberCart } from "./useMemberCart";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
@@ -646,9 +648,28 @@ export function MemberOrderResult() {
             )}
           </div>
         ) : (
-          <p role="status" className="mt-5 rounded-xl bg-[#e8f1e2] p-4 text-xs leading-5 text-[#357044]">
-            Thanh toán đã được máy chủ xác nhận. Ví và lịch sử điểm đã được tải từ backend.
-          </p>
+          <div className="mt-5 rounded-2xl bg-[#e8f1e2] p-4 text-[#294a32] sm:p-5">
+            <div role="status">
+              <p className="text-sm">Thanh toán đã được máy chủ xác nhận.</p>
+              {order.earnedPoints != null &&
+                (order.earnedPoints > 0 ? (
+                  <p className="mt-2 text-xl font-extrabold">
+                    Bạn vừa nhận +{order.earnedPoints.toLocaleString("vi-VN")} điểm
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm">Đơn này không phát sinh điểm.</p>
+                ))}
+              {order.promotedToTier && (
+                <p className="mt-3 flex items-center gap-2 font-bold">
+                  <Sparkle aria-hidden="true" size={18} weight="fill" className="shrink-0" />
+                  Chúc mừng! Bạn đã lên hạng {memberTierLabel[order.promotedToTier]}.
+                </p>
+              )}
+            </div>
+            <Button asChild variant="outline" size="sm" className="mt-4">
+              <Link to={`/member/${merchantId}/wallet`}>Xem ví điểm</Link>
+            </Button>
+          </div>
         )}
       </Card>
     </>
@@ -717,7 +738,12 @@ export function MemberWallet() {
   const wallet = resource.data;
   return (
     <>
-      <PageHeader title="Điểm thưởng" />
+      <PageHeader
+        title="Điểm thưởng"
+        action={!resource.loading && !resource.error && wallet?.policy && (
+          <MemberLoyaltyPolicyDialog policy={wallet.policy} />
+        )}
+      />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -761,9 +787,11 @@ export function MemberWallet() {
               </div>
             </Card>
           </div>
-          <div className="mt-7">
-            <LoyaltyFormula />
-          </div>
+          {!wallet.policy && (
+            <div className="mt-7">
+              <LoyaltyFormula />
+            </div>
+          )}
           <section className="mt-7">
             <h2 className="mb-4 text-xl font-extrabold">Lịch sử điểm</h2>
             {!wallet.transactions.length ? (

@@ -463,7 +463,7 @@ function MerchantPurchaseOrders() {
                 ) : (
                   <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
                 )}
-                {order.status === "PAID" && order.earnedPoints !== undefined && (
+                {order.status === "PAID" && order.earnedPoints != null && (
                   <p className="mt-1 text-xs font-semibold text-[#357044]">
                     +{order.earnedPoints.toLocaleString("vi-VN")} điểm
                   </p>

@@ -101,6 +101,17 @@ test("Member wallet shows backend balances in a visible card without invented ti
           availablePoints: 1240,
           lifetimeEarnedPoints: 1840,
           tier: "SILVER",
+          policy: {
+            merchantId: 7,
+            vndPerPoint: 12500,
+            isActive: true,
+            tiers: [
+              { level: "BRONZE", minLifetimePoints: 0, multiplier: "1.00" },
+              { level: "SILVER", minLifetimePoints: 850, multiplier: "1.25" },
+              { level: "GOLD", minLifetimePoints: 2750, multiplier: "1.50" },
+              { level: "PLATINUM", minLifetimePoints: 6000, multiplier: "2.00" },
+            ],
+          },
           transactions: [
             {
               id: 1,
@@ -124,8 +135,14 @@ test("Member wallet shows backend balances in a visible card without invented ti
   await expect(page.getByText("1.840", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "SILVER" })).toBeVisible();
   await expect(page.getByText(/hạng dựa trên tổng điểm đã tích lũy/i)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Cách tính điểm Loyalty" })).toBeVisible();
-  await expect(page.getByText(/tiền thực trả sau giảm giá ÷ mức VND cho 1 điểm/)).toBeVisible();
+  const policyButton = page.getByRole("button", { name: "Chính sách tích điểm" });
+  await policyButton.click();
+  const policy = page.getByRole("dialog", { name: "Chính sách tích điểm" });
+  await expect(policy.getByText(/12\.500\s*₫/)).toBeVisible();
+  await expect(policy.getByRole("row", { name: /Gold/ })).toContainText("2.750");
+  await page.keyboard.press("Escape");
+  await expect(policy).toHaveCount(0);
+  await expect(policyButton).toBeFocused();
 
   const balanceCard = page.getByText("Điểm có thể sử dụng", { exact: true }).locator("..");
   await expect

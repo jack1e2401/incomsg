@@ -13,7 +13,13 @@ const pending = {
     { productId: 12, productName: "Demo Coffee", unitPrice: "150000", quantity: 1, lineTotal: "150000" },
   ],
 };
-const paid = { ...pending, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" };
+const paid = {
+  ...pending,
+  status: "PAID",
+  paidAt: "2026-11-09T10:00:00.000Z",
+  earnedPoints: 18,
+  promotedToTier: "PLATINUM",
+};
 
 async function setup(
   page: Page,
@@ -64,6 +70,8 @@ test("queryless VNPay return polls CREATED until backend confirms PAID", async (
   await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
   await page.clock.runFor(6_100);
   await expect(page.getByText("Đã thanh toán")).toBeVisible();
+  await expect(page.getByText("Bạn vừa nhận +18 điểm")).toBeVisible();
+  await expect(page.getByText(/Chúc mừng.*Platinum/)).toBeVisible();
   expect(polls).toBe(3);
 });
 
