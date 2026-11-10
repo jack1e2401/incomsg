@@ -27,20 +27,34 @@ export const ordersService = {
   },
 
   async createOrder(memberId: number, input: CreateOrderInput): Promise<OrderDto> {
-    const product = await productsRepository.findSellableProduct(input.productId);
-    if (!product) throw new HttpError(404, "PRODUCT_NOT_FOUND");
+    const products = await productsRepository.findSellableProducts(input.items.map(({ productId }) => productId));
+    const merchantId = products[0]?.merchantId;
+    if (merchantId === undefined || products.length !== input.items.length) {
+      throw new HttpError(404, "PRODUCT_NOT_FOUND");
+    }
+    if (products.some((product) => product.merchantId !== merchantId)) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
 
-    const total = product.price.mul(input.quantity);
-    if (total.greaterThan(maxOrderTotal)) throw new HttpError(400, "INVALID_INPUT");
+    const byId = new Map(products.map((product) => [product.id, product]));
+    const items = input.items.map(({ productId, quantity }) => {
+      const product = byId.get(productId)!;
+      return {
+        productId,
+        productName: product.name,
+        unitPrice: product.price,
+        quantity,
+        lineTotal: product.price.mul(quantity),
+      };
+    });
+    const subtotal = items.reduce((sum, item) => sum.plus(item.lineTotal), new Prisma.Decimal(0));
+    if (subtotal.greaterThan(maxOrderTotal)) throw new HttpError(400, "INVALID_INPUT");
 
     return ordersRepository.createPendingOrder({
       memberId,
-      merchantId: product.merchantId,
-      productId: product.id,
-      productName: product.name,
-      unitPrice: product.price,
-      quantity: input.quantity,
-      total,
+      merchantId,
+      items,
+      subtotal,
       voucherId: input.voucherId ?? null,
     });
   },

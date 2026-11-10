@@ -218,6 +218,31 @@ test("buy now snapshots price and name", async () => {
   assert.equal(hiddenProductOrder.response.status, 404);
 });
 
+test("one checkout snapshots multiple products and rejects mixing stores", async () => {
+  const coffee = await createTestProduct();
+  const cake = await createTestProduct("Demo Cake", "25000");
+  const otherStore = await request("/api/merchant/products", "POST", merchantBToken, { name: "Other Coffee", price: "20000" });
+  assert.equal(otherStore.response.status, 201);
+  const items = [{ productId: coffee.id, quantity: 2 }, { productId: cake.id, quantity: 1 }];
+
+  const created = await request("/api/orders", "POST", memberToken, { items });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.json.order.status, "PENDING");
+  assert.equal(created.json.order.subtotal, "325000");
+  assert.deepEqual(
+    created.json.order.items,
+    [
+      { productId: coffee.id, productName: coffee.name, unitPrice: coffee.price, quantity: 2, lineTotal: "300000" },
+      { productId: cake.id, productName: cake.name, unitPrice: cake.price, quantity: 1, lineTotal: "25000" },
+    ],
+  );
+  const otherItem = { productId: otherStore.json.product.id, quantity: 1 };
+  const mixed = await request("/api/orders", "POST", memberToken, { items: [items[0], otherItem] });
+  assert.equal(mixed.response.status, 400);
+  const duplicate = await request("/api/orders", "POST", memberToken, { items: [items[0], items[0]] });
+  assert.equal(duplicate.response.status, 400);
+});
+
 test("buy now validates the payload", async () => {
   const product = await createTestProduct();
   const zeroQuantity = await request("/api/orders", "POST", memberToken, { productId: product.id, quantity: 0 });

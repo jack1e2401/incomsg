@@ -64,10 +64,10 @@ export const productsRepository = {
     return merchant !== null;
   },
 
-  async findSellableProduct(productId: number) {
-    return prisma.product.findFirst({
+  async findSellableProducts(productIds: number[]) {
+    return prisma.product.findMany({
       where: {
-        id: productId,
+        id: { in: productIds },
         status: "ACTIVE",
         merchant: { is: { isActive: true } },
       },

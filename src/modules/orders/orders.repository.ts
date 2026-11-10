@@ -79,30 +79,21 @@ export const ordersRepository = {
         if (existingOrder) throw new HttpError(409, "VOUCHER_ALREADY_RESERVED");
         requestedDiscount = voucher.snapshotDiscountAmount ?? new Prisma.Decimal(0);
       }
-      const { discountAmount, total } = calculateDiscountedTotal(input.total, requestedDiscount);
-      const order = await tx.order.create({
-      data: {
-        memberId: input.memberId,
-        merchantId: input.merchantId,
-        status: "PENDING",
-        subtotal: input.total,
-        discountAmount,
-        total,
-        voucherId: input.voucherId,
-        paidAt: null,
-        items: {
-          create: {
-            productId: input.productId,
-            productName: input.productName,
-            unitPrice: input.unitPrice,
-            quantity: input.quantity,
-            lineTotal: input.total,
-          },
+      const { discountAmount, total } = calculateDiscountedTotal(input.subtotal, requestedDiscount);
+      return tx.order.create({
+        data: {
+          memberId: input.memberId,
+          merchantId: input.merchantId,
+          status: "PENDING",
+          subtotal: input.subtotal,
+          discountAmount,
+          total,
+          voucherId: input.voucherId,
+          paidAt: null,
+          items: { create: input.items },
         },
-      },
-      include: { items: true },
+        include: { items: { orderBy: { id: "asc" } } },
       });
-      return order;
       }, { isolationLevel: "Serializable" }));
     } catch (error) {
       if (input.voucherId !== null && typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
