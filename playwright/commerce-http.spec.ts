@@ -26,6 +26,53 @@ async function signInAsMember(page: import("@playwright/test").Page) {
   });
 }
 
+test("repeated adds and different products checkout as one pending order", async ({ page }) => {
+  await signInAsMember(page);
+  const products = [
+    { id: 12, merchantId: 7, name: "Demo Coffee", price: "150000" },
+    { id: 13, merchantId: 7, name: "Demo Cake", price: "25000" },
+  ].map((product) => ({ ...product, description: null, imageUrl: null, kind: "SALE", status: "ACTIVE" }));
+  const order = {
+    ...pendingOrder,
+    subtotal: "325000",
+    total: "325000",
+    items: [
+      { ...pendingOrder.items[0], quantity: 2, lineTotal: "300000" },
+      { productId: 13, productName: "Demo Cake", unitPrice: "25000", quantity: 1, lineTotal: "25000" },
+    ],
+  };
+  await page.route("**/api/merchants/7/products", (route) => route.fulfill({ json: { products } }));
+  await page.route("**/api/member/merchants/7/vouchers", (route) => route.fulfill({ json: { vouchers: [] } }));
+  await page.route("**/api/member/orders/41", (route) => route.fulfill({ json: { order } }));
+  await page.route("**/api/orders", (route) => route.fulfill({ status: 201, json: { order } }));
+
+  await page.goto("/member/7");
+  const addButtons = page.getByRole("button", { name: "Chọn mua" });
+  await addButtons.nth(0).click();
+  await page.getByRole("link", { name: "Chi tiết" }).first().click();
+  await addButtons.click();
+  await page.getByRole("link", { name: "Gian hàng" }).click();
+  await addButtons.nth(1).click();
+  const cartLink = page.getByRole("link", { name: /^Giỏ hàng/ });
+  await expect(cartLink).toHaveAccessibleName("Giỏ hàng, 3 sản phẩm");
+  await cartLink.click();
+  await page.reload();
+  await expect(page.getByRole("spinbutton").nth(0)).toHaveValue("2");
+  await expect(page.getByRole("spinbutton").nth(1)).toHaveValue("1");
+
+  await page.getByRole("link", { name: "Tiếp tục" }).click();
+  await expect(page.getByText("Demo Coffee", { exact: true })).toBeVisible();
+  await expect(page.getByText("Demo Cake", { exact: true })).toBeVisible();
+  const request = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/api/orders"));
+  await page.getByRole("button", { name: "Tạo đơn" }).click();
+  expect((await request).postDataJSON()).toEqual({
+    items: [{ productId: 12, quantity: 2 }, { productId: 13, quantity: 1 }],
+  });
+  await expect(page.getByText("Chờ thanh toán", { exact: true })).toBeVisible();
+  await cartLink.click();
+  await expect(page.getByText("Giỏ hàng trống", { exact: true })).toBeVisible();
+});
+
 test("Member discovers a real merchant and catalog from HTTP", async ({ page }) => {
   await signInAsMember(page);
   await page.route("**/api/merchants", (route) =>

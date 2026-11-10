@@ -62,11 +62,12 @@ export type AdminDashboardResponse = {
   stats: { merchants: number; pendingApplications: number; paidOrders: number; totalVolume: string | number };
 };
 
-export interface CreateOrderInput {
+interface OrderLineInput {
   productId: number;
   quantity: number;
-  voucherId?: number;
 }
+
+export type CreateOrderInput = (OrderLineInput | { items: OrderLineInput[] }) & { voucherId?: number };
 
 export interface LoyaltyTierDto {
   level: TierLevel;

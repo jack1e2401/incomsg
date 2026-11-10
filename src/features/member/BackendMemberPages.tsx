@@ -13,12 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
-import type {
-  MemberVoucherDto,
-  PointTransactionType,
-  ProductDto,
-  VoucherDefinitionDto,
-} from "../../api/commerce-types";
+import type { MemberVoucherDto, PointTransactionType, VoucherDefinitionDto } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
 import {
   StatusText,
@@ -34,14 +29,14 @@ import {
   Select,
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
+import { useMemberCart } from "./useMemberCart";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
-const money = (value: string) =>
+const money = (value: string | bigint) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(
-    Number(value),
+    typeof value === "bigint" ? value : Number(value),
   );
-type Cart = { product: ProductDto; quantity: number } | null;
-type MemberContext = { merchantId: number; cart: Cart; setCart: (cart: Cart) => void };
+type MemberContext = { merchantId: number; cart: ReturnType<typeof useMemberCart> };
 type PaymentPollPhase = "initial" | "polling" | "stopped" | "error" | "failed";
 type PaymentPollState = {
   key: string;
@@ -56,21 +51,39 @@ function useMerchantContext() {
 }
 
 export function BackendMemberLayout() {
-  const rawId = useParams().merchantId;
-  const merchantId = Number(rawId);
-  const [carts, setCarts] = useState<Record<number, Cart>>({});
-  const { logout } = useAuthSession();
-  const navigate = useNavigate();
+  const merchantId = Number(useParams().merchantId);
+  const { user } = useAuthSession();
   if (!Number.isInteger(merchantId) || merchantId < 1)
     return <ErrorState message="Mã cửa hàng không hợp lệ." />;
+  if (!user) return null;
+
+  const storageKey = `loyalty.member.cart.${user.id}.${merchantId}`;
+  return <MemberStoreLayout key={storageKey} merchantId={merchantId} storageKey={storageKey} />;
+}
+
+function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; storageKey: string }) {
+  const cart = useMemberCart(storageKey, merchantId);
+  const { logout } = useAuthSession();
+  const navigate = useNavigate();
+
   const base = `/member/${merchantId}`;
+  const cartQuantity = cart.quantity;
+  const cartLabel = cartQuantity > 0 ? `Giỏ hàng, ${cartQuantity} sản phẩm` : undefined;
+  const cartBadge = cartQuantity > 0 && (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#335e3d] px-1 text-[10px] font-bold leading-none text-white tabular-nums"
+    >
+      {cartQuantity}
+    </span>
+  );
   const links = [
     { to: base, label: "Cửa hàng", icon: Storefront, end: true },
     { to: `${base}/wallet`, label: "Ví điểm", icon: Wallet },
     { to: `${base}/vouchers`, label: "Voucher", icon: Ticket },
     { to: `${base}/rewards`, label: "Quà tặng", icon: Gift },
     { to: `${base}/orders`, label: "Đơn hàng", icon: Receipt },
-    { to: `${base}/cart`, label: "Giỏ hàng", icon: ShoppingCart },
+    { to: `${base}/cart`, label: "Giỏ hàng", icon: ShoppingCart, isCart: true },
   ];
   return (
     <div className="min-h-dvh bg-[#fcfcf8] pb-20 lg:pb-0">
@@ -83,16 +96,18 @@ export function BackendMemberLayout() {
             Cửa hàng #{merchantId}
           </span>
           <nav aria-label="Member" className="hidden gap-1 lg:flex">
-            {links.map(({ to, label, end }) => (
+            {links.map(({ to, label, end, isCart }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
+                aria-label={isCart ? cartLabel : undefined}
                 className={({ isActive }) =>
-                  `rounded-full px-3 py-2 text-xs font-bold ${isActive ? "bg-[#e8f1e2] text-[#335e3d]" : "text-[#718176]"}`
+                  `inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold ${isActive ? "bg-[#e8f1e2] text-[#335e3d]" : "text-[#718176]"}`
                 }
               >
                 {label}
+                {isCart && cartBadge}
               </NavLink>
             ))}
           </nav>
@@ -111,30 +126,26 @@ export function BackendMemberLayout() {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-7 sm:px-7 lg:py-10">
-        <Outlet
-          context={
-            {
-              merchantId,
-              cart: carts[merchantId] ?? null,
-              setCart: (cart: Cart) => setCarts((previous) => ({ ...previous, [merchantId]: cart })),
-            } satisfies MemberContext
-          }
-        />
+        <Outlet context={{ merchantId, cart } satisfies MemberContext} />
       </main>
       <nav
         aria-label="Điều hướng Member"
         className="fixed inset-x-0 bottom-0 z-20 flex border-t border-[#e5ece3] bg-[#fcfcf8] px-1 pb-[max(env(safe-area-inset-bottom),6px)] pt-2 lg:hidden"
       >
-        {links.map(({ to, label, icon: Icon, end }) => (
+        {links.map(({ to, label, icon: Icon, end, isCart }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
+            aria-label={isCart ? cartLabel : undefined}
             className={({ isActive }) =>
               `flex min-w-0 flex-1 flex-col items-center gap-1 py-1 text-[9px] font-bold ${isActive ? "text-[#335e3d]" : "text-[#718176]"}`
             }
           >
-            <Icon size={20} />
+            <span className="relative">
+              <Icon size={20} />
+              {isCart && cartBadge && <span className="absolute -top-1.5 -right-3">{cartBadge}</span>}
+            </span>
             <span className="truncate">{label}</span>
           </NavLink>
         ))}
@@ -144,7 +155,7 @@ export function BackendMemberLayout() {
 }
 
 export function MemberStorefront() {
-  const { merchantId, setCart } = useMerchantContext();
+  const { merchantId, cart } = useMerchantContext();
   const products = useResource(
     () => commerce.listPublicProducts(merchantId).then((response) => response.products),
     [merchantId],
@@ -179,7 +190,9 @@ export function MemberStorefront() {
                   <Button asChild variant="outline">
                     <Link to={`product/${product.id}`}>Chi tiết</Link>
                   </Button>
-                  <Button onClick={() => setCart({ product, quantity: 1 })}>Chọn mua</Button>
+                  <Button disabled={!cart.canAdd(product.id)} onClick={() => cart.addProduct(product)}>
+                    Chọn mua
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -191,7 +204,7 @@ export function MemberStorefront() {
 }
 
 export function MemberProduct() {
-  const { merchantId, setCart } = useMerchantContext();
+  const { merchantId, cart } = useMerchantContext();
   const productId = Number(useParams().productId);
   const products = useResource(
     () => commerce.listPublicProducts(merchantId).then((response) => response.products),
@@ -233,7 +246,7 @@ export function MemberProduct() {
           {product.description && (
             <p className="mt-6 whitespace-pre-line text-sm leading-7 muted">{product.description}</p>
           )}
-          <Button className="mt-8 w-fit" onClick={() => setCart({ product, quantity: 1 })}>
+          <Button className="mt-8 w-fit" disabled={!cart.canAdd(product.id)} onClick={() => cart.addProduct(product)}>
             <ShoppingCart size={18} /> Chọn mua
           </Button>
         </div>
@@ -243,11 +256,11 @@ export function MemberProduct() {
 }
 
 export function MemberCart() {
-  const { merchantId, cart, setCart } = useMerchantContext();
+  const { merchantId, cart } = useMerchantContext();
   return (
     <>
       <PageHeader title="Giỏ hàng" />
-      {!cart ? (
+      {!cart.lines.length ? (
         <EmptyState
           title="Giỏ hàng trống"
           description="Chọn sản phẩm từ gian hàng để tạo đơn."
@@ -259,30 +272,31 @@ export function MemberCart() {
         />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
-          <Card className="p-5">
-            <h2 className="font-extrabold">{cart.product.name}</h2>
-            <p className="mt-2 text-sm muted">{money(cart.product.price)} mỗi sản phẩm</p>
-            <Field label="Số lượng">
-              <Input
-                type="number"
-                min={1}
-                max={99}
-                value={cart.quantity}
-                onChange={(event) => {
-                  const quantity = Number(event.target.value);
-                  if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 99)
-                    setCart({ ...cart, quantity });
-                }}
-              />
-            </Field>
-            <Button variant="ghost" className="mt-3" onClick={() => setCart(null)}>
-              Bỏ sản phẩm
-            </Button>
-          </Card>
+          <div className="space-y-3">
+            {cart.lines.map(({ product, quantity }) => (
+              <Card key={product.id} className="p-5">
+                <h2 className="font-extrabold">{product.name}</h2>
+                <p className="mt-2 text-sm muted">{money(product.price)} mỗi sản phẩm</p>
+                <Field label="Số lượng">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={99}
+                    aria-label={`Số lượng ${product.name}`}
+                    value={quantity}
+                    onChange={(event) => cart.setQuantity(product.id, event.target.valueAsNumber)}
+                  />
+                </Field>
+                <Button variant="ghost" className="mt-3" onClick={() => cart.removeProduct(product.id)}>
+                  Bỏ sản phẩm
+                </Button>
+              </Card>
+            ))}
+          </div>
           <Card className="h-fit p-5">
             <p className="text-xs muted">Tạm tính</p>
             <p className="mt-2 text-2xl font-extrabold">
-              {money(String(Number(cart.product.price) * cart.quantity))}
+              {money(cart.subtotal)}
             </p>
             <Button asChild className="mt-5 w-full">
               <Link to={`/member/${merchantId}/checkout`}>
@@ -297,7 +311,7 @@ export function MemberCart() {
 }
 
 export function MemberCheckout() {
-  const { merchantId, cart, setCart } = useMerchantContext();
+  const { merchantId, cart } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -314,19 +328,19 @@ export function MemberCheckout() {
     (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && voucher.reserved,
   );
   async function submit() {
-    if (!cart || !accessToken || busy) return;
+    if (!cart.lines.length || !accessToken || busy) return;
     setBusy(true);
     setError("");
     try {
+      const items = cart.lines.map(({ product, quantity }) => ({ productId: product.id, quantity }));
       const { order } = await commerce.createOrder(
         {
-          productId: cart.product.id,
-          quantity: cart.quantity,
+          ...(items.length === 1 ? items[0] : { items }),
           ...(voucherId ? { voucherId: Number(voucherId) } : {}),
         },
         accessToken,
       );
-      setCart(null);
+      cart.clear();
       navigate(`/member/${merchantId}/orders/${order.id}`, { state: { order } });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo đơn");
@@ -338,7 +352,7 @@ export function MemberCheckout() {
   return (
     <>
       <PageHeader title="Xác nhận đơn hàng" />
-      {!cart ? (
+      {!cart.lines.length ? (
         <EmptyState
           title="Chưa có sản phẩm"
           description="Vui lòng chọn sản phẩm trước khi tạo đơn."
@@ -351,8 +365,14 @@ export function MemberCheckout() {
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
           <Card className="p-5">
-            <h2 className="font-extrabold">{cart.product.name}</h2>
-            <p className="mt-2 text-sm muted">Số lượng: {cart.quantity}</p>
+            <ul className="divide-y divide-[#e5ece3]">
+              {cart.lines.map(({ product, quantity }) => (
+                <li key={product.id} className="flex items-center justify-between gap-3 py-3">
+                  <span className="font-extrabold">{product.name}</span>
+                  <span className="shrink-0 text-sm muted">× {quantity}</span>
+                </li>
+              ))}
+            </ul>
             {vouchers.loading ? (
               <p className="mt-4 text-sm muted">Đang tải voucher khả dụng…</p>
             ) : vouchers.error ? (
@@ -386,6 +406,7 @@ export function MemberCheckout() {
           </Card>
           <Card className="h-fit p-5">
             <p className="font-extrabold">Đơn chờ thanh toán</p>
+            <p className="mt-2 text-sm muted">Tạm tính: {money(cart.subtotal)}</p>
             {error && (
               <p role="alert" className="mt-4 text-sm text-red-700">
                 {error}
