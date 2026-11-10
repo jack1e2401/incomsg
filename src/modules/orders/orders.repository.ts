@@ -54,10 +54,14 @@ export const ordersRepository = {
   async listMerchantOrders(merchantId: number) {
     const orders = await prisma.order.findMany({
       where: { merchantId },
-      include: { items: true, pointTransaction: { select: { delta: true } } },
+      include: {
+        items: true,
+        pointTransaction: { select: { delta: true } },
+        member: { select: { email: true } },
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
-    return orders.map(toOrderReadDto);
+    return orders.map((order) => ({ ...toOrderReadDto(order), memberEmail: order.member.email }));
   },
 
   async createPendingOrder(input: CreatePendingOrderInput): Promise<OrderDto> {
