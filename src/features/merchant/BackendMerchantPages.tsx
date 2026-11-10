@@ -6,7 +6,6 @@ import { createCommerceClient } from "../../api/commerce-http";
 import type {
   LoyaltyConfigInput,
   MemberVoucherDto,
-  OrderDto,
   ProductDto,
   ProductPatch,
   VoucherDefinitionDto,
@@ -30,6 +29,8 @@ import {
   Textarea,
 } from "../../components/ui";
 import { money } from "../../lib/utils";
+import { MerchantRevenueChart } from "./MerchantRevenueChart";
+import { MerchantStoreDetails } from "./MerchantStoreDetails";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -51,6 +52,7 @@ export function MerchantOverview() {
   const token = useToken();
   const store = useResource(() => api.getOwnMerchant(token), [token]);
   const products = useResource(() => api.listOwnProducts(token), [token]);
+  const orders = useResource(() => api.listMerchantOrders(token).then((response) => response.orders), [token]);
   if (store.loading || products.loading) return <LoadingState cards={3} />;
   if (store.error || products.error)
     return (
@@ -95,6 +97,12 @@ export function MerchantOverview() {
         />
         <StatCard label="Trạng thái cửa hàng" value={merchant.isActive ? "Hoạt động" : "Không hoạt động"} />
       </div>
+      <MerchantRevenueChart
+        orders={orders.data}
+        loading={orders.loading}
+        error={orders.error}
+        retry={orders.reload}
+      />
     </>
   );
 }
@@ -110,20 +118,7 @@ export function MerchantStore() {
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
       ) : resource.data?.merchant ? (
-        <Card className="max-w-2xl p-6 sm:p-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-extrabold">{resource.data.merchant.name}</h2>
-            <StatusText tone={resource.data.merchant.isActive ? "green" : "amber"}>
-              {resource.data.merchant.isActive ? "Hoạt động" : "Không hoạt động"}
-            </StatusText>
-          </div>
-          <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="muted">Merchant ID</dt>
-              <dd className="mt-1 font-bold">#{resource.data.merchant.id}</dd>
-            </div>
-          </dl>
-        </Card>
+        <MerchantStoreDetails merchant={resource.data.merchant} token={token} />
       ) : (
         <EmptyState
           title="Chưa có cửa hàng"
@@ -427,15 +422,19 @@ function MerchantPurchaseOrders() {
         />
       ) : (
         <div className="space-y-3">
-          {resource.data.map((order: OrderDto) => (
+          {resource.data.map((order) => (
             <Card key={order.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
                   <h3 className="font-extrabold">Đơn #{order.id}</h3>
                   <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
                     {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
                   </StatusText>
                 </div>
+                <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[#53685a]">
+                  <span className="font-semibold text-[#294833]">Thành viên #{order.memberId}</span>
+                  {order.memberEmail && <span className="min-w-0 wrap-anywhere">{order.memberEmail}</span>}
+                </p>
                 <p className="mt-2 text-xs muted">
                   {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
                 </p>

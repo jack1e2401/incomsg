@@ -9,6 +9,7 @@ import type {
   MerchantRewardResponse,
   MerchantRewardsResponse,
   OrderResponse,
+  MerchantOrdersResponse,
   OrdersResponse,
   MerchantDirectoryResponse,
   PaymentStatusDto,
@@ -120,7 +121,7 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
       return requestJson<OrderResponse>(fetcher, baseUrl, `/api/member/orders/${orderId}`, { token });
     },
     listMerchantOrders(token: string) {
-      return requestJson<OrdersResponse>(fetcher, baseUrl, "/api/merchant/orders", { token });
+      return requestJson<MerchantOrdersResponse>(fetcher, baseUrl, "/api/merchant/orders", { token });
     },
     getLoyaltyConfig(token: string) {
       return requestJson<LoyaltyConfigResponse>(fetcher, baseUrl, "/api/merchant/loyalty", { token });

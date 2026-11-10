@@ -59,6 +59,7 @@ export type PaymentStatusDto = {
 export type VnpayPaymentResponse =
   { orderId: number; paymentUrl: string; txnRef: string } | { orderId: number; orderStatus: "PAID" };
 export type OrdersResponse = { orders: OrderDto[] };
+export type MerchantOrdersResponse = { orders: (OrderDto & { memberEmail?: string })[] };
 export type MerchantDirectoryResponse = {
   merchants: { id: number; name: string; slug: string; isActive?: boolean }[];
 };

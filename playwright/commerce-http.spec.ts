@@ -424,7 +424,49 @@ test("admin monitoring and merchant directory render server data", async ({ page
   await expect(page.getByText("moc-studio · #7")).toBeVisible();
 });
 
-test("Merchant orders show the backend's voucher discount and order status", async ({ page }) => {
+test("Merchant chart groups net paid totals by Vietnam calendar day", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-11-10T18:30:00.000Z"));
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "loyalty.m2.session",
+      JSON.stringify({
+        accessToken: "merchant-token",
+        user: { id: 5, email: "merchant@test.local", role: "MERCHANT", isActive: true },
+      }),
+    ),
+  );
+  await page.route("**/api/merchant/me", (route) =>
+    route.fulfill({ json: { merchant: { id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true } } }),
+  );
+  await page.route("**/api/merchant/products", (route) => route.fulfill({ json: { products: [] } }));
+  const paid = { ...pendingOrder, status: "PAID", earnedPoints: 15 };
+  await page.route("**/api/merchant/orders", (route) =>
+    route.fulfill({
+      json: {
+        orders: [
+          { ...paid, id: 41, discountAmount: "5000", total: "145000", paidAt: "2026-11-10T17:05:00.000Z" },
+          { ...paid, id: 42, paidAt: "2026-11-10T18:00:00.000Z" },
+          { ...paid, id: 43, paidAt: "2026-11-10T16:59:00.000Z" },
+          { ...paid, id: 44, paidAt: "2026-11-04T16:59:00.000Z" },
+          { ...pendingOrder, id: 45, earnedPoints: null },
+        ],
+      },
+    }),
+  );
+
+  await page.goto("/merchant");
+  const chart = page.getByRole("region", { name: "Tiền từ đơn đã thanh toán" });
+  await expect(chart.getByText(/445\.000\s*₫/)).toBeVisible();
+  await expect(chart.locator("canvas")).toBeVisible();
+  const days = chart.getByRole("listitem");
+  await expect(days).toHaveCount(7);
+  await expect(days.first()).toContainText(/05[/-]11: 0\s*₫/);
+  await expect(days.nth(5)).toContainText(/10[/-]11: 150\.000\s*₫/);
+  await expect(days.last()).toContainText(/11[/-]11: 295\.000\s*₫/);
+});
+
+test("Merchant orders show the buyer, voucher discount and order status", async ({ page }) => {
   await page.addInitScript(() =>
     sessionStorage.setItem(
       "loyalty.m2.session",
@@ -443,8 +485,8 @@ test("Merchant orders show the backend's voucher discount and order status", asy
     route.fulfill({
       json: {
         orders: [
-          { ...discountedOrder, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" },
-          { ...discountedOrder, id: 42 },
+          { ...discountedOrder, memberEmail: "buyer-a@test.local", status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" },
+          { ...discountedOrder, id: 42, memberId: 10, memberEmail: "buyer-b@test.local" },
           { ...pendingOrder, id: 43 },
         ],
       },
@@ -454,6 +496,9 @@ test("Merchant orders show the backend's voucher discount and order status", asy
   await page.goto("/merchant/orders");
   const orderCard = (id: number) =>
     page.getByRole("heading", { name: `Đơn #${id}`, exact: true }).locator("xpath=../../..");
+  await expect(orderCard(41).getByText("buyer-a@test.local")).toBeVisible();
+  await expect(orderCard(42).getByText("buyer-b@test.local")).toBeVisible();
+  await expect(orderCard(43).getByText("Thành viên #9")).toBeVisible();
   await expect(orderCard(41).getByText("Voucher giảm giá", { exact: true })).toBeVisible();
   await expect(orderCard(41).getByText("Tạm tính", { exact: true })).toBeVisible();
   await expect(orderCard(41).getByText(/150\.000\s*₫/)).toBeVisible();

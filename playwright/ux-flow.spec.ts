@@ -219,6 +219,80 @@ test("Member voucher catalog stays responsive and keeps voucher state as plain t
   await page.screenshot({ path: "test-results/member-vouchers-mobile.png", fullPage: true });
 });
 
+test("Merchant store previews the public catalog and the configured loyalty rules", async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "loyalty.m2.session",
+      JSON.stringify({
+        accessToken: "merchant-token",
+        user: { id: 5, email: "merchant@test.local", role: "MERCHANT", isActive: true },
+      }),
+    ),
+  );
+  await page.route("**/api/merchant/me", (route) =>
+    route.fulfill({ json: { merchant: { id: 5, name: "Mộc Studio", slug: "moc-studio", isActive: true } } }),
+  );
+  await page.route("**/api/merchants/5/products", (route) =>
+    route.fulfill({
+      json: {
+        products: [
+          {
+            id: 101,
+            merchantId: 5,
+            name: "Tách men xanh",
+            description: null,
+            imageUrl: null,
+            kind: "SALE",
+            price: "180000",
+            status: "ACTIVE",
+          },
+          {
+            id: 102,
+            merchantId: 5,
+            name: "Đĩa gốm",
+            description: null,
+            imageUrl: null,
+            kind: "SALE",
+            price: "220000",
+            status: "ACTIVE",
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/merchant/loyalty", (route) =>
+    route.fulfill({
+      json: {
+        config: {
+          merchantId: 5,
+          vndPerPoint: 12500,
+          isActive: true,
+          tiers: [
+            { level: "BRONZE", minLifetimePoints: 0, multiplier: "1.00" },
+            { level: "SILVER", minLifetimePoints: 750, multiplier: "1.25" },
+            { level: "GOLD", minLifetimePoints: 2500, multiplier: "1.50" },
+            { level: "PLATINUM", minLifetimePoints: 5000, multiplier: "2.00" },
+          ],
+        },
+      },
+    }),
+  );
+
+  await page.goto("/merchant/store");
+  const catalog = page.getByRole("region", { name: "Gian hàng khách nhìn thấy" });
+  await expect(catalog.getByRole("heading", { name: "Tách men xanh" })).toBeVisible();
+  await expect(catalog.getByText(/180\.000\s*₫/)).toBeVisible();
+  await expect(catalog.getByRole("link", { name: "Quản lý sản phẩm" })).toHaveAttribute("href", "/merchant/products");
+
+  const loyalty = page.getByRole("region", { name: "Chương trình loyalty" });
+  await expect(loyalty.getByText(/12\.500\s*₫/)).toBeVisible();
+  const silver = loyalty.getByRole("listitem").filter({ hasText: "Silver" });
+  await expect(silver).toContainText("750 điểm");
+  await expect(silver).toContainText("1,25×");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
 test("Merchant product workspace uses backend data and plain status text", async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem(
