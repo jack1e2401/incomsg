@@ -1,4 +1,4 @@
-import type { OrderStatus } from "../../generated/prisma/enums.js";
+import type { OrderStatus, TierLevel } from "../../generated/prisma/enums.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 
 type OrderLineInput = {
@@ -41,4 +41,6 @@ export type OrderDto = {
   total: string;
   paidAt: string | null;
   items: OrderItemDto[];
+  earnedPoints?: number | null;
+  promotedToTier?: TierLevel | null;
 };

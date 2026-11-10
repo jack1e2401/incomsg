@@ -250,6 +250,7 @@ model PointTransaction {
   type            PointTransactionType
   delta           Int
   balanceAfter    Int
+  promotedToTier  TierLevel?
   reason          String               @db.VarChar(255)
   orderId         Int?                 @unique
   memberVoucherId Int?                 @unique

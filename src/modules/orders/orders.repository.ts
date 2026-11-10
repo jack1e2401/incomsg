@@ -46,9 +46,9 @@ export const ordersRepository = {
   async findMemberOrder(memberId: number, orderId: number) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, memberId },
-      include: { items: true, pointTransaction: { select: { delta: true } } },
+      include: { items: true, pointTransaction: { select: { delta: true, promotedToTier: true } } },
     });
-    return order ? toOrderReadDto(order) : null;
+    return order ? { ...toOrderReadDto(order), promotedToTier: order.pointTransaction?.promotedToTier ?? null } : null;
   },
 
   async listMerchantOrders(merchantId: number) {

@@ -128,9 +128,13 @@ test("member becomes Bronze and earns points only after a paid order at that mer
   assert.equal(beforeA.response.status, 200);
   assert.equal(beforeA.json.wallet.availablePoints, 0);
   assert.equal(beforeA.json.wallet.tier, "UNRANKED");
+  assert.equal(beforeA.json.wallet.policy.merchantId, merchantAId);
+  assert.equal(beforeA.json.wallet.policy.vndPerPoint, 10000);
 
   const beforeB = await request(`/api/member/merchants/${merchantBId}/wallet`, "GET", memberToken);
   assert.equal(beforeB.json.wallet.tier, "UNRANKED");
+  assert.equal(beforeB.json.wallet.policy.merchantId, merchantBId);
+  assert.equal(beforeB.json.wallet.policy.vndPerPoint, 5000);
   const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "M4 Coffee", price: "200000" });
   assert.equal(product.response.status, 201);
   const created = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
@@ -169,6 +173,31 @@ test("only one concurrent payment of the same order earns points once", async ()
   const wallet = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken);
   assert.equal(wallet.json.wallet.availablePoints, walletBefore.json.wallet.availablePoints + 20);
   assert.equal(wallet.json.wallet.transactions.filter((transaction: { orderId: number }) => transaction.orderId === order.json.order.id).length, 1);
+});
+
+test("paid orders keep the tier reached by that order, even after another promotion", async () => {
+  const large = await request("/api/merchant/products", "POST", merchantBToken, { name: "Tier jump", price: "25000000" });
+  const small = await request("/api/merchant/products", "POST", merchantBToken, { name: "Same tier", price: "10000" });
+  assert.equal(large.response.status, 201);
+  assert.equal(small.response.status, 201);
+
+  async function pay(productId: number) {
+    const order = await request("/api/orders", "POST", secondMemberToken, { productId, quantity: 1 });
+    assert.equal(order.response.status, 201);
+    const paid = await request(`/api/orders/${order.json.order.id}/pay`, "POST", secondMemberToken);
+    assert.equal(paid.response.status, 200);
+    return paid.json.order;
+  }
+
+  const gold = await pay(large.json.product.id);
+  assert.equal(gold.earnedPoints, 5000);
+  assert.equal(gold.promotedToTier, "GOLD");
+  assert.equal((await pay(small.json.product.id)).promotedToTier, null);
+  assert.equal((await pay(large.json.product.id)).promotedToTier, "PLATINUM");
+  const receipt = await request(`/api/member/orders/${gold.id}`, "GET", secondMemberToken);
+  assert.equal(receipt.response.status, 200);
+  assert.equal(receipt.json.order.earnedPoints, 5000);
+  assert.equal(receipt.json.order.promotedToTier, "GOLD");
 });
 
 test("concurrent paid orders serialize the wallet balance and preserve member isolation", async () => {
