@@ -22,18 +22,25 @@ function validateFields(input: Record<string, unknown>, partial: boolean) {
   if (partial && Object.keys(input).length === 0) invalid();
 }
 
-export function readDefinitionInput(value: unknown): DefinitionInput {
+export function readDefinitionInput(value: unknown, allowLegacyReward = false): DefinitionInput {
   const input = record(value);
-  if (Object.keys(input).some((key) => !["type", "title", "pointsCost", "discountAmount", "rewardDescription"].includes(key))) invalid();
+  if (Object.keys(input).some((key) => !["type", "title", "pointsCost", "discountAmount", "rewardDescription", "rewardProductId"].includes(key))) invalid();
   if (input.title === undefined || input.pointsCost === undefined) invalid();
   validateFields(input, false);
+  const title = (input.title as string).trim();
+  const pointsCost = input.pointsCost as number;
   if (input.type === "DISCOUNT") {
-    if (!amount(input.discountAmount) || input.rewardDescription !== undefined && input.rewardDescription !== null) invalid();
-    return { type: "DISCOUNT", title: (input.title as string).trim(), pointsCost: input.pointsCost as number, discountAmount: input.discountAmount, rewardDescription: null };
+    if (!amount(input.discountAmount) || input.rewardDescription != null || input.rewardProductId != null) invalid();
+    return { type: "DISCOUNT", title, pointsCost, discountAmount: input.discountAmount, rewardDescription: null, rewardProductId: null };
   }
   if (input.type === "REWARD") {
-    if (input.discountAmount !== undefined && input.discountAmount !== null || typeof input.rewardDescription !== "string" || !input.rewardDescription.trim()) invalid();
-    return { type: "REWARD", title: (input.title as string).trim(), pointsCost: input.pointsCost as number, discountAmount: null, rewardDescription: input.rewardDescription.trim() };
+    if (input.discountAmount != null) invalid();
+    if (positiveInt(input.rewardProductId) && input.rewardDescription == null) {
+      return { type: "REWARD", title, pointsCost, discountAmount: null, rewardDescription: null, rewardProductId: input.rewardProductId };
+    }
+    if (allowLegacyReward && input.rewardProductId == null && typeof input.rewardDescription === "string" && input.rewardDescription.trim()) {
+      return { type: "REWARD", title, pointsCost, discountAmount: null, rewardDescription: input.rewardDescription.trim(), rewardProductId: null };
+    }
   }
   return invalid();
 }

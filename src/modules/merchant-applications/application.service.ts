@@ -6,6 +6,10 @@ export const applicationService = {
     return applicationRepository.listPending();
   },
 
+  listReviewed() {
+    return applicationRepository.listReviewed();
+  },
+
   async approve(applicationId: number, reviewerId: number) {
     try {
       const result = await applicationRepository.approve(applicationId, reviewerId);

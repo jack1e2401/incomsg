@@ -26,6 +26,11 @@ enum ProductStatus {
   HIDDEN
 }
 
+enum ProductKind {
+  SALE
+  REWARD
+}
+
 enum OrderStatus {
   PENDING
   PAID
@@ -117,10 +122,12 @@ model Product {
   price       Decimal       @db.Decimal(15, 0)
   imageUrl    String?       @db.VarChar(2048)
   status      ProductStatus @default(ACTIVE)
+  kind        ProductKind   @default(SALE)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   merchant    Merchant      @relation(fields: [merchantId], references: [id])
   orderItems  OrderItem[]
+  rewardVoucherDefinitions VoucherDefinition[]
 
   @@index([merchantId, status])
 }
@@ -262,13 +269,16 @@ model VoucherDefinition {
   pointsCost        Int
   discountAmount    Decimal?        @db.Decimal(15, 0)
   rewardDescription String?         @db.Text
+  rewardProductId   Int?
   isActive          Boolean         @default(true)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   merchant          Merchant        @relation(fields: [merchantId], references: [id])
+  rewardProduct     Product?        @relation(fields: [rewardProductId], references: [id], onDelete: Restrict)
   memberVouchers    MemberVoucher[]
 
   @@index([merchantId, type, isActive])
+  @@index([rewardProductId])
 }
 
 model MemberVoucher {

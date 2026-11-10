@@ -24,6 +24,14 @@ export const applicationRepository = {
     });
   },
 
+  async listReviewed(): Promise<ApplicationDto[]> {
+    return prisma.merchantApplication.findMany({
+      where: { status: { in: ["APPROVED", "REJECTED"] } },
+      orderBy: [{ reviewedAt: "desc" }, { id: "desc" }],
+      select: applicationSelection,
+    });
+  },
+
   async approve(applicationId: number, reviewerId: number): Promise<ApprovalResult> {
     return prisma.$transaction(async (tx) => {
       const application = await tx.merchantApplication.findUnique({

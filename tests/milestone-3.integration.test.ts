@@ -120,6 +120,7 @@ test("merchant manages its own catalog", async () => {
     price: "150000",
   });
   assert.equal(created.response.status, 201);
+  assert.equal(created.json.product.kind, "SALE");
   assert.equal(created.json.product.price, "150000");
 
   const memberCreate = await request("/api/merchant/products", "POST", memberToken, {
@@ -186,6 +187,37 @@ test("public catalog filters hidden products", async () => {
 
   const inactiveStore = await request(`/api/merchants/${inactiveMerchantId}/products`, "GET");
   assert.equal(inactiveStore.response.status, 404);
+});
+
+test("reward products are visible to the owning merchant and cannot be purchased", async () => {
+  const created = await request("/api/merchant/products", "POST", merchantAToken, {
+    kind: "REWARD",
+    name: "Loyalty Mug",
+    description: "A blue ceramic mug",
+    imageUrl: "https://example.com/mug.png",
+  });
+  assert.equal(created.response.status, 201);
+  const productId = created.json.product.id as number;
+  assert.equal(created.json.product.kind, "REWARD");
+  assert.equal(created.json.product.price, "0");
+  assert.equal(created.json.product.status, "ACTIVE");
+  assert.equal(created.json.product.description, "A blue ceramic mug");
+  assert.equal(created.json.product.imageUrl, "https://example.com/mug.png");
+
+  const [own, foreign, publicCatalog, checkout] = await Promise.all([
+    request("/api/merchant/products", "GET", merchantAToken),
+    request("/api/merchant/products", "GET", merchantBToken),
+    request(`/api/merchants/${merchantAId}/products`, "GET"),
+    request("/api/orders", "POST", memberToken, { productId, quantity: 1 }),
+  ]);
+  assert.equal(own.response.status, 200);
+  assert.equal(own.json.products.find((product: { id: number }) => product.id === productId)?.kind, "REWARD");
+  assert.equal(foreign.response.status, 200);
+  assert.equal(foreign.json.products.some((product: { id: number }) => product.id === productId), false);
+  assert.equal(publicCatalog.response.status, 200);
+  assert.equal(publicCatalog.json.products.some((product: { id: number }) => product.id === productId), false);
+  assert.equal(checkout.response.status, 404);
+  assert.equal(checkout.json.error, "PRODUCT_NOT_FOUND");
 });
 
 test("buy now snapshots price and name", async () => {

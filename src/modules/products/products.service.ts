@@ -25,7 +25,12 @@ export const productsService = {
   async updateProduct(ownerId: number, productId: number, patch: ProductPatch): Promise<ProductDto> {
     const merchant = await merchantService.getOwnStore(ownerId);
     const product = await productsRepository.updateOwned(merchant.id, productId, patch);
-    if (!product) throw new HttpError(404, "PRODUCT_NOT_FOUND");
+    if (!product) {
+      if (patch.price !== undefined && (await productsRepository.findOwnedKind(merchant.id, productId)) === "REWARD") {
+        throw new HttpError(400, "INVALID_INPUT");
+      }
+      throw new HttpError(404, "PRODUCT_NOT_FOUND");
+    }
     return toProductDto(product);
   },
 

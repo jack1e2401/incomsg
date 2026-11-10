@@ -1,13 +1,17 @@
-import type { ProductStatus } from "../../generated/prisma/enums.js";
+import type { ProductKind, ProductStatus } from "../../generated/prisma/enums.js";
 
-export type ProductInput = {
+type ProductDetails = {
   name: string;
-  price: string;
   description?: string | null;
   imageUrl?: string | null;
 };
 
-export type ProductPatch = Partial<ProductInput> & { status?: ProductStatus };
+export type ProductInput = ProductDetails & (
+  | { kind: "SALE"; price: string }
+  | { kind: "REWARD" }
+);
+
+export type ProductPatch = Partial<ProductDetails> & { price?: string; status?: ProductStatus };
 
 export type ProductDto = {
   id: number;
@@ -16,5 +20,6 @@ export type ProductDto = {
   description: string | null;
   imageUrl: string | null;
   price: string;
+  kind: ProductKind;
   status: ProductStatus;
 };

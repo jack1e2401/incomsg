@@ -150,6 +150,8 @@ test("member cannot access admin or merchant routes", async () => {
   assert.equal(adminResponse.status, 403);
   assert.equal(merchantResponse.status, 403);
   assert.equal(anonymousResponse.status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/admin/merchants/history`, { headers })).status, 403);
+  assert.equal((await fetch(`${baseUrl}/api/admin/merchants/history`)).status, 401);
 });
 
 test("admin lists and approves a pending merchant", async () => {
@@ -166,6 +168,9 @@ test("admin lists and approves a pending merchant", async () => {
   assert.equal(pendingResponse.status, 200);
   const { applications } = await pendingResponse.json();
   assert.ok(applications.some((application: { id: number }) => application.id === applicationId));
+  const historyBeforeReview = await fetch(`${baseUrl}/api/admin/merchants/history`, { headers });
+  assert.equal(historyBeforeReview.status, 200);
+  assert.ok(!(await historyBeforeReview.json()).applications.some((application: { id: number }) => application.id === applicationId));
 
   const approval = await fetch(`${baseUrl}/api/admin/merchants/${applicationId}/approve`, {
     method: "PATCH",
@@ -237,4 +242,18 @@ test("admin rejects a pending merchant", async () => {
   const statusResult = await applicationStatus.json();
   assert.equal(applicationStatus.status, 200);
   assert.equal(statusResult.application.status, "REJECTED");
+
+  const historyResponse = await fetch(`${baseUrl}/api/admin/merchants/history`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  assert.equal(historyResponse.status, 200);
+  const { applications } = await historyResponse.json() as {
+    applications: { id: number; status: string; reviewedAt: string | null }[];
+  };
+  const reviewed = applications.filter((item) => item.id === application.id || item.id === applicationId);
+  assert.deepEqual(reviewed.map((item) => [item.id, item.status]), [
+    [application.id, "REJECTED"],
+    [applicationId, "APPROVED"],
+  ]);
+  assert.ok(reviewed.every((item) => item.reviewedAt !== null));
 });

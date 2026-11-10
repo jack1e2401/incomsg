@@ -15,6 +15,10 @@ export const listPending: RequestHandler = async (_request, response) => {
   response.json({ applications: await applicationService.listPending() });
 };
 
+export const listReviewed: RequestHandler = async (_request, response) => {
+  response.json({ applications: await applicationService.listReviewed() });
+};
+
 export const approve: RequestHandler = async (request, response) => {
   const user = response.locals.user;
   const result = await applicationService.approve(readApplicationId(request.params.id), user.id);

@@ -8,18 +8,37 @@ import { snapshotVoucherTerms } from "./vouchers.snapshot.js";
 type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{}>;
 type OwnedVoucherRecord = Prisma.MemberVoucherGetPayload<{ include: { membership: true; definition: true; appliedOrder: { select: { status: true } } } }>;
 function toDefinitionDto(item: DefinitionRecord): DefinitionDto {
-  return { id: item.id, merchantId: item.merchantId, type: item.type, title: item.title, pointsCost: item.pointsCost, discountAmount: item.discountAmount?.toFixed(0) ?? null, rewardDescription: item.rewardDescription, isActive: item.isActive };
+  return { id: item.id, merchantId: item.merchantId, type: item.type, title: item.title, pointsCost: item.pointsCost, discountAmount: item.discountAmount?.toFixed(0) ?? null, rewardDescription: item.rewardDescription, rewardProductId: item.rewardProductId, isActive: item.isActive };
 }
 function toMemberVoucherDto(item: OwnedVoucherRecord): MemberVoucherDto {
   return { id: item.id, definitionId: item.definitionId, merchantId: item.membership.merchantId, memberId: item.membership.memberId, title: item.snapshotTitle, type: item.snapshotType, status: item.status, reserved: item.status === "AVAILABLE" && item.appliedOrder?.status === "PENDING", pointsCost: item.snapshotPointsCost, discountAmount: item.snapshotDiscountAmount?.toFixed(0) ?? null, rewardDescription: item.snapshotRewardDescription, redeemedAt: item.redeemedAt.toISOString(), usedAt: item.usedAt?.toISOString() ?? null };
 }
 
+const availableRewardProduct = {
+  OR: [{ rewardProductId: null }, { rewardProduct: { is: { kind: "REWARD", status: "ACTIVE" } } }],
+} satisfies Prisma.VoucherDefinitionWhereInput;
+
 export const vouchersRepository = {
   async createDefinition(merchantId: number, input: DefinitionInput): Promise<DefinitionDto> {
-    return toDefinitionDto(await prisma.voucherDefinition.create({ data: { merchantId, ...input, discountAmount: input.discountAmount === null ? null : new Prisma.Decimal(input.discountAmount) } }));
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const product = input.rewardProductId === null ? null : await tx.product.findFirst({
+        where: { id: input.rewardProductId, merchantId, kind: "REWARD", status: "ACTIVE" },
+        select: { name: true },
+      });
+      if (input.type === "REWARD" && !product) throw new HttpError(404, "REWARD_PRODUCT_NOT_FOUND");
+      const definition = await tx.voucherDefinition.create({
+        data: {
+          merchantId,
+          ...input,
+          rewardDescription: product?.name ?? input.rewardDescription,
+          discountAmount: input.discountAmount === null ? null : new Prisma.Decimal(input.discountAmount),
+        },
+      });
+      return toDefinitionDto(definition);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
   async listDefinitions(merchantId: number, activeOnly: boolean): Promise<DefinitionDto[]> {
-    const records = await prisma.voucherDefinition.findMany({ where: { merchantId, ...(activeOnly ? { isActive: true } : {}) }, orderBy: { id: "asc" } });
+    const records = await prisma.voucherDefinition.findMany({ where: { merchantId, ...(activeOnly ? { isActive: true, ...availableRewardProduct } : {}) }, orderBy: { id: "asc" } });
     return records.map(toDefinitionDto);
   },
   async updateDefinition(merchantId: number, id: number, patch: DefinitionPatch): Promise<DefinitionDto | null> {
@@ -46,7 +65,7 @@ export const vouchersRepository = {
   },
   async redeemVoucher(memberId: number, definitionId: number) {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
-      const definition = await tx.voucherDefinition.findFirst({ where: { id: definitionId, isActive: true }, include: { merchant: { select: { isActive: true } } } });
+      const definition = await tx.voucherDefinition.findFirst({ where: { id: definitionId, isActive: true, ...availableRewardProduct }, include: { merchant: { select: { isActive: true } } } });
       if (!definition || !definition.merchant.isActive) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
       const membership = await tx.merchantMembership.upsert({
         where: { memberId_merchantId: { memberId, merchantId: definition.merchantId } },
@@ -88,7 +107,7 @@ export const vouchersRepository = {
   },
   async listRewardFulfillments(merchantId: number): Promise<MemberVoucherDto[]> {
     const records = await prisma.memberVoucher.findMany({
-      where: { membership: { merchantId }, snapshotType: "REWARD", status: "AVAILABLE" },
+      where: { membership: { merchantId }, snapshotType: "REWARD", status: { in: ["AVAILABLE", "FULFILLED"] } },
       include: { membership: true, definition: true, appliedOrder: { select: { status: true } } },
       orderBy: [{ redeemedAt: "asc" }, { id: "asc" }],
     });

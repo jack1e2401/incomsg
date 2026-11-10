@@ -2,8 +2,9 @@ import { HttpError } from "../../lib/http-error.js";
 import type { ProductInput, ProductPatch } from "./products.types.js";
 
 const maxId = 2_147_483_647;
-const createFields = ["name", "price", "description", "imageUrl"];
-const patchFields = [...createFields, "status"];
+const sharedFields = ["name", "price", "description", "imageUrl"];
+const createFields = [...sharedFields, "kind"];
+const patchFields = [...sharedFields, "status"];
 
 function readObject(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -56,10 +57,14 @@ export function readProductInput(value: unknown): ProductInput {
   const input = readObject(value);
   rejectUnexpectedFields(input, createFields);
 
-  const result: ProductInput = {
-    name: readName(input.name),
-    price: readPrice(input.price),
-  };
+  const kind = "kind" in input ? input.kind : "SALE";
+  if (kind !== "SALE" && kind !== "REWARD") throw new HttpError(400, "INVALID_INPUT");
+  if (kind === "REWARD" && "price" in input) throw new HttpError(400, "INVALID_INPUT");
+
+  const name = readName(input.name);
+  const result: ProductInput = kind === "REWARD"
+    ? { name, kind }
+    : { name, kind, price: readPrice(input.price) };
   if ("description" in input) result.description = readDescription(input.description);
   if ("imageUrl" in input) result.imageUrl = readImageUrl(input.imageUrl);
   return result;

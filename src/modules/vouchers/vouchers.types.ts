@@ -6,6 +6,7 @@ export interface DefinitionInput {
   pointsCost: number;
   discountAmount: string | null;
   rewardDescription: string | null;
+  rewardProductId: number | null;
 }
 export type DefinitionPatch = Partial<Pick<DefinitionInput, "title" | "pointsCost" | "discountAmount" | "rewardDescription">> & { isActive?: boolean };
 export interface DefinitionDto extends DefinitionInput {

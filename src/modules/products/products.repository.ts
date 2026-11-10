@@ -9,8 +9,11 @@ const productSelection = {
   description: true,
   imageUrl: true,
   price: true,
+  kind: true,
   status: true,
 } as const;
+
+const sellableProductFilter = { kind: "SALE", status: "ACTIVE" } as const;
 
 export const productsRepository = {
   async create(merchantId: number, input: ProductInput) {
@@ -18,7 +21,8 @@ export const productsRepository = {
       data: {
         merchantId,
         name: input.name,
-        price: new Prisma.Decimal(input.price),
+        kind: input.kind,
+        price: new Prisma.Decimal(input.kind === "REWARD" ? "0" : input.price),
         description: input.description ?? null,
         imageUrl: input.imageUrl ?? null,
       },
@@ -26,11 +30,11 @@ export const productsRepository = {
     });
   },
 
-  async listByMerchant(merchantId: number, activeOnly: boolean) {
+  async listByMerchant(merchantId: number, sellableOnly: boolean) {
     return prisma.product.findMany({
       where: {
         merchantId,
-        ...(activeOnly ? { status: "ACTIVE" as const } : {}),
+        ...(sellableOnly ? sellableProductFilter : {}),
       },
       select: productSelection,
       orderBy: { id: "asc" },
@@ -39,7 +43,11 @@ export const productsRepository = {
 
   async updateOwned(merchantId: number, productId: number, patch: ProductPatch) {
     const result = await prisma.product.updateMany({
-      where: { id: productId, merchantId },
+      where: {
+        id: productId,
+        merchantId,
+        ...(patch.price !== undefined ? { kind: "SALE" as const } : {}),
+      },
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.price !== undefined ? { price: new Prisma.Decimal(patch.price) } : {}),
@@ -56,6 +64,14 @@ export const productsRepository = {
     });
   },
 
+  async findOwnedKind(merchantId: number, productId: number) {
+    const product = await prisma.product.findFirst({
+      where: { id: productId, merchantId },
+      select: { kind: true },
+    });
+    return product?.kind ?? null;
+  },
+
   async isMerchantActive(merchantId: number): Promise<boolean> {
     const merchant = await prisma.merchant.findFirst({
       where: { id: merchantId, isActive: true },
@@ -68,7 +84,7 @@ export const productsRepository = {
     return prisma.product.findMany({
       where: {
         id: { in: productIds },
-        status: "ACTIVE",
+        ...sellableProductFilter,
         merchant: { is: { isActive: true } },
       },
       select: {

@@ -20,18 +20,24 @@ export const vouchersService = {
     if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
     const existing = await vouchersRepository.getDefinition(id);
     if (!existing || existing.merchantId !== merchant.id) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
+    if (existing.rewardProductId !== null && patch.rewardDescription !== undefined) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
     const validated = readDefinitionInput({
       type: existing.type,
       title: patch.title ?? existing.title,
       pointsCost: patch.pointsCost ?? existing.pointsCost,
       discountAmount: patch.discountAmount !== undefined ? patch.discountAmount : existing.discountAmount?.toFixed(0),
-      rewardDescription: patch.rewardDescription !== undefined ? patch.rewardDescription : existing.rewardDescription,
-    });
+      rewardProductId: existing.rewardProductId,
+      rewardDescription: existing.rewardProductId === null
+        ? patch.rewardDescription !== undefined ? patch.rewardDescription : existing.rewardDescription
+        : null,
+    }, true);
     const result = await vouchersRepository.updateDefinition(merchant.id, id, {
       title: validated.title,
       pointsCost: validated.pointsCost,
       discountAmount: validated.discountAmount,
-      rewardDescription: validated.rewardDescription,
+      ...(existing.rewardProductId === null ? { rewardDescription: validated.rewardDescription } : {}),
       ...(patch.isActive !== undefined ? { isActive: patch.isActive } : {}),
     });
     if (!result) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
