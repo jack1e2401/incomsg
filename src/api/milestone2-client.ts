@@ -1,13 +1,13 @@
 import {
   milestone2Paths,
   type ApproveApplicationResponse,
+  type ApplicationsResponse,
   type ApplicationStatusResponse,
   type BackendErrorResponse,
   type LoginResponse,
   type MerchantRegistrationResponse,
   type MemberRegistrationResponse,
   type OwnMerchantResponse,
-  type PendingApplicationsResponse,
   type RejectApplicationResponse,
 } from "./contracts/milestone2";
 
@@ -74,7 +74,13 @@ export function createMilestone2Client(baseUrl = "", fetcher: FetchLike = fetch)
     },
 
     listPendingApplications(token: string) {
-      return requestJson<PendingApplicationsResponse>(fetcher, baseUrl, milestone2Paths.pendingApplications, {
+      return requestJson<ApplicationsResponse>(fetcher, baseUrl, milestone2Paths.pendingApplications, {
+        token,
+      });
+    },
+
+    listApplicationHistory(token: string) {
+      return requestJson<ApplicationsResponse>(fetcher, baseUrl, milestone2Paths.applicationHistory, {
         token,
       });
     },

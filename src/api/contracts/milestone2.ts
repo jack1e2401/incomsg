@@ -46,7 +46,7 @@ export interface ApplicationStatusResponse {
   application: BackendApplicationDto;
 }
 
-export interface PendingApplicationsResponse {
+export interface ApplicationsResponse {
   applications: BackendApplicationDto[];
 }
 
@@ -74,6 +74,7 @@ export const milestone2Paths = {
   applicationStatus: "/api/auth/application-status",
   login: "/api/auth/login",
   pendingApplications: "/api/admin/merchants/pending",
+  applicationHistory: "/api/admin/merchants/history",
   approveApplication: (id: number) => `/api/admin/merchants/${id}/approve`,
   rejectApplication: (id: number) => `/api/admin/merchants/${id}/reject`,
   ownMerchant: "/api/merchant/me",

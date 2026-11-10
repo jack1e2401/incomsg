@@ -40,6 +40,9 @@ test("authentication screens stay focused and reuse local photo art", async ({ p
 });
 
 test("Admin review shows only application fields supplied by the backend", async ({ page }) => {
+  await page.route("**/api/admin/merchants/history", (route) =>
+    route.fulfill({ json: { applications: [] } }),
+  );
   await page.addInitScript(() => {
     sessionStorage.setItem(
       "loyalty.m2.session",
@@ -69,9 +72,10 @@ test("Admin review shows only application fields supplied by the backend", async
 
   await page.goto("/admin/applications");
   await expect(page.getByRole("heading", { name: "Duyệt hồ sơ cửa hàng" })).toBeVisible();
-  await expect(page.getByRole("table")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Nhà Mây", exact: true })).toBeVisible();
-  await expect(page.getByText(/User #9/)).toHaveCount(0);
+  const queue = page.getByRole("region", { name: "Danh sách hồ sơ" });
+  const application = queue.getByRole("listitem");
+  await expect(application.getByRole("heading", { name: "Nhà Mây", exact: true })).toBeVisible();
+  await expect(application.getByText("#9", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/milestone|backend api|mock api/i);
   await page.screenshot({ path: "test-results/admin-review-desktop.png", fullPage: true });
 });
@@ -120,6 +124,8 @@ test("Member wallet shows backend balances in a visible card without invented ti
   await expect(page.getByText("1.840", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "SILVER" })).toBeVisible();
   await expect(page.getByText(/hạng dựa trên tổng điểm đã tích lũy/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cách tính điểm Loyalty" })).toBeVisible();
+  await expect(page.getByText(/tiền thực trả sau giảm giá ÷ mức VND cho 1 điểm/)).toBeVisible();
 
   const balanceCard = page.getByText("Điểm có thể sử dụng", { exact: true }).locator("..");
   await expect

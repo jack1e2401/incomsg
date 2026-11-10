@@ -1,6 +1,7 @@
 import type { BackendMerchantDto } from "./contracts/milestone2";
 
 /** Exact JSON DTOs returned by the implemented backend commerce routes. */
+export type ProductKind = "SALE" | "REWARD";
 export type ProductStatus = "ACTIVE" | "HIDDEN";
 export type OrderStatus = "PENDING" | "PAID";
 export type TierLevel = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
@@ -14,18 +15,21 @@ export interface ProductDto {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  kind: ProductKind;
   price: string;
   status: ProductStatus;
 }
 
-export interface ProductInput {
+interface ProductFields {
   name: string;
-  price: string;
   description?: string | null;
   imageUrl?: string | null;
 }
 
-export type ProductPatch = Partial<ProductInput> & { status?: ProductStatus };
+export type ProductInput = ProductFields &
+  ({ kind?: "SALE"; price: string } | { kind: "REWARD"; price?: never });
+
+export type ProductPatch = Partial<ProductFields> & { price?: string; status?: ProductStatus };
 
 export interface OrderItemDto {
   productId: number;
@@ -96,19 +100,20 @@ export interface VoucherDefinitionDto {
   pointsCost: number;
   discountAmount: string | null;
   rewardDescription: string | null;
+  rewardProductId: number | null;
   isActive: boolean;
 }
 
-export interface VoucherDefinitionInput {
-  type: VoucherType;
+export type VoucherDefinitionInput = {
   title: string;
   pointsCost: number;
-  discountAmount: string | null;
-  rewardDescription: string | null;
-}
+} & (
+  | { type: "DISCOUNT"; discountAmount: string; rewardDescription?: null }
+  | { type: "REWARD"; discountAmount: null; rewardProductId: number }
+);
 
 export type VoucherDefinitionPatch = Partial<
-  Pick<VoucherDefinitionInput, "title" | "pointsCost" | "discountAmount" | "rewardDescription">
+  Pick<VoucherDefinitionDto, "title" | "pointsCost" | "discountAmount" | "rewardDescription">
 > & { isActive?: boolean };
 
 export interface MemberVoucherDto {

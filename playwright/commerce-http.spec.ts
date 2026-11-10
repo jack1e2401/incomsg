@@ -108,6 +108,71 @@ test("Member discovers a real merchant and catalog from HTTP", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Demo Coffee" })).toBeVisible();
 });
 
+test("Member cart quantity survives reload and stays separate by account and store", async ({ page }) => {
+  async function useMemberSession(id: number, path: string) {
+    await page.evaluate((memberId) => {
+      sessionStorage.setItem(
+        "loyalty.m2.session",
+        JSON.stringify({
+          accessToken: "member-token",
+          user: { id: memberId, email: `member${memberId}@test.local`, role: "MEMBER", isActive: true },
+        }),
+      );
+    }, id);
+    await page.goto(path);
+  }
+
+  await page.route("**/api/merchants/7/products", (route) =>
+    route.fulfill({
+      json: {
+        products: [
+          {
+            id: 12,
+            merchantId: 7,
+            name: "Demo Coffee",
+            description: null,
+            imageUrl: null,
+            price: "150000",
+            status: "ACTIVE",
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/login");
+  await useMemberSession(9, "/member/7");
+  const cartLink = page.getByRole("link", { name: "Giỏ hàng" });
+  await page.getByRole("button", { name: "Chọn mua" }).click();
+  await expect(cartLink.getByText("1", { exact: true })).toBeVisible();
+  await cartLink.click();
+  const quantity = page.getByRole("spinbutton", { name: "Số lượng" });
+  await quantity.fill("3");
+  await expect(cartLink.getByText("3", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(quantity).toHaveValue("3");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(cartLink.getByText("3", { exact: true })).toBeVisible();
+
+  await page.goto("/member/8/cart");
+  await expect(page.getByText("Giỏ hàng trống", { exact: true })).toBeVisible();
+  await expect(cartLink.getByText("3", { exact: true })).toHaveCount(0);
+  await page.goto("/member/7/cart");
+  await expect(quantity).toHaveValue("3");
+
+  await page.getByRole("button", { name: "Đăng xuất" }).click();
+  await useMemberSession(10, "/member/7/cart");
+  await expect(page.getByText("Giỏ hàng trống", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Đăng xuất" }).click();
+  await useMemberSession(9, "/member/7/cart");
+  await expect(quantity).toHaveValue("3");
+
+  await page.getByRole("button", { name: "Bỏ sản phẩm" }).click();
+  await page.reload();
+  await expect(page.getByText("Giỏ hàng trống", { exact: true })).toBeVisible();
+  await expect(cartLink.getByText("3", { exact: true })).toHaveCount(0);
+});
+
 test("checkout stays pending until the mock payment endpoint confirms PAID", async ({ page }) => {
   await signInAsMember(page);
   let paid = false;
@@ -319,8 +384,9 @@ test("redeemed reward remains pending until merchant fulfillment", async ({ page
     });
   });
   await page.goto("/member/7/vouchers");
-  await page.getByRole("button", { name: "Đổi voucher" }).click();
+  await page.getByRole("button", { name: "Đổi quà", exact: true }).click();
   await expect(page.getByRole("status").getByText(/Đã đổi/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("link", { name: "Quà tặng" }).click();
   await expect(page.getByText("Chờ cửa hàng trao")).toBeVisible();
   await expect(page.getByText("Đã trao")).toHaveCount(0);
@@ -358,9 +424,152 @@ test("admin monitoring and merchant directory render server data", async ({ page
   await expect(page.getByText("moc-studio · #7")).toBeVisible();
 });
 
-test("merchant fulfillment changes a reward from pending to fulfilled only after server response", async ({
-  page,
-}) => {
+test("Merchant orders show the backend's voucher discount and order status", async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "loyalty.m2.session",
+      JSON.stringify({
+        accessToken: "merchant-token",
+        user: { id: 5, email: "merchant@test.local", role: "MERCHANT", isActive: true },
+      }),
+    ),
+  );
+  await page.route("**/api/merchant/me", (route) =>
+    route.fulfill({ json: { merchant: { id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true } } }),
+  );
+  await page.route("**/api/merchant/rewards", (route) => route.fulfill({ json: { rewards: [] } }));
+  const discountedOrder = { ...pendingOrder, discountAmount: "5000", total: "145000" };
+  await page.route("**/api/merchant/orders", (route) =>
+    route.fulfill({
+      json: {
+        orders: [
+          { ...discountedOrder, status: "PAID", paidAt: "2026-11-09T10:00:00.000Z" },
+          { ...discountedOrder, id: 42 },
+          { ...pendingOrder, id: 43 },
+        ],
+      },
+    }),
+  );
+
+  await page.goto("/merchant/orders");
+  const orderCard = (id: number) =>
+    page.getByRole("heading", { name: `Đơn #${id}`, exact: true }).locator("xpath=../../..");
+  await expect(orderCard(41).getByText("Voucher giảm giá", { exact: true })).toBeVisible();
+  await expect(orderCard(41).getByText("Tạm tính", { exact: true })).toBeVisible();
+  await expect(orderCard(41).getByText(/150\.000\s*₫/)).toBeVisible();
+  await expect(orderCard(41).getByText(/−5\.000\s*₫/)).toBeVisible();
+  await expect(orderCard(41).getByText(/145\.000\s*₫/)).toBeVisible();
+  await expect(orderCard(41).getByText("Đã thanh toán", { exact: true })).toBeVisible();
+  await expect(orderCard(42).getByText("Voucher giảm giá", { exact: true })).toBeVisible();
+  await expect(orderCard(42).getByText("Chờ thanh toán", { exact: true })).toBeVisible();
+  await expect(orderCard(43).getByText("Voucher giảm giá", { exact: true })).toHaveCount(0);
+});
+
+test("Merchant creates a reward product and selects it in the gift voucher form", async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem(
+      "loyalty.m2.session",
+      JSON.stringify({
+        accessToken: "merchant-token",
+        user: { id: 5, email: "merchant@test.local", role: "MERCHANT", isActive: true },
+      }),
+    );
+  });
+  await page.route("**/api/merchant/me", (route) =>
+    route.fulfill({ json: { merchant: { id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true } } }),
+  );
+  const product = {
+    id: 53,
+    merchantId: 7,
+    name: "Ly gốm",
+    description: null,
+    imageUrl: null,
+    kind: "REWARD",
+    price: "0",
+    status: "ACTIVE",
+  };
+  let productInput: unknown;
+  let voucherInput: unknown;
+  await page.route("**/api/merchant/products", async (route) => {
+    if (route.request().method() === "POST") {
+      productInput = route.request().postDataJSON();
+      await route.fulfill({ status: 201, json: { product } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        products: [
+          { ...product, id: 51, name: "Cà phê bán", kind: "SALE", price: "15000" },
+          { ...product, id: 52, name: "Quà đã ẩn", status: "HIDDEN" },
+          ...(productInput ? [product] : []),
+        ],
+      },
+    });
+  });
+  await page.route("**/api/merchant/vouchers", async (route) => {
+    if (route.request().method() === "POST") {
+      const input = route.request().postDataJSON();
+      voucherInput = input;
+      await route.fulfill({
+        status: 201,
+        json: {
+          definition: { ...input, id: 62, merchantId: 7, isActive: true, rewardDescription: product.name },
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: { definitions: [] } });
+  });
+
+  await page.goto("/merchant/products");
+  await page.getByRole("button", { name: "Thêm sản phẩm" }).click();
+  await page.getByRole("combobox", { name: "Loại sản phẩm" }).selectOption("REWARD");
+  await expect(page.getByRole("textbox", { name: "Giá (VND)" })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Tên sản phẩm" }).fill(product.name);
+  await page.getByRole("button", { name: "Lưu sản phẩm" }).click();
+  await expect(page.getByRole("heading", { name: product.name })).toBeVisible();
+  expect(productInput).toEqual({ name: "Ly gốm", kind: "REWARD", description: null, imageUrl: null });
+
+  await page.goto("/merchant/vouchers");
+  const type = page.getByRole("combobox", { name: "Loại voucher" });
+  const title = page.getByRole("textbox", { name: "Tên voucher" });
+  const points = page.getByRole("spinbutton", { name: "Điểm cần đổi" });
+  const amount = page.getByRole("textbox", { name: "Số tiền giảm (VND)" });
+  const rewardProduct = page.getByRole("combobox", { name: "Sản phẩm đổi thưởng" });
+  const create = page.getByRole("button", { name: "Tạo voucher", exact: true });
+
+  await expect(type).toHaveValue("");
+  await expect(title).toHaveCount(0);
+  await expect(points).toHaveCount(0);
+  await expect(create).toHaveCount(0);
+
+  await type.selectOption("DISCOUNT");
+  await expect(title).toBeVisible();
+  await expect(points).toBeVisible();
+  await expect(amount).toBeVisible();
+  await expect(rewardProduct).toHaveCount(0);
+  await expect(create).toBeVisible();
+
+  await type.selectOption("REWARD");
+  await expect(rewardProduct).toBeVisible();
+  await expect(amount).toHaveCount(0);
+  await expect(create).toBeDisabled();
+  await rewardProduct.selectOption(String(product.id));
+  await expect(rewardProduct.locator("option:not([value=''])")).toHaveCount(1);
+  await title.fill("Đổi ly gốm");
+  await points.fill("50");
+  await create.click();
+  await expect(page.getByRole("heading", { name: "Đổi ly gốm" })).toBeVisible();
+  expect(voucherInput).toEqual({
+    type: "REWARD",
+    title: "Đổi ly gốm",
+    pointsCost: 50,
+    discountAmount: null,
+    rewardProductId: product.id,
+  });
+});
+
+test("Merchant manages purchases and reward fulfillment from the same orders page", async ({ page }) => {
   await page.addInitScript(() =>
     sessionStorage.setItem(
       "loyalty.m2.session",
@@ -391,11 +600,9 @@ test("merchant fulfillment changes a reward from pending to fulfilled only after
       body: JSON.stringify({ merchant: { id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true } }),
     }),
   );
+  await page.route("**/api/merchant/orders", (route) => route.fulfill({ json: { orders: [pendingOrder] } }));
   await page.route("**/api/merchant/rewards", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ rewards: [{ ...reward, status: fulfilled ? "FULFILLED" : "AVAILABLE" }] }),
-    }),
+    route.fulfill({ json: { rewards: [{ ...reward, status: fulfilled ? "FULFILLED" : "AVAILABLE" }] } }),
   );
   await page.route("**/api/merchant/rewards/33/fulfill", async (route) => {
     fulfilled = true;
@@ -405,8 +612,20 @@ test("merchant fulfillment changes a reward from pending to fulfilled only after
     });
   });
   await page.goto("/merchant/rewards");
-  await expect(page.getByRole("button", { name: "Xác nhận đã trao" })).toBeVisible();
-  await page.getByRole("button", { name: "Xác nhận đã trao" }).click();
-  await expect(page.getByRole("heading", { name: "Đã trao" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Xác nhận đã trao" })).toHaveCount(0);
+  await expect(page).toHaveURL("/merchant/orders");
+  await expect(page.getByRole("link", { name: "Trao thưởng", exact: true })).toHaveCount(0);
+  const purchases = page.getByRole("region", { name: "Đơn mua hàng" });
+  const rewards = page.getByRole("region", { name: "Quà đổi thưởng" });
+  await expect(purchases.getByRole("heading", { name: "Đơn #41" })).toBeVisible();
+  await expect(rewards.getByRole("heading", { name: reward.title })).toBeVisible();
+  await expect(rewards.getByText(/Đổi bằng 500 điểm/)).toBeVisible();
+  await expect(rewards.getByText("Chờ trao", { exact: true })).toBeVisible();
+  await rewards.getByRole("button", { name: "Xác nhận đã trao" }).click();
+  await expect(rewards.getByRole("heading", { name: "Đã trao" })).toBeVisible();
+  await expect(rewards.getByRole("button", { name: "Xác nhận đã trao" })).toHaveCount(0);
+  await expect(purchases.getByRole("heading", { name: "Đơn #41" })).toBeVisible();
+  await page.reload();
+  await expect(rewards.getByRole("heading", { name: "Đã trao" })).toBeVisible();
+  await expect(rewards.getByRole("heading", { name: reward.title })).toBeVisible();
+  await expect(rewards.getByRole("button", { name: "Xác nhận đã trao" })).toHaveCount(0);
 });

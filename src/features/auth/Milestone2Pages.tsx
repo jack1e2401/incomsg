@@ -35,6 +35,7 @@ export function AdminApplicationsM2() {
   const { accessToken } = useAuthSession();
   const api = createMilestone2Client(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
   const resource = useResource(() => api.listPendingApplications(accessToken!), [accessToken]);
+  const history = useResource(() => api.listApplicationHistory(accessToken!), [accessToken]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [decisionNotice, setDecisionNotice] = useState("");
@@ -52,24 +53,15 @@ export function AdminApplicationsM2() {
     setActionError("");
     setDecisionNotice("");
     try {
-      let resultApplication: BackendApplicationDto;
-      if (decision === "approve") {
-        const result = await api.approveApplication(id, accessToken);
-        resultApplication = result.application;
-        setApplications((current) =>
-          (current ?? resource.data?.applications ?? []).map((item) =>
-            item.id === id ? result.application : item,
-          ),
-        );
-      } else {
-        const result = await api.rejectApplication(id, accessToken);
-        resultApplication = result.application;
-        setApplications((current) =>
-          (current ?? resource.data?.applications ?? []).map((item) =>
-            item.id === id ? result.application : item,
-          ),
-        );
-      }
+      const { application: resultApplication } = await (decision === "approve"
+        ? api.approveApplication(id, accessToken)
+        : api.rejectApplication(id, accessToken));
+      setApplications((current) =>
+        (current ?? resource.data?.applications ?? []).map((item) =>
+          item.id === id ? resultApplication : item,
+        ),
+      );
+      history.reload();
       const statusLabel =
         resultApplication.status === "APPROVED"
           ? "Đã duyệt"
@@ -98,10 +90,11 @@ export function AdminApplicationsM2() {
             <Button
               size="sm"
               variant="outline"
-              disabled={resource.loading}
+              disabled={resource.loading || busyId !== null}
               onClick={() => {
                 setApplications(null);
                 resource.reload();
+                history.reload();
               }}
             >
               Làm mới
@@ -191,6 +184,59 @@ export function AdminApplicationsM2() {
           </div>
         </section>
       )}
+      <section aria-labelledby="application-history-title" className="mt-8">
+        <h2 id="application-history-title" className="mb-3 text-lg font-extrabold">
+          Lịch sử xét duyệt
+        </h2>
+        {history.loading ? (
+          <LoadingState cards={1} />
+        ) : history.error ? (
+          <ErrorState message={history.error} retry={history.reload} />
+        ) : !history.data?.applications.length ? (
+          <p className="surface rounded-2xl px-5 py-4 text-sm muted">Chưa có hồ sơ đã xét duyệt.</p>
+        ) : (
+          <div className="surface overflow-hidden rounded-[1.5rem]">
+            <div className="hidden grid-cols-[minmax(0,1fr)_7rem_8rem_12rem] gap-4 border-b border-[#e8ece5] bg-[#f7f8f4] px-5 py-4 text-xs font-semibold muted md:grid">
+              <span>Cửa hàng</span>
+              <span>Mã hồ sơ</span>
+              <span>Kết quả</span>
+              <span>Thời điểm xét duyệt</span>
+            </div>
+            <div role="list" className="divide-y divide-[#edf0eb]">
+              {history.data.applications.map((application) => (
+                <article
+                  key={application.id}
+                  role="listitem"
+                  className="grid gap-2 px-4 py-4 sm:px-5 md:grid-cols-[minmax(0,1fr)_7rem_8rem_12rem] md:items-center md:gap-4"
+                >
+                  <h3 className="min-w-0 break-words text-base font-bold text-[#294432]">
+                    {application.storeName}
+                  </h3>
+                  <p className="text-sm muted">
+                    <span className="md:hidden">Hồ sơ </span>#{application.id}
+                  </p>
+                  <ApplicationStatusText status={application.status} />
+                  <div className="text-sm muted">
+                    {application.reviewedAt ? (
+                      <time dateTime={application.reviewedAt}>
+                        {new Date(application.reviewedAt).toLocaleString("vi-VN", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                      </time>
+                    ) : (
+                      <span>—</span>
+                    )}
+                    {application.reviewedById !== null && (
+                      <p className="mt-1 text-xs">Admin #{application.reviewedById}</p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
       <ConfirmActionDialog
         open={pendingDecision !== null}
         onOpenChange={(open) => {

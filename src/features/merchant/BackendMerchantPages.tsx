@@ -8,12 +8,12 @@ import type {
   MemberVoucherDto,
   OrderDto,
   ProductDto,
-  ProductInput,
   ProductPatch,
   VoucherDefinitionDto,
   VoucherDefinitionInput,
 } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
+import { LoyaltyFormula } from "../../components/LoyaltyFormula";
 import {
   StatusText,
   Button,
@@ -87,7 +87,10 @@ export function MerchantOverview() {
         <StatCard label="Sản phẩm" value={products.data?.products.length ?? 0} icon={<Package size={20} />} />
         <StatCard
           label="Đang hiển thị"
-          value={products.data?.products.filter((item) => item.status === "ACTIVE").length ?? 0}
+          value={
+            products.data?.products.filter((item) => item.status === "ACTIVE" && item.kind !== "REWARD")
+              .length ?? 0
+          }
           icon={<Storefront size={20} />}
         />
         <StatCard label="Trạng thái cửa hàng" value={merchant.isActive ? "Hoạt động" : "Không hoạt động"} />
@@ -132,13 +135,21 @@ export function MerchantStore() {
 }
 
 type ProductForm = {
+  kind: ProductDto["kind"];
   name: string;
   price: string;
   description: string;
   imageUrl: string;
   status: ProductDto["status"];
 };
-const emptyProduct: ProductForm = { name: "", price: "", description: "", imageUrl: "", status: "ACTIVE" };
+const emptyProduct: ProductForm = {
+  kind: "SALE",
+  name: "",
+  price: "",
+  description: "",
+  imageUrl: "",
+  status: "ACTIVE",
+};
 
 export function MerchantProducts() {
   const token = useToken();
@@ -154,6 +165,7 @@ export function MerchantProducts() {
     setForm(
       product
         ? {
+            kind: product.kind ?? "SALE",
             name: product.name,
             price: product.price,
             description: product.description ?? "",
@@ -172,16 +184,28 @@ export function MerchantProducts() {
     setError("");
     setBusy(true);
     try {
-      const input: ProductInput = {
+      const fields = {
         name: form.name.trim(),
-        price: form.price.trim(),
         description: form.description || null,
         imageUrl: form.imageUrl || null,
       };
       const result =
         editing === "new"
-          ? await api.createProduct(input, token)
-          : await api.updateProduct(editing.id, { ...input, status: form.status }, token);
+          ? await api.createProduct(
+              form.kind === "REWARD"
+                ? { ...fields, kind: "REWARD" }
+                : { ...fields, price: form.price.trim() },
+              token,
+            )
+          : await api.updateProduct(
+              editing.id,
+              {
+                ...fields,
+                ...(form.kind === "SALE" ? { price: form.price.trim() } : {}),
+                status: form.status,
+              },
+              token,
+            );
       resource.setData((previous) =>
         previous
           ? {
@@ -241,6 +265,16 @@ export function MerchantProducts() {
             {editing === "new" ? "Thêm sản phẩm" : `Sửa sản phẩm #${editing.id}`}
           </h2>
           <form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Field label="Loại sản phẩm">
+              <Select
+                disabled={editing !== "new" || busy}
+                value={form.kind}
+                onChange={(event) => setForm({ ...form, kind: event.target.value as ProductDto["kind"] })}
+              >
+                <option value="SALE">Sản phẩm bán</option>
+                <option value="REWARD">Chỉ đổi thưởng</option>
+              </Select>
+            </Field>
             <Field label="Tên sản phẩm">
               <Input
                 required
@@ -249,15 +283,17 @@ export function MerchantProducts() {
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
               />
             </Field>
-            <Field label="Giá (VND)">
-              <Input
-                required
-                inputMode="numeric"
-                pattern="[1-9][0-9]{0,14}"
-                value={form.price}
-                onChange={(event) => setForm({ ...form, price: event.target.value })}
-              />
-            </Field>
+            {form.kind === "SALE" && (
+              <Field label="Giá (VND)">
+                <Input
+                  required
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]{0,14}"
+                  value={form.price}
+                  onChange={(event) => setForm({ ...form, price: event.target.value })}
+                />
+              </Field>
+            )}
             <div className="sm:col-span-2">
               <Field label="Mô tả">
                 <Textarea
@@ -313,7 +349,7 @@ export function MerchantProducts() {
       ) : !resource.data?.products.length ? (
         <EmptyState
           title="Chưa có sản phẩm"
-          description="Thêm sản phẩm đầu tiên để hiển thị trong gian hàng."
+          description="Thêm sản phẩm để bán hoặc dùng làm quà đổi thưởng."
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -324,10 +360,16 @@ export function MerchantProducts() {
                   <h2 className="mt-1 font-extrabold">{product.name}</h2>
                 </div>
                 <StatusText tone={product.status === "ACTIVE" ? "green" : "amber"}>
-                  {product.status === "ACTIVE" ? "Đang bán" : "Đã ẩn"}
+                  {product.status === "HIDDEN"
+                    ? "Đã ẩn"
+                    : product.kind === "REWARD"
+                      ? "Đang hoạt động"
+                      : "Đang bán"}
                 </StatusText>
               </div>
-              <p className="mt-3 text-lg font-extrabold text-[#335e3d]">{formatPrice(product.price)}</p>
+              <p className="mt-3 text-lg font-extrabold text-[#335e3d]">
+                {product.kind === "REWARD" ? "Chỉ đổi thưởng" : formatPrice(product.price)}
+              </p>
               {product.description && (
                 <p className="mt-2 line-clamp-2 text-sm muted">{product.description}</p>
               )}
@@ -348,11 +390,32 @@ export function MerchantProducts() {
 }
 
 export function MerchantOrders() {
+  return (
+    <>
+      <PageHeader title="Đơn hàng" />
+      <div className="space-y-8">
+        <section aria-labelledby="merchant-order-rewards">
+          <h2 id="merchant-order-rewards" className="mb-3 text-lg font-extrabold">
+            Quà đổi thưởng
+          </h2>
+          <MerchantRewardQueue />
+        </section>
+        <section aria-labelledby="merchant-purchase-orders">
+          <h2 id="merchant-purchase-orders" className="mb-3 text-lg font-extrabold">
+            Đơn mua hàng
+          </h2>
+          <MerchantPurchaseOrders />
+        </section>
+      </div>
+    </>
+  );
+}
+
+function MerchantPurchaseOrders() {
   const token = useToken();
   const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
   return (
     <>
-      <PageHeader title="Đơn hàng" description="Lọc và theo dõi trạng thái đơn hàng." />
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -368,7 +431,7 @@ export function MerchantOrders() {
             <Card key={order.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="font-extrabold">Đơn #{order.id}</h2>
+                  <h3 className="font-extrabold">Đơn #{order.id}</h3>
                   <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
                     {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
                   </StatusText>
@@ -383,7 +446,24 @@ export function MerchantOrders() {
                 )}
               </div>
               <div className="text-left sm:text-right">
-                <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
+                {Number(order.discountAmount) > 0 ? (
+                  <dl className="space-y-1 tabular-nums sm:min-w-52">
+                    <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
+                      <dt>Tạm tính</dt>
+                      <dd>{formatPrice(order.subtotal)}</dd>
+                    </div>
+                    <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
+                      <dt>Voucher giảm giá</dt>
+                      <dd>−{formatPrice(order.discountAmount)}</dd>
+                    </div>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                      <dt className="text-xs muted">Tổng cộng</dt>
+                      <dd className="text-lg font-extrabold">{formatPrice(order.total)}</dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
+                )}
                 {order.status === "PAID" && order.earnedPoints !== undefined && (
                   <p className="mt-1 text-xs font-semibold text-[#357044]">
                     +{order.earnedPoints.toLocaleString("vi-VN")} điểm
@@ -403,39 +483,61 @@ export function MerchantVouchers() {
     () => api.listMerchantVoucherDefinitions(token).then((response) => response.definitions),
     [token],
   );
-  const [kind, setKind] = useState<VoucherDefinitionInput["type"]>("DISCOUNT");
+  const [kind, setKind] = useState<VoucherDefinitionInput["type"] | "">("");
   const [title, setTitle] = useState("");
   const [pointsCost, setPointsCost] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
-  const [rewardDescription, setRewardDescription] = useState("");
+  const [rewardProductId, setRewardProductId] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const isReward = kind === "REWARD";
+  const rewardProducts = useResource(
+    () =>
+      isReward
+        ? api
+            .listOwnProducts(token)
+            .then(({ products }) =>
+              products.filter((product) => product.kind === "REWARD" && product.status === "ACTIVE"),
+            )
+        : Promise.resolve([]),
+    [token, isReward],
+  );
+  const selectedReward =
+    rewardProducts.loading || rewardProducts.error
+      ? undefined
+      : rewardProducts.data?.find((product) => String(product.id) === rewardProductId);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (!kind || busy || (isReward && !selectedReward)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const input: VoucherDefinitionInput = {
-        type: kind,
-        title: title.trim(),
-        pointsCost: Number(pointsCost),
-        discountAmount: kind === "DISCOUNT" ? discountAmount : null,
-        rewardDescription: kind === "REWARD" ? rewardDescription.trim() : null,
-      };
+      const terms = { title: title.trim(), pointsCost: Number(pointsCost) };
+      const input: VoucherDefinitionInput =
+        kind === "REWARD"
+          ? { ...terms, type: kind, discountAmount: null, rewardProductId: Number(rewardProductId) }
+          : { ...terms, type: kind, discountAmount, rewardDescription: null };
       const response = await api.createVoucherDefinition(input, token);
       resource.setData((current) => [...(current ?? []), response.definition]);
+      setKind("");
       setTitle("");
       setPointsCost("");
       setDiscountAmount("");
-      setRewardDescription("");
+      setRewardProductId("");
       setNotice("Đã tạo voucher.");
     } catch (reason) {
-      setError(message(reason));
+      const failure = message(reason);
+      if (failure === "REWARD_PRODUCT_NOT_FOUND") {
+        setError("Sản phẩm đổi thưởng không còn khả dụng. Hãy chọn sản phẩm khác.");
+        setRewardProductId("");
+        rewardProducts.reload();
+      } else {
+        setError(failure);
+      }
     } finally {
       setBusy(false);
     }
@@ -470,52 +572,92 @@ export function MerchantVouchers() {
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={create}>
           <Field label="Loại voucher">
             <Select
+              required
+              disabled={busy}
               value={kind}
-              onChange={(event) => setKind(event.target.value as VoucherDefinitionInput["type"])}
+              onChange={(event) => setKind(event.target.value as typeof kind)}
             >
-              <option value="DISCOUNT">DISCOUNT · Giảm giá</option>
-              <option value="REWARD">REWARD · Quà tặng</option>
+              <option value="" disabled>
+                Chọn loại voucher
+              </option>
+              <option value="DISCOUNT">Giảm giá</option>
+              <option value="REWARD">Quà tặng</option>
             </Select>
           </Field>
-          <Field label="Tên voucher">
-            <Input
-              required
-              maxLength={191}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </Field>
-          <Field label="Điểm cần đổi">
-            <Input
-              required
-              type="number"
-              min={1}
-              step={1}
-              value={pointsCost}
-              onChange={(event) => setPointsCost(event.target.value)}
-            />
-          </Field>
-          {kind === "DISCOUNT" ? (
-            <Field label="Số tiền giảm (VND)">
-              <Input
-                required
-                inputMode="numeric"
-                pattern="[1-9][0-9]{0,14}"
-                value={discountAmount}
-                onChange={(event) => setDiscountAmount(event.target.value)}
-              />
-            </Field>
-          ) : (
-            <div className="sm:col-span-2">
-              <Field label="Mô tả phần quà">
-                <Textarea
+          {kind && (
+            <>
+              <Field label="Tên voucher">
+                <Input
                   required
-                  maxLength={1000}
-                  value={rewardDescription}
-                  onChange={(event) => setRewardDescription(event.target.value)}
+                  maxLength={191}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
                 />
               </Field>
-            </div>
+              <Field label="Điểm cần đổi">
+                <Input
+                  required
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={pointsCost}
+                  onChange={(event) => setPointsCost(event.target.value)}
+                />
+              </Field>
+              {kind === "DISCOUNT" ? (
+                <Field label="Số tiền giảm (VND)">
+                  <Input
+                    required
+                    inputMode="numeric"
+                    pattern="[1-9][0-9]{0,14}"
+                    value={discountAmount}
+                    onChange={(event) => setDiscountAmount(event.target.value)}
+                  />
+                </Field>
+              ) : (
+                <div>
+                  <Field label="Sản phẩm đổi thưởng">
+                    <Select
+                      required
+                      disabled={
+                        busy ||
+                        rewardProducts.loading ||
+                        !!rewardProducts.error ||
+                        !rewardProducts.data?.length
+                      }
+                      value={selectedReward ? rewardProductId : ""}
+                      onChange={(event) => setRewardProductId(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        {rewardProducts.loading ? "Đang tải sản phẩm…" : "Chọn sản phẩm"}
+                      </option>
+                      {rewardProducts.data?.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} · #{product.id}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  {rewardProducts.error ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <p role="alert" className="text-xs text-[#a4473a]">
+                        Không tải được sản phẩm đổi thưởng.
+                      </p>
+                      <Button type="button" size="sm" variant="outline" onClick={rewardProducts.reload}>
+                        Thử lại
+                      </Button>
+                    </div>
+                  ) : !rewardProducts.loading && !rewardProducts.data?.length ? (
+                    <p className="mt-2 text-xs muted">
+                      Chưa có sản phẩm chỉ đổi thưởng đang hoạt động.{" "}
+                      <Link to="/merchant/products" className="underline">
+                        Quản lý sản phẩm
+                      </Link>
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </>
           )}
           {error && (
             <p role="alert" className="sm:col-span-2 text-sm text-[#a4473a]">
@@ -527,9 +669,13 @@ export function MerchantVouchers() {
               {notice}
             </p>
           )}
-          <div className="sm:col-span-2">
-            <Button disabled={busy}>{busy ? <BusyLabel>Đang lưu</BusyLabel> : "Tạo voucher"}</Button>
-          </div>
+          {kind && (
+            <div className="sm:col-span-2">
+              <Button disabled={busy || (isReward && !selectedReward)}>
+                {busy ? <BusyLabel>Đang lưu</BusyLabel> : "Tạo voucher"}
+              </Button>
+            </div>
+          )}
         </form>
       </Card>
       {resource.loading ? (
@@ -585,7 +731,7 @@ export function MerchantVouchers() {
     </>
   );
 }
-export function MerchantRewards() {
+function MerchantRewardQueue() {
   const token = useToken();
   const resource = useResource(
     () => api.listMerchantRewards(token).then((response) => response.rewards),
@@ -621,13 +767,12 @@ export function MerchantRewards() {
     }
   }
 
-  if (resource.loading) return <LoadingState cards={2} />;
+  if (resource.loading) return <LoadingState cards={1} />;
   if (resource.error) return <ErrorState message={resource.error} retry={resource.reload} />;
   const open = (resource.data ?? []).filter((voucher) => voucher.status === "AVAILABLE");
   const fulfilled = (resource.data ?? []).filter((voucher) => voucher.status === "FULFILLED");
   return (
     <>
-      <PageHeader title="Trao thưởng" description="Xác nhận quà đã trao tại cửa hàng." />
       {error && (
         <p role="alert" className="mb-4 text-sm text-[#a4473a]">
           {error}
@@ -638,20 +783,23 @@ export function MerchantRewards() {
           {notice}
         </p>
       )}
-      <section>
-        <h2 className="mb-3 text-lg font-extrabold">Đang chờ trao</h2>
+      <div>
+        <h3 className="mb-3 font-extrabold">Quà chờ trao</h3>
         {!open.length ? (
-          <EmptyState title="Không có quà đang chờ" description="Voucher quà đã đổi sẽ xuất hiện tại đây." />
+          <p className="surface rounded-2xl px-5 py-4 text-sm muted">Không có quà đang chờ trao.</p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {open.map((voucher) => (
               <Card key={voucher.id} className="p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="font-extrabold">{voucher.title}</h3>
-                    <p className="mt-1 text-sm muted">Thành viên #{voucher.memberId}</p>
+                    <h4 className="font-extrabold">{voucher.title}</h4>
+                    <p className="mt-1 text-sm muted">
+                      Voucher #{voucher.id} · Thành viên #{voucher.memberId} · Đổi bằng{" "}
+                      {voucher.pointsCost.toLocaleString("vi-VN")} điểm
+                    </p>
                   </div>
-                  <StatusText tone="amber">Đang chờ</StatusText>
+                  <StatusText tone="amber">Chờ trao</StatusText>
                 </div>
                 <p className="mt-3 text-sm muted">{voucher.rewardDescription}</p>
                 <p className="mt-3 text-xs muted">
@@ -677,16 +825,21 @@ export function MerchantRewards() {
             ))}
           </div>
         )}
-      </section>
+      </div>
       {fulfilled.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-lg font-extrabold">Đã trao</h2>
+        <section className="mt-5">
+          <h3 className="mb-3 font-extrabold">Đã trao</h3>
           <div className="grid gap-4 lg:grid-cols-2">
             {fulfilled.map((voucher) => (
               <Card key={voucher.id} className="flex items-center justify-between gap-3 p-5">
                 <div>
-                  <h3 className="font-extrabold">{voucher.title}</h3>
-                  <p className="mt-1 text-sm muted">Thành viên #{voucher.memberId}</p>
+                  <h4 className="font-extrabold">{voucher.title}</h4>
+                  <p className="mt-1 text-sm muted">
+                    Voucher #{voucher.id} · Thành viên #{voucher.memberId}
+                  </p>
+                  {voucher.rewardDescription && (
+                    <p className="mt-1 text-sm muted">{voucher.rewardDescription}</p>
+                  )}
                 </div>
                 <StatusText tone="green">Đã trao</StatusText>
               </Card>
@@ -741,11 +894,12 @@ export function MerchantLoyalty() {
         <LoadingState cards={2} />
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
-      ) : !form ? (
+      ) : !config || !form ? (
         <EmptyState title="Chưa có cấu hình" description="Cấu hình chưa khả dụng." />
       ) : (
         <Card className="max-w-4xl p-6 sm:p-8">
-          <form onSubmit={save} className="space-y-6">
+          <LoyaltyFormula config={config} />
+          <form onSubmit={save} className="mt-6 space-y-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="VND cho mỗi điểm">
                 <Input

@@ -15,6 +15,7 @@ import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { MemberVoucherDto, PointTransactionType, VoucherDefinitionDto } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
+import { LoyaltyFormula } from "../../components/LoyaltyFormula";
 import {
   StatusText,
   Button,
@@ -760,6 +761,9 @@ export function MemberWallet() {
               </div>
             </Card>
           </div>
+          <div className="mt-7">
+            <LoyaltyFormula />
+          </div>
           <section className="mt-7">
             <h2 className="mb-4 text-xl font-extrabold">Lịch sử điểm</h2>
             {!wallet.transactions.length ? (
@@ -957,6 +961,7 @@ function VoucherDefinitionCard({
   disabled: boolean;
   onRedeem: () => void;
 }) {
+  const redeemLabel = voucher.type === "REWARD" ? "Đổi quà" : "Đổi voucher";
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">
@@ -970,7 +975,7 @@ function VoucherDefinitionCard({
       </p>
       <p className="mt-5 text-sm font-bold">{voucher.pointsCost.toLocaleString("vi-VN")} điểm</p>
       <Button className="mt-4 w-full" disabled={disabled} onClick={onRedeem}>
-        {busy ? <BusyLabel>Đang đổi</BusyLabel> : "Đổi voucher"}
+        {busy ? <BusyLabel>Đang đổi</BusyLabel> : redeemLabel}
       </Button>
     </Card>
   );

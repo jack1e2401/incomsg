@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/admin/merchants/history", (route) =>
+    route.fulfill({ json: { applications: [] } }),
+  );
+});
+
 test("landing keeps the entry flow clear and protects the Admin URL", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Mua ở nơi bạn yêu/ })).toBeVisible();
@@ -210,6 +216,28 @@ test("login takes role from API response and sends protected Merchant request wi
 
 test("Admin reviews applications through authenticated endpoints", async ({ page }) => {
   let approvalAuthorization = "";
+  let historyAuthorization = "";
+  let approved = false;
+  const reviewedAt = "2026-11-09T03:00:00.000Z";
+  const reviewed = {
+    id: 42,
+    applicantId: 9,
+    storeName: "Nhà Mây",
+    status: "APPROVED",
+    reviewedById: 1,
+    reviewedAt,
+  };
+  await page.route("**/api/admin/merchants/history", (route) => {
+    historyAuthorization = route.request().headers().authorization ?? "";
+    return route.fulfill({
+      json: {
+        applications: [
+          ...(approved ? [reviewed] : []),
+          { ...reviewed, id: 40, storeName: "Cửa hàng trước", status: "REJECTED" },
+        ],
+      },
+    });
+  });
   await page.route("**/api/auth/login", async (route) => {
     await route.fulfill({
       status: 200,
@@ -225,33 +253,20 @@ test("Admin reviews applications through authenticated endpoints", async ({ page
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        applications: [
-          {
-            id: 42,
-            applicantId: 9,
-            storeName: "Nhà Mây",
-            status: "PENDING",
-            reviewedById: null,
-            reviewedAt: null,
-          },
-        ],
+        applications: approved
+          ? []
+          : [{ ...reviewed, status: "PENDING", reviewedById: null, reviewedAt: null }],
       }),
     });
   });
   await page.route("**/api/admin/merchants/42/approve", async (route) => {
     approvalAuthorization = route.request().headers().authorization ?? "";
+    approved = true;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        application: {
-          id: 42,
-          applicantId: 9,
-          storeName: "Nhà Mây",
-          status: "APPROVED",
-          reviewedById: 1,
-          reviewedAt: "2026-11-09T03:00:00.000Z",
-        },
+        application: reviewed,
         merchant: { id: 20, name: "Nhà Mây", slug: "store-42", isActive: true },
       }),
     });
@@ -262,12 +277,24 @@ test("Admin reviews applications through authenticated endpoints", async ({ page
   await page.getByLabel("Mật khẩu").fill("seeded-admin-password");
   await page.getByRole("button", { name: "Đăng nhập" }).click();
   await expect(page.getByRole("heading", { name: "Nhà Mây", exact: true })).toBeVisible();
+  const history = page.getByRole("region", { name: "Lịch sử xét duyệt" });
+  await expect(history.getByRole("listitem").filter({ hasText: "Cửa hàng trước" })).toContainText(
+    "Đã từ chối",
+  );
+  await expect(history.getByText("Nhà Mây", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Duyệt", exact: false }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận duyệt" }).click();
 
   await expect(page.getByRole("status")).toContainText("Đã duyệt Nhà Mây");
   expect(approvalAuthorization).toBe("Bearer signed-admin-token");
+  const approvedRow = history.getByRole("listitem").filter({ hasText: "Nhà Mây" });
+  await expect(approvedRow).toContainText("Đã duyệt");
+  await expect(approvedRow.locator("time")).toHaveAttribute("datetime", reviewedAt);
+  await expect(page.getByRole("button", { name: "Duyệt Nhà Mây" })).toHaveCount(0);
+  await page.reload();
+  await expect(approvedRow).toContainText("Đã duyệt");
+  expect(historyAuthorization).toBe("Bearer signed-admin-token");
 });
 
 test("Admin approval queue shows each API application once and keeps actions with its row", async ({

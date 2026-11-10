@@ -43,7 +43,6 @@ import {
   MerchantOrders,
   MerchantOverview,
   MerchantProducts,
-  MerchantRewards,
   MerchantStore,
   MerchantVouchers,
 } from "../features/merchant/BackendMerchantPages";
@@ -90,7 +89,7 @@ function BackendRoutes() {
           <Route path="orders" element={<MerchantOrders />} />
           <Route path="loyalty" element={<MerchantLoyalty />} />
           <Route path="vouchers" element={<MerchantVouchers />} />
-          <Route path="rewards" element={<MerchantRewards />} />
+          <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
         </Route>
       </Route>
       <Route element={<RequireRole role="MEMBER" />}>
