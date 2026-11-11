@@ -177,7 +177,7 @@ test("tampered or mismatched IPN never confirms; failed payment is terminal", as
   const failedAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
   assert.equal(failedAttempt.status, "FAILED");
   const failedMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId, merchantId } }, include: { wallet: true } });
-  assert.equal(failedMembership.wallet?.reservedPoints, reservationBeforeFailure.reservedPoints - failedReservation.reservedPoints);
+  assert.equal(failedMembership.wallet?.reservedPoints.toString(), reservationBeforeFailure.reservedPoints.minus(failedReservation.reservedPoints).toString());
   assert.equal(await prisma.pointTransaction.count({ where: { orderId: order.id } }), 0);
 });
 
@@ -232,7 +232,7 @@ test("successful IPN consumes the discount and awards points on the net total", 
     create: { memberId, merchantId }, update: {},
   });
   const wallet = await prisma.loyaltyWallet.findUnique({ where: { membershipId: membership.id } });
-  if (!wallet) await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 200, lifetimeEarnedPoints: 200 } });
+  if (!wallet) await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, exactBalance: 200, netLifetimeEarned: 200 } });
   const definition = await prisma.voucherDefinition.create({ data: {
     merchantId, type: "DISCOUNT", title: "Giảm 20.000", pointsCost: 200, discountAmount: "20000",
   } });
@@ -248,7 +248,7 @@ test("successful IPN consumes the discount and awards points on the net total", 
   const ipn = signedIpn(payment.json.txnRef, "10000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } })).delta, 10);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } })).delta.toString(), "10");
 });
 
 test("zero-total orders finalize internally without a payment attempt", async () => {
@@ -271,10 +271,10 @@ test("zero-total orders finalize internally without a payment attempt", async ()
   assert.equal(payment.json.orderStatus, "PAID");
   assert.equal(await prisma.paymentAttempt.count({ where: { orderId } }), 0);
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta, 0);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "0");
   const finalWallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
   const finalMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } });
-  assert.equal(finalWallet.availablePoints, 0);
+  assert.equal(finalWallet.exactBalance.toString(), "0");
   assert.equal(finalMembership.tier?.level, "BRONZE");
 });
 
@@ -305,8 +305,8 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   });
   await prisma.loyaltyWallet.upsert({
     where: { membershipId: membership.id },
-    create: { membershipId: membership.id, availablePoints: 2_147_483_617, lifetimeEarnedPoints: 2_147_483_617 },
-    update: { availablePoints: 2_147_483_617, lifetimeEarnedPoints: 2_147_483_617, reservedPoints: 0 },
+    create: { membershipId: membership.id, exactBalance: 2_147_483_617, netLifetimeEarned: 2_147_483_617 },
+    update: { exactBalance: 2_147_483_617, netLifetimeEarned: 2_147_483_617, reservedPoints: 0 },
   });
   const orders = await Promise.all([createOrder(), createOrder()]);
   const responses = await Promise.all(orders.map((order) => request(`/api/orders/${order.id}/payments/vnpay`, "POST", memberToken)));
@@ -316,23 +316,26 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   const accepted = responses[acceptedIndex]!;
   assert.equal(responses[rejectedIndex]!.json.error, "LOYALTY_LIMIT_EXCEEDED");
   const acceptedOrderId = orders[acceptedIndex]!.id;
+  const acceptedAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: acceptedOrderId } });
+  assert.equal(acceptedAttempt.snapshotTierLevel, "PLATINUM");
+  assert.equal(acceptedAttempt.snapshotMultiplier?.toString(), "2");
   assert.equal(await prisma.paymentAttempt.count({ where: { orderId: { in: orders.map((order) => order.id) } } }), 1);
-  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 24);
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints.toString(), "24");
 
   await prisma.loyaltyRule.update({ where: { merchantId }, data: { vndPerPoint: 1, isActive: false } });
   const ipn = signedIpn(accepted.json.txnRef, "12000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: acceptedOrderId } })).status, "PAID");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: acceptedOrderId } })).delta, 12);
-  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints, 0);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: acceptedOrderId } })).delta.toString(), "24");
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints.toString(), "0");
 });
 
-test("payment settlement uses the member's current tier multiplier", async () => {
+test("new payment attempts retain their initiation tier after another order promotes the member", async () => {
   const user = await prisma.user.create({ data: { email: `m6-tier-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
   fixtureUserIds.push(user.id);
   const token = await signAccessToken(user.id);
   const membership = await prisma.merchantMembership.create({ data: { memberId: user.id, merchantId } });
-  await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 990, lifetimeEarnedPoints: 990 } });
+  await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, exactBalance: 990, netLifetimeEarned: 990 } });
   const tiers = [
     { level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" },
     { level: "SILVER" as const, minLifetimePoints: 1000, multiplier: "1.20" },
@@ -354,17 +357,19 @@ test("payment settlement uses the member's current tier multiplier", async () =>
   const secondOrder = await createOrderFor(token);
   const firstPayment = await request(`/api/orders/${firstOrder.id}/payments/vnpay`, "POST", token);
   const secondPayment = await request(`/api/orders/${secondOrder.id}/payments/vnpay`, "POST", token);
-  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).reservedPoints, 24);
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).reservedPoints.toString(), "24");
   const secondAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: secondOrder.id } });
-  assert.equal(secondAttempt.reservedPoints, 24);
+  assert.equal(secondAttempt.reservedPoints.toString(), "24");
+  assert.equal(secondAttempt.snapshotTierLevel, "BRONZE");
+  assert.equal(secondAttempt.snapshotMultiplier?.toString(), "1");
   assert.equal(secondAttempt.snapshotSilverMultiplier.toFixed(2), "1.20");
   const silver = await prisma.loyaltyTier.findUniqueOrThrow({ where: { merchantId_level: { merchantId, level: "SILVER" } } });
   await prisma.loyaltyTier.update({ where: { id: silver.id }, data: { multiplier: "1.80" } });
   assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(firstPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
   assert.equal((await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } })).tier?.level, "SILVER");
   assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(secondPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).delta, 12);
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).delta, 14);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).delta.toString(), "12");
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).delta.toString(), "12");
 });
 
 test("multiplier changes apply to new attempts and not existing ones", async () => {
@@ -386,23 +391,23 @@ test("multiplier changes apply to new attempts and not existing ones", async () 
   const attempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: order.id } });
   assert.equal(attempt.snapshotMaxMultiplier.toFixed(2), "2.00");
   assert.equal(attempt.snapshotTierConfigFallback, false);
-  assert.equal(attempt.reservedPoints, 24);
+  assert.equal(attempt.reservedPoints.toString(), "24");
 
   const bronze = await prisma.loyaltyTier.findUniqueOrThrow({ where: { merchantId_level: { merchantId, level: "BRONZE" } } });
   try {
     await prisma.loyaltyTier.update({ where: { id: bronze.id }, data: { multiplier: "999.99" } });
     assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(payment.json.txnRef, "12000000")}`)).json.RspCode, "00");
     const earned = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } });
-    assert.equal(earned.delta, 12);
-    assert.ok(earned.delta <= attempt.reservedPoints);
+    assert.equal(earned.delta.toString(), "12");
+    assert.ok(earned.delta.lessThanOrEqualTo(attempt.reservedPoints));
     const futureOrder = await createOrderFor(token);
     const futurePayment = await request(`/api/orders/${futureOrder.id}/payments/vnpay`, "POST", token);
     const futureAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: futureOrder.id } });
     assert.equal(futureAttempt.snapshotBronzeMultiplier.toFixed(2), "999.99");
     assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(futurePayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
     const futureEarned = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: futureOrder.id } });
-    assert.equal(futureEarned.delta, 11999);
-    assert.ok(futureEarned.delta <= futureAttempt.reservedPoints);
+    assert.equal(futureEarned.delta.toString(), "11999.88");
+    assert.ok(futureEarned.delta.lessThanOrEqualTo(futureAttempt.reservedPoints));
   } finally {
     await prisma.loyaltyTier.update({ where: { id: bronze.id }, data: { multiplier: "1.00" } });
   }
@@ -427,10 +432,12 @@ test("legacy fallback settlement awards the exact positive reservation despite r
   const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: user.id, merchantId } }, include: { wallet: true } });
   assert.ok(membership.wallet);
   const newAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId } });
-  assert.equal(newAttempt.reservedPoints, 6);
+  assert.equal(newAttempt.reservedPoints.toString(), "6");
   await prisma.$transaction([
     prisma.paymentAttempt.update({ where: { id: newAttempt.id }, data: {
       reservedPoints: 4,
+      snapshotTierLevel: null,
+      snapshotMultiplier: null,
       snapshotMaxMultiplier: 0,
       snapshotBronzeMultiplier: 0,
       snapshotSilverMultiplier: 0,
@@ -446,8 +453,8 @@ test("legacy fallback settlement awards the exact positive reservation despite r
     const ipn = signedIpn(payment.json.txnRef, "3000000");
     assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
-    assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta, 4);
-    assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints, 0);
+    assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "4");
+    assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints.toString(), "0");
   } finally {
     await prisma.loyaltyRule.update({ where: { merchantId }, data: { vndPerPoint: 10000, isActive: true } });
   }
@@ -468,6 +475,8 @@ test("inactive zero-reserve legacy fallback completes without awarding reserved 
   await prisma.$transaction([
     prisma.paymentAttempt.update({ where: { id: attempt.id }, data: {
       reservedPoints: 6,
+      snapshotTierLevel: null,
+      snapshotMultiplier: null,
       snapshotRuleActive: false,
       snapshotMaxMultiplier: 2,
       snapshotBronzeMultiplier: 2,
@@ -482,8 +491,8 @@ test("inactive zero-reserve legacy fallback completes without awarding reserved 
   const ipn = signedIpn(payment.json.txnRef, "3000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta, 0);
-  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints, 0);
+  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "0");
+  assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints.toString(), "0");
 });
 
 test("SQL backfill preserves positive reservations and safely reserves zero-reserve legacy attempts", async () => {

@@ -50,6 +50,7 @@ export interface OrderDto {
   paidAt: string | null;
   items: OrderItemDto[];
   earnedPoints?: number | null;
+  earnedPointsExact: string | null;
   promotedToTier?: TierLevel | null;
 }
 
@@ -139,8 +140,11 @@ export type PointTransactionType = "EARN" | "REDEEM_DISCOUNT" | "REDEEM_REWARD";
 export interface WalletTransactionDto {
   id: number;
   type: PointTransactionType;
-  delta: number;
-  balanceAfter: number;
+  delta: string;
+  balanceAfter: string;
+  availablePointsAfter: number;
+  fractionalCarryAfter: string;
+  pointDebtAfter: string;
   reason: string;
   orderId: number | null;
   memberVoucherId: number | null;
@@ -150,6 +154,10 @@ export interface WalletTransactionDto {
 export interface WalletDto {
   merchantId: number;
   availablePoints: number;
+  exactBalance: string;
+  fractionalCarry: string;
+  pointDebt: string;
+  netLifetimeEarned: string;
   lifetimeEarnedPoints: number;
   tier: MemberTier;
   policy?: LoyaltyConfigDto;

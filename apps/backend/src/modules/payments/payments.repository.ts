@@ -38,6 +38,9 @@ export const paymentsRepository = {
             snapshotGoldMultiplier: reservation.snapshotGoldMultiplier,
             snapshotPlatinumMultiplier: reservation.snapshotPlatinumMultiplier,
             snapshotTierConfigFallback: reservation.snapshotTierConfigFallback,
+            snapshotTierLevel: reservation.snapshotTierLevel,
+            snapshotMultiplier: reservation.snapshotMultiplier,
+            snapshotPolicy: reservation.snapshotPolicy,
           },
           include: { order: true },
         });
@@ -112,6 +115,10 @@ export const paymentsRepository = {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
           maxMultiplier: attempt.snapshotMaxMultiplier,
+          ...(attempt.snapshotTierLevel && attempt.snapshotMultiplier ? {
+            tierLevel: attempt.snapshotTierLevel, multiplier: attempt.snapshotMultiplier,
+            policy: attempt.snapshotPolicy,
+          } : {}),
           ...(attempt.snapshotExactReservationAward ? { fallbackAward: attempt.reservedPoints } : {}),
           // Legacy upgrade attempts award the exact reservation because historical tier and rate terms cannot be recovered.
           tierMultipliers: {

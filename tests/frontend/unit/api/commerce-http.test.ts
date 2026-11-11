@@ -256,4 +256,83 @@ describe("commerce HTTP contract", () => {
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/merchants");
   });
+
+  it("reads exact loyalty wallet and exact paid order DTOs from backend endpoints", async () => {
+    const exactWalletDto = {
+      merchantId: 22,
+      exactBalance: "1.2",
+      availablePoints: 1,
+      fractionalCarry: "0.2",
+      pointDebt: "0",
+      netLifetimeEarned: "1.2",
+      lifetimeEarnedPoints: 1,
+      tier: "BRONZE" as const,
+      policy: {
+        merchantId: 22,
+        vndPerPoint: 10000,
+        isActive: true,
+        tiers: [{ level: "BRONZE" as const, minLifetimePoints: 0, multiplier: "1.00" }],
+      },
+      transactions: [
+        {
+          id: 50,
+          type: "EARN" as const,
+          delta: "0.6",
+          balanceAfter: "1.2",
+          availablePointsAfter: 1,
+          fractionalCarryAfter: "0.2",
+          pointDebtAfter: "0",
+          reason: "Tích điểm đơn hàng #41",
+          orderId: 41,
+          memberVoucherId: null,
+          createdAt: "2026-11-11T10:00:00.000Z",
+        },
+      ],
+    };
+    const exactPaidOrderDto = {
+      id: 41,
+      merchantId: 22,
+      memberId: 9,
+      status: "PAID" as const,
+      subtotal: "6000",
+      discountAmount: "0",
+      total: "6000",
+      paidAt: "2026-11-11T10:00:00.000Z",
+      items: [
+        {
+          productId: 1,
+          productName: "Cà phê",
+          unitPrice: "6000",
+          quantity: 1,
+          lineTotal: "6000",
+        },
+      ],
+      earnedPoints: 0,
+      earnedPointsExact: "0.6",
+    };
+
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ wallet: exactWalletDto }))
+      .mockResolvedValueOnce(Response.json({ order: exactPaidOrderDto }));
+
+    const client = createCommerceClient("", fetcher);
+    const walletRes = await client.getMemberWallet(22, "member-token");
+    const orderRes = await client.getMemberOrder(41, "member-token");
+
+    expect(walletRes.wallet).toEqual(exactWalletDto);
+    expect(walletRes.wallet.exactBalance).toBe("1.2");
+    expect(walletRes.wallet.fractionalCarry).toBe("0.2");
+    expect(walletRes.wallet.pointDebt).toBe("0");
+    expect(walletRes.wallet.netLifetimeEarned).toBe("1.2");
+    expect(walletRes.wallet.transactions[0].delta).toBe("0.6");
+    expect(walletRes.wallet.transactions[0].balanceAfter).toBe("1.2");
+    expect(walletRes.wallet.transactions[0].availablePointsAfter).toBe(1);
+    expect(walletRes.wallet.transactions[0].fractionalCarryAfter).toBe("0.2");
+    expect(walletRes.wallet.transactions[0].pointDebtAfter).toBe("0");
+
+    expect(orderRes.order).toEqual(exactPaidOrderDto);
+    expect(orderRes.order.earnedPointsExact).toBe("0.6");
+    expect(orderRes.order.earnedPoints).toBe(0);
+  });
 });

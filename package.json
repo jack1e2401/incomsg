@@ -14,7 +14,7 @@
     "test": "npm run test --workspaces",
     "test:frontend": "npm test --workspace apps/frontend",
     "test:backend": "npm test --workspace apps/backend",
-    "test:db": "npm run test:db --workspace apps/backend",
+    "test:db": "node scripts/test-backend-db.mjs",
     "test:e2e": "playwright test --config tests/frontend/playwright.config.ts"
   },
   "devDependencies": {

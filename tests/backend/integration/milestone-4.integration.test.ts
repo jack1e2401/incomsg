@@ -216,8 +216,8 @@ test("concurrent paid orders serialize the wallet balance and preserve member is
   assert.equal(wallet.json.wallet.availablePoints, walletBefore.json.wallet.availablePoints + 40);
   assert.equal(wallet.json.wallet.lifetimeEarnedPoints, walletBefore.json.wallet.lifetimeEarnedPoints + 40);
   const orderIds = new Set([first.json.order.id, second.json.order.id]);
-  const balances = wallet.json.wallet.transactions.filter((transaction: { orderId: number }) => orderIds.has(transaction.orderId)).map((transaction: { balanceAfter: number }) => transaction.balanceAfter).sort((a: number, b: number) => a - b);
-  assert.deepEqual(balances, [walletBefore.json.wallet.availablePoints + 20, walletBefore.json.wallet.availablePoints + 40]);
+  const balances = wallet.json.wallet.transactions.filter((transaction: { orderId: number }) => orderIds.has(transaction.orderId)).map((transaction: { balanceAfter: string }) => transaction.balanceAfter).sort((a: string, b: string) => Number(a) - Number(b));
+  assert.deepEqual(balances, [String(walletBefore.json.wallet.availablePoints + 20), String(walletBefore.json.wallet.availablePoints + 40)]);
 
   const foreignPay = await request(`/api/orders/${first.json.order.id}/pay`, "POST", secondMemberToken);
   assert.equal(foreignPay.response.status, 404);
@@ -227,7 +227,7 @@ test("concurrent paid orders serialize the wallet balance and preserve member is
   assert.deepEqual(foreignWallet.json.wallet.transactions, []);
 });
 
-test("a sub-threshold first paid order creates Bronze without inventing points", async () => {
+test("a sub-threshold first paid order creates Bronze and preserves fractional points", async () => {
   const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Under Threshold", price: "9999" });
   const order = await request("/api/orders", "POST", secondMemberToken, { productId: product.json.product.id, quantity: 1 });
   const paid = await request(`/api/orders/${order.json.order.id}/pay`, "POST", secondMemberToken);
@@ -235,7 +235,9 @@ test("a sub-threshold first paid order creates Bronze without inventing points",
   const wallet = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", secondMemberToken);
   assert.equal(wallet.json.wallet.tier, "BRONZE");
   assert.equal(wallet.json.wallet.availablePoints, 0);
-  assert.equal(wallet.json.wallet.transactions.at(-1).delta, 0);
+  assert.equal(wallet.json.wallet.exactBalance, "0.9999");
+  assert.equal(wallet.json.wallet.fractionalCarry, "0.9999");
+  assert.equal(wallet.json.wallet.transactions.at(-1).delta, "0.9999");
 });
 
 test("rejects a paid order that would overflow the stored points balance", async () => {
@@ -243,7 +245,7 @@ test("rejects a paid order that would overflow the stored points balance", async
   const order = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
   const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: (await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } })).id, merchantId: merchantAId } } });
   const wallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
-  await prisma.loyaltyWallet.update({ where: { id: wallet.id }, data: { availablePoints: 2147483647, lifetimeEarnedPoints: 2147483647 } });
+  await prisma.loyaltyWallet.update({ where: { id: wallet.id }, data: { exactBalance: 2147483647, netLifetimeEarned: 2147483647 } });
   const paid = await request(`/api/orders/${order.json.order.id}/pay`, "POST", memberToken);
   assert.equal(paid.response.status, 409);
   assert.equal(paid.json.error, "LOYALTY_LIMIT_EXCEEDED");

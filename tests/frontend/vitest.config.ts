@@ -7,6 +7,6 @@ export default mergeConfig(
   defineConfig({
     root: fileURLToPath(new URL("../../", import.meta.url)),
     envDir: fileURLToPath(new URL("../../apps/frontend/", import.meta.url)),
-    test: { include: ["tests/frontend/unit/**/*.test.ts"] },
+    test: { include: ["tests/frontend/unit/**/*.test.ts", "tests/frontend/unit/**/*.test.tsx"] },
   }),
 );

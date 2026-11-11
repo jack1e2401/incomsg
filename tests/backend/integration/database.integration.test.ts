@@ -34,10 +34,10 @@ test("a member starts unranked with separate zero-point wallets per merchant", a
       assert.equal(first.tierId, null);
       assert.equal(second.tierId, null);
       assert.notEqual(first.wallet?.id, second.wallet?.id);
-      assert.equal(first.wallet?.availablePoints, 0);
-      assert.equal(second.wallet?.availablePoints, 0);
-      assert.equal(first.wallet?.lifetimeEarnedPoints, 0);
-      assert.equal(second.wallet?.lifetimeEarnedPoints, 0);
+      assert.equal(first.wallet?.exactBalance.toString(), "0");
+      assert.equal(second.wallet?.exactBalance.toString(), "0");
+      assert.equal(first.wallet?.netLifetimeEarned.toString(), "0");
+      assert.equal(second.wallet?.netLifetimeEarned.toString(), "0");
 
       throw new RollbackTestData();
     }),

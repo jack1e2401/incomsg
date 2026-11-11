@@ -4,33 +4,14 @@ import type { CreatePendingOrderInput, OrderDto } from "./orders.types.js";
 import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 import { calculateDiscountedTotal } from "./order-pricing.js";
+import { toOrderDto } from "./orders.serialization.js";
 import { HttpError } from "../../lib/http-error.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
 type OrderReadRecord = Prisma.OrderGetPayload<{ include: { items: true; pointTransaction: { select: { delta: true } } } }>;
 
 function toOrderReadDto(order: OrderReadRecord) {
-  return { ...toOrderDto(order), earnedPoints: order.status === "PAID" ? (order.pointTransaction?.delta ?? 0) : null };
-}
-
-function toOrderDto(order: OrderWithItems): OrderDto {
-  return {
-    id: order.id,
-    merchantId: order.merchantId,
-    memberId: order.memberId,
-    status: order.status,
-    subtotal: order.subtotal.toFixed(0),
-    discountAmount: order.discountAmount.toFixed(0),
-    total: order.total.toFixed(0),
-    paidAt: order.paidAt?.toISOString() ?? null,
-    items: order.items.map((item) => ({
-      productId: item.productId,
-      productName: item.productName,
-      unitPrice: item.unitPrice.toFixed(0),
-      quantity: item.quantity,
-      lineTotal: item.lineTotal.toFixed(0),
-    })),
-  };
+  return toOrderDto(order);
 }
 
 export const ordersRepository = {

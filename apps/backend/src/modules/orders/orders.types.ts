@@ -42,5 +42,6 @@ export type OrderDto = {
   paidAt: string | null;
   items: OrderItemDto[];
   earnedPoints?: number | null;
+  earnedPointsExact?: string | null;
   promotedToTier?: TierLevel | null;
 };

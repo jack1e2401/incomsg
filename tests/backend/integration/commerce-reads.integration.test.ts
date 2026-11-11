@@ -48,7 +48,7 @@ before(async () => {
     prisma.order.create({
       data: {
         merchantId: merchantAId, memberId: memberA.id, status: "PAID", subtotal: 20000,
-        discountAmount: 0, total: 20000, paidAt: new Date(),
+        discountAmount: 0, total: 20000, paidAt: new Date(), earnedPointsExact: 2,
         items: { create: { productId: productA.id, productName: productA.name, unitPrice: 20000, quantity: 1, lineTotal: 20000 } },
       },
     }),
@@ -71,7 +71,7 @@ before(async () => {
   orderBId = orderB.id;
   pendingOrderId = pendingOrder.id;
   const membership = await prisma.merchantMembership.create({ data: { memberId: memberA.id, merchantId: merchantAId } });
-  const wallet = await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, availablePoints: 2, lifetimeEarnedPoints: 2 } });
+  const wallet = await prisma.loyaltyWallet.create({ data: { membershipId: membership.id, exactBalance: 2, netLifetimeEarned: 2 } });
   await prisma.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN", delta: 2, balanceAfter: 2, reason: "test read", orderId: orderAId } });
   [merchantAToken, merchantBToken, memberAToken, memberBToken] = await Promise.all([
     signAccessToken(ownerA.id), signAccessToken(ownerB.id), signAccessToken(memberA.id), signAccessToken(memberB.id),
@@ -145,7 +145,9 @@ test("member order list is scoped to member and merchant; foreign detail is hidd
   const paidOrder = own.json.orders.find((order: { id: number }) => order.id === orderAId);
   const pendingOrder = own.json.orders.find((order: { id: number }) => order.id === pendingOrderId);
   assert.equal(paidOrder.earnedPoints, 2);
+  assert.equal(paidOrder.earnedPointsExact, "2");
   assert.equal(pendingOrder.earnedPoints, null);
+  assert.equal(pendingOrder.earnedPointsExact, null);
   assert.equal(paidOrder.memberEmail, undefined);
   const foreign = await request(`/api/member/orders/${orderAId}`, memberBToken);
   assert.equal(foreign.response.status, 404);

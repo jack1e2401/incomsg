@@ -249,7 +249,11 @@ export function MemberProduct() {
           {product.description && (
             <p className="mt-6 whitespace-pre-line text-sm leading-7 muted">{product.description}</p>
           )}
-          <Button className="mt-8 w-fit" disabled={!cart.canAdd(product.id)} onClick={() => cart.addProduct(product)}>
+          <Button
+            className="mt-8 w-fit"
+            disabled={!cart.canAdd(product.id)}
+            onClick={() => cart.addProduct(product)}
+          >
             <ShoppingCart size={18} /> Chọn mua
           </Button>
         </div>
@@ -298,9 +302,7 @@ export function MemberCart() {
           </div>
           <Card className="h-fit p-5">
             <p className="text-xs muted">Tạm tính</p>
-            <p className="mt-2 text-2xl font-extrabold">
-              {money(cart.subtotal)}
-            </p>
+            <p className="mt-2 text-2xl font-extrabold">{money(cart.subtotal)}</p>
             <Button asChild className="mt-5 w-full">
               <Link to={`/member/${merchantId}/checkout`}>
                 Tiếp tục <ArrowRight size={16} />
@@ -651,14 +653,11 @@ export function MemberOrderResult() {
           <div className="mt-5 rounded-2xl bg-[#e8f1e2] p-4 text-[#294a32] sm:p-5">
             <div role="status">
               <p className="text-sm">Thanh toán đã được máy chủ xác nhận.</p>
-              {order.earnedPoints != null &&
-                (order.earnedPoints > 0 ? (
-                  <p className="mt-2 text-xl font-extrabold">
-                    Bạn vừa nhận +{order.earnedPoints.toLocaleString("vi-VN")} điểm
-                  </p>
-                ) : (
-                  <p className="mt-2 text-sm">Đơn này không phát sinh điểm.</p>
-                ))}
+              {order.earnedPointsExact !== "0" ? (
+                <p className="mt-2 text-xl font-extrabold">Bạn vừa nhận +{order.earnedPointsExact} điểm</p>
+              ) : (
+                <p className="mt-2 text-sm">Đơn này không phát sinh điểm.</p>
+              )}
               {order.promotedToTier && (
                 <p className="mt-3 flex items-center gap-2 font-bold">
                   <Sparkle aria-hidden="true" size={18} weight="fill" className="shrink-0" />
@@ -740,9 +739,11 @@ export function MemberWallet() {
     <>
       <PageHeader
         title="Điểm thưởng"
-        action={!resource.loading && !resource.error && wallet?.policy && (
-          <MemberLoyaltyPolicyDialog policy={wallet.policy} />
-        )}
+        action={
+          !resource.loading &&
+          !resource.error &&
+          wallet?.policy && <MemberLoyaltyPolicyDialog policy={wallet.policy} />
+        }
       />
       {resource.loading ? (
         <LoadingState cards={2} />
@@ -760,12 +761,18 @@ export function MemberWallet() {
                 {wallet.availablePoints.toLocaleString("vi-VN")}
                 <span className="ml-2 text-base font-bold tracking-normal text-[#c5e89b]">điểm</span>
               </p>
+              <p className="mt-2 text-sm text-white/80">
+                Phần lẻ: <span className="font-semibold text-[#c5e89b]">{wallet.fractionalCarry}</span>
+              </p>
+              {wallet.pointDebt !== "0" && (
+                <p className="mt-1 text-sm text-[#fca5a5]">
+                  Nợ điểm: <span className="font-semibold">{wallet.pointDebt}</span>
+                </p>
+              )}
               <div className="mt-8 flex items-center justify-between gap-4 border-t border-white/15 pt-5">
                 <div>
                   <p className="text-xs text-white/65">Tổng điểm đã tích lũy</p>
-                  <p className="mt-1 text-xl font-bold">
-                    {wallet.lifetimeEarnedPoints.toLocaleString("vi-VN")}
-                  </p>
+                  <p className="mt-1 text-xl font-bold">{wallet.netLifetimeEarned}</p>
                 </div>
                 <Wallet size={24} weight="light" className="shrink-0 text-[#c5e89b]" />
               </div>
@@ -801,31 +808,55 @@ export function MemberWallet() {
               />
             ) : (
               <div className="surface overflow-hidden rounded-[1.5rem] divide-y divide-[#edf1ea]">
-                {wallet.transactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold">{transaction.reason}</p>
-                      <p className="mt-1 text-xs muted">
-                        {new Date(transaction.createdAt).toLocaleString("vi-VN")} ·{" "}
-                        {transactionTypeLabel(transaction.type)}
-                      </p>
+                {wallet.transactions.map((transaction) => {
+                  const isNegative = transaction.delta.startsWith("-");
+                  const isZero = transaction.delta === "0";
+                  const displayDelta = isNegative
+                    ? transaction.delta
+                    : isZero
+                      ? "0"
+                      : `+${transaction.delta}`;
+                  return (
+                    <div
+                      key={transaction.id}
+                      className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold">{transaction.reason}</p>
+                        <p className="mt-1 text-xs muted">
+                          {new Date(transaction.createdAt).toLocaleString("vi-VN")} ·{" "}
+                          {transactionTypeLabel(transaction.type)}
+                        </p>
+                        {transaction.orderId != null && (
+                          <p className="mt-1 text-xs">
+                            <Link
+                              to={`/member/${merchantId}/orders/${transaction.orderId}`}
+                              className="font-medium underline hover:text-[#2f583a]"
+                            >
+                              Đơn hàng #{transaction.orderId}
+                            </Link>
+                          </p>
+                        )}
+                        {transaction.memberVoucherId != null && (
+                          <p className="mt-1 text-xs">
+                            <Link
+                              to={`/member/${merchantId}/vouchers`}
+                              className="font-medium underline hover:text-[#2f583a]"
+                            >
+                              Voucher #{transaction.memberVoucherId}
+                            </Link>
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-extrabold ${isNegative ? "text-[#a4473a]" : "text-[#357044]"}`}>
+                          {displayDelta}
+                        </p>
+                        <p className="mt-1 text-xs muted">Số dư {transaction.balanceAfter}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p
-                        className={`font-extrabold ${transaction.delta < 0 ? "text-[#a4473a]" : "text-[#357044]"}`}
-                      >
-                        {transaction.delta > 0 ? "+" : ""}
-                        {transaction.delta.toLocaleString("vi-VN")}
-                      </p>
-                      <p className="mt-1 text-xs muted">
-                        Số dư {transaction.balanceAfter.toLocaleString("vi-VN")}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

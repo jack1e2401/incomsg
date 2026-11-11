@@ -141,6 +141,8 @@ model Order {
   discountAmount   Decimal           @default(0) @db.Decimal(15, 0)
   total            Decimal           @db.Decimal(15, 0)
   voucherId        Int?              @unique
+  earnedPointsExact Decimal?         @db.Decimal(38, 12)
+  loyaltySnapshot  Json?
   paidAt           DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -160,7 +162,10 @@ model PaymentAttempt {
   orderId               Int                  @unique
   txnRef                String               @unique @db.VarChar(100)
   expectedAmount        Decimal              @db.Decimal(15, 0)
-  reservedPoints        Int                  @default(0)
+  reservedPoints        Decimal              @default(0) @db.Decimal(38, 12)
+  snapshotTierLevel     TierLevel?
+  snapshotMultiplier    Decimal?             @db.Decimal(5, 2)
+  snapshotPolicy        Json?
   snapshotVndPerPoint   Int                  @default(10000)
   snapshotRuleActive    Boolean              @default(true)
   snapshotMaxMultiplier Decimal              @default(2.00) @db.Decimal(5, 2)
@@ -235,9 +240,9 @@ model LoyaltyRule {
 model LoyaltyWallet {
   id                   Int                @id @default(autoincrement())
   membershipId         Int                @unique
-  availablePoints      Int                @default(0)
-  lifetimeEarnedPoints Int                @default(0)
-  reservedPoints       Int                @default(0)
+  exactBalance         Decimal            @default(0) @db.Decimal(38, 12)
+  netLifetimeEarned    Decimal            @default(0) @db.Decimal(38, 12)
+  reservedPoints       Decimal            @default(0) @db.Decimal(38, 12)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   membership           MerchantMembership @relation(fields: [membershipId], references: [id])
@@ -248,8 +253,8 @@ model PointTransaction {
   id              Int                  @id @default(autoincrement())
   walletId        Int
   type            PointTransactionType
-  delta           Int
-  balanceAfter    Int
+  delta           Decimal              @db.Decimal(38, 12)
+  balanceAfter    Decimal              @db.Decimal(38, 12)
   promotedToTier  TierLevel?
   reason          String               @db.VarChar(255)
   orderId         Int?                 @unique

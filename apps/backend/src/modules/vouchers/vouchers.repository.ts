@@ -4,6 +4,7 @@ import { HttpError } from "../../lib/http-error.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 import type { DefinitionDto, DefinitionInput, DefinitionPatch, MemberVoucherDto } from "./vouchers.types.js";
 import { snapshotVoucherTerms } from "./vouchers.snapshot.js";
+import { describeWallet } from "../loyalty/loyalty.balance.js";
 
 type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{}>;
 type OwnedVoucherRecord = Prisma.MemberVoucherGetPayload<{ include: { membership: true; definition: true; appliedOrder: { select: { status: true } } } }>;
@@ -74,8 +75,8 @@ export const vouchersRepository = {
       });
       const wallet = await tx.loyaltyWallet.upsert({ where: { membershipId: membership.id }, create: { membershipId: membership.id }, update: {} });
       const debit = await tx.loyaltyWallet.updateMany({
-        where: { id: wallet.id, availablePoints: { gte: definition.pointsCost } },
-        data: { availablePoints: { decrement: definition.pointsCost } },
+        where: { id: wallet.id, exactBalance: { gte: definition.pointsCost } },
+        data: { exactBalance: { decrement: definition.pointsCost } },
       });
       if (!debit.count) throw new HttpError(409, "INSUFFICIENT_POINTS");
       const [updatedWallet, voucher] = await Promise.all([
@@ -97,12 +98,12 @@ export const vouchersRepository = {
         walletId: wallet.id,
         type: voucher.snapshotType === "DISCOUNT" ? "REDEEM_DISCOUNT" : "REDEEM_REWARD",
         delta: -voucher.snapshotPointsCost,
-        balanceAfter: updatedWallet.availablePoints,
+        balanceAfter: updatedWallet.exactBalance,
         reason: `Redeemed ${voucher.snapshotTitle}`,
         memberVoucherId: voucher.id,
       } });
       const fullVoucher = await tx.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id }, include: { membership: true, definition: true, appliedOrder: { select: { status: true } } } });
-      return { voucher: toMemberVoucherDto(fullVoucher), wallet: { availablePoints: updatedWallet.availablePoints, lifetimeEarnedPoints: updatedWallet.lifetimeEarnedPoints } };
+      return { voucher: toMemberVoucherDto(fullVoucher), wallet: describeWallet(updatedWallet) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
   async listRewardFulfillments(merchantId: number): Promise<MemberVoucherDto[]> {

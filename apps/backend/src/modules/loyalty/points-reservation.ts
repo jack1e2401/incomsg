@@ -1,7 +1,9 @@
-const maxDatabaseInt = 2_147_483_647;
+import { maxPoints, points, type PointValue } from "./loyalty.calculation.js";
 
-export function canReservePoints(input: { available: number; lifetime: number; reserved: number; requested: number }): boolean {
-  return Number.isSafeInteger(input.requested) && input.requested >= 0 &&
-    input.available + input.reserved + input.requested <= maxDatabaseInt &&
-    input.lifetime + input.reserved + input.requested <= maxDatabaseInt;
+export function canReservePoints(input: { available: PointValue; lifetime: PointValue; reserved: PointValue; requested: PointValue }): boolean {
+  const available = points(input.available), lifetime = points(input.lifetime);
+  const reserved = points(input.reserved), requested = points(input.requested);
+  return [available, lifetime, reserved, requested].every((value) => value.isFinite()) && !reserved.isNegative() && !requested.isNegative() &&
+    available.plus(reserved).plus(requested).lessThanOrEqualTo(maxPoints) &&
+    lifetime.plus(reserved).plus(requested).lessThanOrEqualTo(maxPoints);
 }
