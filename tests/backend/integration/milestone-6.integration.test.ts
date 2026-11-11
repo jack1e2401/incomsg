@@ -70,10 +70,10 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-async function request(path: string, method = "GET", token?: string, body?: unknown) {
+async function request(path: string, method = "GET", token?: string, body?: unknown, options: { headers?: Record<string, string> } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}) },
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...options.headers },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     redirect: "manual",
   });
@@ -248,7 +248,7 @@ test("successful IPN consumes the discount and awards points on the net total", 
   const ipn = signedIpn(payment.json.txnRef, "10000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } })).delta.toString(), "10");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: order.id, type: "EARN" } })).delta.toString(), "10");
 });
 
 test("zero-total orders finalize internally without a payment attempt", async () => {
@@ -271,7 +271,7 @@ test("zero-total orders finalize internally without a payment attempt", async ()
   assert.equal(payment.json.orderStatus, "PAID");
   assert.equal(await prisma.paymentAttempt.count({ where: { orderId } }), 0);
   assert.equal((await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id } })).status, "USED");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "0");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId, type: "EARN" } })).delta.toString(), "0");
   const finalWallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
   const finalMembership = await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } });
   assert.equal(finalWallet.exactBalance.toString(), "0");
@@ -326,7 +326,7 @@ test("concurrent payment starts reserve shared wallet capacity and snapshot poin
   const ipn = signedIpn(accepted.json.txnRef, "12000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: acceptedOrderId } })).status, "PAID");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: acceptedOrderId } })).delta.toString(), "24");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: acceptedOrderId, type: "EARN" } })).delta.toString(), "24");
   assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } })).reservedPoints.toString(), "0");
 });
 
@@ -368,8 +368,8 @@ test("new payment attempts retain their initiation tier after another order prom
   assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(firstPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
   assert.equal((await prisma.merchantMembership.findUniqueOrThrow({ where: { id: membership.id }, include: { tier: true } })).tier?.level, "SILVER");
   assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(secondPayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: firstOrder.id } })).delta.toString(), "12");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: secondOrder.id } })).delta.toString(), "12");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: firstOrder.id, type: "EARN" } })).delta.toString(), "12");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: secondOrder.id, type: "EARN" } })).delta.toString(), "12");
 });
 
 test("multiplier changes apply to new attempts and not existing ones", async () => {
@@ -397,7 +397,7 @@ test("multiplier changes apply to new attempts and not existing ones", async () 
   try {
     await prisma.loyaltyTier.update({ where: { id: bronze.id }, data: { multiplier: "999.99" } });
     assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(payment.json.txnRef, "12000000")}`)).json.RspCode, "00");
-    const earned = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: order.id } });
+    const earned = await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: order.id, type: "EARN" } });
     assert.equal(earned.delta.toString(), "12");
     assert.ok(earned.delta.lessThanOrEqualTo(attempt.reservedPoints));
     const futureOrder = await createOrderFor(token);
@@ -405,7 +405,7 @@ test("multiplier changes apply to new attempts and not existing ones", async () 
     const futureAttempt = await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId: futureOrder.id } });
     assert.equal(futureAttempt.snapshotBronzeMultiplier.toFixed(2), "999.99");
     assert.equal((await request(`/api/payments/vnpay/ipn?${signedIpn(futurePayment.json.txnRef, "12000000")}`)).json.RspCode, "00");
-    const futureEarned = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: futureOrder.id } });
+    const futureEarned = await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: futureOrder.id, type: "EARN" } });
     assert.equal(futureEarned.delta.toString(), "11999.88");
     assert.ok(futureEarned.delta.lessThanOrEqualTo(futureAttempt.reservedPoints));
   } finally {
@@ -453,7 +453,7 @@ test("legacy fallback settlement awards the exact positive reservation despite r
     const ipn = signedIpn(payment.json.txnRef, "3000000");
     assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
-    assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "4");
+    assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId, type: "EARN" } })).delta.toString(), "4");
     assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints.toString(), "0");
   } finally {
     await prisma.loyaltyRule.update({ where: { merchantId }, data: { vndPerPoint: 10000, isActive: true } });
@@ -491,7 +491,7 @@ test("inactive zero-reserve legacy fallback completes without awarding reserved 
   const ipn = signedIpn(payment.json.txnRef, "3000000");
   assert.equal((await request(`/api/payments/vnpay/ipn?${ipn}`)).json.RspCode, "00");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
-  assert.equal((await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId } })).delta.toString(), "0");
+  assert.equal((await prisma.pointTransaction.findFirstOrThrow({ where: { orderId, type: "EARN" } })).delta.toString(), "0");
   assert.equal((await prisma.loyaltyWallet.findUniqueOrThrow({ where: { id: membership.wallet.id } })).reservedPoints.toString(), "0");
 });
 
