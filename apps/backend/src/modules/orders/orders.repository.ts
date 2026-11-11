@@ -8,7 +8,7 @@ import { toOrderDto } from "./orders.serialization.js";
 import { HttpError } from "../../lib/http-error.js";
 
 type OrderWithItems = Prisma.OrderGetPayload<{ include: { items: true } }>;
-type OrderReadRecord = Prisma.OrderGetPayload<{ include: { items: true; pointTransaction: { select: { delta: true } } } }>;
+type OrderReadRecord = Prisma.OrderGetPayload<{ include: { items: true; pointTransactions: { select: { type: true; delta: true; promotedToTier: true } } } }>;
 
 function toOrderReadDto(order: OrderReadRecord) {
   return toOrderDto(order);
@@ -18,7 +18,7 @@ export const ordersRepository = {
   async listMemberOrders(memberId: number, merchantId: number) {
     const orders = await prisma.order.findMany({
       where: { memberId, merchantId },
-      include: { items: true, pointTransaction: { select: { delta: true } } },
+      include: { items: true, pointTransactions: { select: { type: true, delta: true, promotedToTier: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
     return orders.map(toOrderReadDto);
@@ -27,9 +27,11 @@ export const ordersRepository = {
   async findMemberOrder(memberId: number, orderId: number) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, memberId },
-      include: { items: true, pointTransaction: { select: { delta: true, promotedToTier: true } } },
+      include: { items: true, pointTransactions: { select: { type: true, delta: true, promotedToTier: true } } },
     });
-    return order ? { ...toOrderReadDto(order), promotedToTier: order.pointTransaction?.promotedToTier ?? null } : null;
+    if (!order) return null;
+    const earnTx = order.pointTransactions?.find((tx) => tx.type === "EARN");
+    return { ...toOrderReadDto(order), promotedToTier: earnTx?.promotedToTier ?? null };
   },
 
   async listMerchantOrders(merchantId: number) {
@@ -37,7 +39,7 @@ export const ordersRepository = {
       where: { merchantId },
       include: {
         items: true,
-        pointTransaction: { select: { delta: true } },
+        pointTransactions: { select: { type: true, delta: true, promotedToTier: true } },
         member: { select: { email: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
