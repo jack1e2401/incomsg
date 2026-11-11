@@ -1,0 +1,39 @@
+{
+  "name": "incomsg-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "npm run db:generate && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "npm run db:generate && tsc --noEmit",
+    "test": "npm run db:generate && tsx --test ../../tests/backend/unit/**/*.test.ts",
+    "test:db": "npm run db:generate && tsx --test --test-concurrency=1 ../../tests/backend/integration/*.integration.test.ts",
+    "test:admin-read": "npm run db:generate && tsx --test ../../tests/backend/integration/admin-read.integration.test.ts",
+    "test:milestone2": "npm run db:generate && tsx --test ../../tests/backend/integration/milestone-2.integration.test.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.0",
+    "express": "^5.1.0",
+    "jose": "^6.2.16"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "prisma": "^7.10.1",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

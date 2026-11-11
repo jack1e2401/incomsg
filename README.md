@@ -1,35 +1,30 @@
-# IncomSG Loyalty Commerce Frontend
+# IncomSG Loyalty Commerce
 
-Giao diện của prototype thương mại và loyalty cho nhiều cửa hàng. Mỗi shop có chính sách tích điểm riêng. Ví, hạng và voucher của Member được quản lý riêng theo shop.
+Prototype thương mại và loyalty cho nhiều cửa hàng. Frontend React/Vite ở [apps/frontend](apps/frontend), API Express và Prisma ở [apps/backend](apps/backend).
 
-Ứng dụng dùng React, TypeScript, Vite, Tailwind CSS, Radix UI và React Router.
+## Chạy local
 
-## Trải nghiệm theo vai trò
-
-| Vai trò | Tính năng chính |
-| --- | --- |
-| Admin | Duyệt hoặc từ chối hồ sơ mở shop, xem lịch sử duyệt, danh sách cửa hàng và số liệu hệ thống. |
-| Merchant | Xem doanh thu 7 ngày, xem trước gian hàng, quản lý sản phẩm và cấu hình loyalty. Theo dõi người mua trên đơn, phát hành mẫu voucher và xác nhận trao quà. |
-| Member | Mua nhiều sản phẩm của cùng một shop trong một đơn, dùng voucher giảm giá, xem ví và chính sách của từng shop, đổi điểm lấy voucher hoặc quà. |
-
-Khi backend xác nhận đơn đã thanh toán, màn kết quả hiển thị số điểm thực nhận và lời chúc mừng nếu đơn giúp Member đạt hạng mới. Mở lại đơn vẫn xem được kết quả đã ghi cho đơn đó.
-
-Trong tab **Ví điểm**, nút **Chính sách tích điểm** mở tỷ lệ quy đổi, ngưỡng tích lũy và hệ số từng hạng của shop hiện tại. Biểu đồ Merchant dùng uPlot và chỉ tính đơn đã thanh toán theo ngày ở giờ Việt Nam.
-
-## Khởi động local
-
-Dùng Node.js 22.12 trở lên. Tạo `.env` theo [.env.example](./.env.example). Khi demo với backend local, đặt `VITE_API_MODE=http` và `VITE_PAYMENT_MODE=mock`. API mặc định ở `http://localhost:3000`.
+Dùng Node.js 22.12 trở lên. Từ thư mục `IncomSG`, chạy `npm ci` để cài dependencies cho cả hai app. Tạo `apps/frontend/.env` và `apps/backend/.env` theo file `.env.example` tương ứng. Chuẩn bị MySQL theo [hướng dẫn backend](docs/backend/README.md).
 
 ```sh
 npm ci
-npm run dev
+npm run dev:backend
+# Mở terminal thứ hai tại IncomSG
+npm run dev:frontend
 ```
 
-Mở `http://localhost:5173`. Chế độ `VITE_API_MODE=mock` dành cho bản xem offline. Nếu demo VNPay Sandbox, đặt `VITE_PAYMENT_MODE=vnpay` cùng chế độ thanh toán tương ứng ở backend.
+Frontend mặc định ở `http://localhost:5173`, API ở `http://localhost:3000`. Xem [hướng dẫn frontend](docs/frontend/README.md) để chọn chế độ demo hoặc VNPay Sandbox.
 
-## Cấu trúc repo
+## Kiểm thử
 
-- [src/app](./src/app) và [src/layouts](./src/layouts) chứa các route, điều hướng và bố cục theo vai trò.
-- [src/features](./src/features) chứa màn hình Admin, Merchant, Member và xác thực.
-- [src/api](./src/api) chứa API client và kiểu dữ liệu từ backend.
-- [playwright](./playwright) chứa kiểm tra các luồng trên trình duyệt với API giả lập.
+| Lệnh tại thư mục gốc | Bộ test |
+| --- | --- |
+| `npm test` | Unit test FE và BE |
+| `npm run test:frontend` | Vitest tại `tests/frontend/unit` |
+| `npm run test:backend` | Node test tại `tests/backend/unit` |
+| `npm run test:db` | Integration test tại `tests/backend/integration`, cần MySQL đã áp migration |
+| `npm run test:e2e` | Playwright tại `tests/frontend/e2e`, tự khởi động Vite |
+
+Cài Chromium cho Playwright bằng `npx playwright install chromium`. Chạy các bộ riêng với `npm run test:e2e:demo -w apps/frontend` hoặc thay `demo` bằng `m2`, `commerce`, `vnpay`, `ux`. Các ca gọi HTTP thật cần API local và dữ liệu seed tương ứng.
+
+`npm run typecheck` và `npm run build` chạy cho cả hai app. [AGENTS.md](AGENTS.md) chứa quy ước làm việc. [docs/superpowers](docs/superpowers) chứa các plan và spec của dự án.

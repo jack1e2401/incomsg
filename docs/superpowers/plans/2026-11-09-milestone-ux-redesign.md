@@ -12,7 +12,7 @@ Implement the approved M2–M6 journeys and visual direction in the existing Rea
 
 - Do not change backend contracts or invent API-backed outcomes.
 - Keep changes scoped to public/auth, Admin, Merchant, Member UI, local image assets/credits, and Playwright UI coverage.
-- Do not modify existing user edits in `playwright/commerce-http.spec.ts` or `playwright/vnpay.spec.ts`.
+- Do not modify existing user edits in `tests/frontend/e2e/commerce-http.spec.ts` or `tests/frontend/e2e/vnpay.spec.ts`.
 - Use local optimized images from the Pexels URLs recorded in `public/images/credits.md`; do not hotlink production UI images.
 - Keep missing product imagery visually neutral; never display unrelated stock photography as if it were that product.
 - Keep `.riv` optional and Member-only; use existing static fallback and reduced-motion handling.

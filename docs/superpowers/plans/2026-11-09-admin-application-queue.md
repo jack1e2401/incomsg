@@ -33,7 +33,7 @@
 
 - Modify: `src/features/auth/Milestone2Pages.tsx`
 - Modify: `src/components/ui/index.tsx`
-- Test: `playwright/milestone2.spec.ts`
+- Test: `tests/frontend/e2e/milestone2.spec.ts`
 
 **Interfaces:**
 
@@ -46,14 +46,14 @@
   - Assert each store name appears once, each application and applicant ID is visible, each item has its own approve/reject actions, and no separate detail pane repeats the selected store name.
   - Repeat at desktop and mobile widths; assert the page does not overflow horizontally.
 - [x] **Step 2: Run the focused Playwright test and verify it fails**
-  - Run: `node node_modules/@playwright/test/cli.js test --config playwright.m2.config.ts --grep "Admin approval queue"`
+  - Run: `npx playwright test --config tests/frontend/playwright.m2.config.ts --grep "Admin approval queue"`
   - Expected: FAIL because the current screen renders the split master-detail layout.
 - [x] **Step 3: Implement the queue layout**
   - Add optional `titleClassName` to `PageHeader` and pass a lighter tracking class from `AdminApplicationsM2`.
   - Replace `selectedId`, the detail panel, and the `Xem` control with aligned desktop rows and stacked mobile cards; include the API-backed store name, application ID, applicant ID, status, and per-item actions.
   - Keep the current count, refresh, loading, empty, error, action busy, response notice, and confirmation dialog behavior.
 - [x] **Step 4: Run the focused Playwright test**
-  - Run: `node node_modules/@playwright/test/cli.js test --config playwright.m2.config.ts --grep "Admin approval queue"`
+  - Run: `npx playwright test --config tests/frontend/playwright.m2.config.ts --grep "Admin approval queue"`
   - Expected: PASS on desktop and mobile with no horizontal overflow.
 - [x] **Step 5: Run full verification**
   - Run: `npm run typecheck`, `npm test`, `npm run test:e2e:m2`, `npm run build`, and `npm run format:check`.

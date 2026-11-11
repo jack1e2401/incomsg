@@ -1,0 +1,2 @@
+ALTER TABLE `PaymentAttempt` ADD COLUMN `reservedPoints` INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE `LoyaltyWallet` ADD COLUMN `reservedPoints` INTEGER NOT NULL DEFAULT 0;
