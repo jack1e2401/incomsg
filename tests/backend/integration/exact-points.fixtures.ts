@@ -75,10 +75,14 @@ export async function cleanup() {
   }
 }
 
-export async function request<T>(path: string, method = "GET", token?: string, body?: unknown) {
+export async function request<T>(path: string, method = "GET", token?: string, body?: unknown, headers?: Record<string, string>) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(headers ?? {}),
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   return { status: response.status, json: await response.json() as T };
@@ -140,11 +144,23 @@ export async function assertLedger(shop: Shop, member: Member, exactBalance: str
   const stored = await prisma.loyaltyWallet.findFirstOrThrow({ where: { membership: { memberId: member.id, merchantId: shop.id } }, include: { transactions: { orderBy: { id: "asc" } } } });
   assert.equal(stored.exactBalance.toFixed(), exactBalance);
   let total = new Prisma.Decimal(0);
+  let lifetime = new Prisma.Decimal(0);
+  const seenRefs = new Set<string>();
   for (const entry of stored.transactions) {
     total = total.plus(entry.delta);
     assert.equal(entry.balanceAfter.toFixed(), total.toFixed());
+    assert.ok(entry.eventRef && entry.eventRef.length > 0, "eventRef must be non-null and non-empty");
+    assert.ok(!seenRefs.has(entry.eventRef), `eventRef must be unique, duplicated: ${entry.eventRef}`);
+    seenRefs.add(entry.eventRef);
+    assert.ok(entry.source, "source must be present");
+    if (entry.type === "EARN") {
+      lifetime = lifetime.plus(entry.delta);
+    } else if (entry.type === "EARN_REVERSAL") {
+      lifetime = lifetime.minus(entry.delta.abs());
+    }
   }
   assert.equal(total.toFixed(), exactBalance);
+  assert.equal(stored.netLifetimeEarned.toFixed(), lifetime.toFixed());
   return stored;
 }
 

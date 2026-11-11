@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
@@ -64,16 +65,42 @@ export const vouchersRepository = {
     const records = await prisma.memberVoucher.findMany({ where: { membership: { memberId, merchantId } }, include: { membership: true, definition: true, appliedOrder: { select: { status: true } } }, orderBy: [{ redeemedAt: "desc" }, { id: "desc" }] });
     return records.map(toMemberVoucherDto);
   },
-  async redeemVoucher(memberId: number, definitionId: number) {
+  async redeemVoucher(memberId: number, definitionId: number, idempotencyKey: string) {
+    const route = "/api/member/vouchers/:definitionId/redeem";
+    const requestHash = createHash("sha256").update(JSON.stringify({ definitionId })).digest("hex");
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
-      const definition = await tx.voucherDefinition.findFirst({ where: { id: definitionId, isActive: true, ...availableRewardProduct }, include: { merchant: { select: { isActive: true } } } });
+      const existingIdempotency = await tx.redemptionIdempotency.findUnique({
+        where: { memberId_route_idempotencyKey: { memberId, route, idempotencyKey } },
+      });
+      if (existingIdempotency) {
+        if (existingIdempotency.definitionId !== definitionId) {
+          throw new HttpError(409, "IDEMPOTENCY_KEY_CONFLICT");
+        }
+        const existingVoucher = await tx.memberVoucher.findUniqueOrThrow({
+          where: { id: existingIdempotency.voucherId },
+          include: { membership: true, definition: true, appliedOrder: { select: { status: true } } },
+        });
+        const currentWallet = await tx.loyaltyWallet.findUniqueOrThrow({
+          where: { membershipId: existingVoucher.membershipId },
+        });
+        return { voucher: toMemberVoucherDto(existingVoucher), wallet: describeWallet(currentWallet) };
+      }
+
+      const definition = await tx.voucherDefinition.findFirst({
+        where: { id: definitionId, isActive: true, ...availableRewardProduct },
+        include: { merchant: { select: { isActive: true } } },
+      });
       if (!definition || !definition.merchant.isActive) throw new HttpError(404, "VOUCHER_DEFINITION_NOT_FOUND");
       const membership = await tx.merchantMembership.upsert({
         where: { memberId_merchantId: { memberId, merchantId: definition.merchantId } },
         create: { memberId, merchantId: definition.merchantId },
         update: {},
       });
-      const wallet = await tx.loyaltyWallet.upsert({ where: { membershipId: membership.id }, create: { membershipId: membership.id }, update: {} });
+      const wallet = await tx.loyaltyWallet.upsert({
+        where: { membershipId: membership.id },
+        create: { membershipId: membership.id },
+        update: {},
+      });
       const debit = await tx.loyaltyWallet.updateMany({
         where: { id: wallet.id, exactBalance: { gte: definition.pointsCost } },
         data: { exactBalance: { decrement: definition.pointsCost } },
@@ -81,28 +108,48 @@ export const vouchersRepository = {
       if (!debit.count) throw new HttpError(409, "INSUFFICIENT_POINTS");
       const [updatedWallet, voucher] = await Promise.all([
         tx.loyaltyWallet.findUniqueOrThrow({ where: { id: wallet.id } }),
-        tx.memberVoucher.create({ data: {
-          membershipId: membership.id,
-          definitionId: definition.id,
-          ...snapshotVoucherTerms({
-            type: definition.type,
-            title: definition.title,
-            pointsCost: definition.pointsCost,
-            discountAmount: definition.discountAmount?.toFixed(0) ?? null,
-            rewardDescription: definition.rewardDescription,
-          }),
-          snapshotDiscountAmount: definition.discountAmount,
-        } }),
+        tx.memberVoucher.create({
+          data: {
+            membershipId: membership.id,
+            definitionId: definition.id,
+            ...snapshotVoucherTerms({
+              type: definition.type,
+              title: definition.title,
+              pointsCost: definition.pointsCost,
+              discountAmount: definition.discountAmount?.toFixed(0) ?? null,
+              rewardDescription: definition.rewardDescription,
+            }),
+            snapshotDiscountAmount: definition.discountAmount,
+          },
+        }),
       ]);
-      await tx.pointTransaction.create({ data: {
-        walletId: wallet.id,
-        type: voucher.snapshotType === "DISCOUNT" ? "REDEEM_DISCOUNT" : "REDEEM_REWARD",
-        delta: -voucher.snapshotPointsCost,
-        balanceAfter: updatedWallet.exactBalance,
-        reason: `Redeemed ${voucher.snapshotTitle}`,
-        memberVoucherId: voucher.id,
-      } });
-      const fullVoucher = await tx.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id }, include: { membership: true, definition: true, appliedOrder: { select: { status: true } } } });
+      await tx.pointTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: voucher.snapshotType === "DISCOUNT" ? "REDEEM_DISCOUNT" : "REDEEM_REWARD",
+          delta: -voucher.snapshotPointsCost,
+          balanceAfter: updatedWallet.exactBalance,
+          reason: `Redeemed ${voucher.snapshotTitle}`,
+          eventRef: `redeem-voucher-${voucher.id}`,
+          source: "MEMBER_REDEMPTION",
+          actorId: memberId,
+          memberVoucherId: voucher.id,
+        },
+      });
+      await tx.redemptionIdempotency.create({
+        data: {
+          memberId,
+          route,
+          idempotencyKey,
+          requestHash,
+          definitionId,
+          voucherId: voucher.id,
+        },
+      });
+      const fullVoucher = await tx.memberVoucher.findUniqueOrThrow({
+        where: { id: voucher.id },
+        include: { membership: true, definition: true, appliedOrder: { select: { status: true } } },
+      });
       return { voucher: toMemberVoucherDto(fullVoucher), wallet: describeWallet(updatedWallet) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },

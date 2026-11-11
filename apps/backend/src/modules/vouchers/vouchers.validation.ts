@@ -22,6 +22,13 @@ function validateFields(input: Record<string, unknown>, partial: boolean) {
   if (partial && Object.keys(input).length === 0) invalid();
 }
 
+export function readIdempotencyKey(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > 128) invalid();
+  const trimmed = value.trim();
+  if (trimmed.length === 0) invalid();
+  return trimmed;
+}
+
 export function readDefinitionInput(value: unknown, allowLegacyReward = false): DefinitionInput {
   const input = record(value);
   if (Object.keys(input).some((key) => !["type", "title", "pointsCost", "discountAmount", "rewardDescription", "rewardProductId"].includes(key))) invalid();

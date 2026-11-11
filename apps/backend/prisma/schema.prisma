@@ -53,6 +53,19 @@ enum PointTransactionType {
   EARN
   REDEEM_DISCOUNT
   REDEEM_REWARD
+  EARN_REVERSAL
+  REDEMPTION_REVERSAL
+}
+
+enum PointTransactionSource {
+  MOCK_PAYMENT
+  VNPAY_IPN
+  MEMBER_REDEMPTION
+  MERCHANT_REFUND
+  MERCHANT_REWARD_CANCELLATION
+  ADMIN_ADJUSTMENT
+  LEGACY_BACKFILL
+  SYSTEM
 }
 
 enum VoucherType {
@@ -150,7 +163,7 @@ model Order {
   member           User              @relation("MemberOrders", fields: [memberId], references: [id])
   voucher          MemberVoucher?    @relation("AppliedVoucher", fields: [voucherId], references: [id])
   items            OrderItem[]
-  pointTransaction PointTransaction?
+  pointTransactions PointTransaction[]
   paymentAttempt   PaymentAttempt?
 
   @@index([merchantId, status])
@@ -250,21 +263,43 @@ model LoyaltyWallet {
 }
 
 model PointTransaction {
-  id              Int                  @id @default(autoincrement())
+  id              Int                    @id @default(autoincrement())
   walletId        Int
   type            PointTransactionType
-  delta           Decimal              @db.Decimal(38, 12)
-  balanceAfter    Decimal              @db.Decimal(38, 12)
+  delta           Decimal                @db.Decimal(38, 12)
+  balanceAfter    Decimal                @db.Decimal(38, 12)
   promotedToTier  TierLevel?
-  reason          String               @db.VarChar(255)
-  orderId         Int?                 @unique
-  memberVoucherId Int?                 @unique
-  createdAt       DateTime             @default(now())
-  wallet          LoyaltyWallet        @relation(fields: [walletId], references: [id])
-  order           Order?               @relation(fields: [orderId], references: [id])
-  memberVoucher   MemberVoucher?       @relation(fields: [memberVoucherId], references: [id])
+  reason          String                 @db.VarChar(255)
+  eventRef        String                 @unique @default(uuid()) @db.VarChar(191)
+  source          PointTransactionSource @default(LEGACY_BACKFILL)
+  actorId         Int?
+  orderId         Int?
+  memberVoucherId Int?
+  createdAt       DateTime               @default(now())
+  wallet          LoyaltyWallet          @relation(fields: [walletId], references: [id])
+  order           Order?                 @relation(fields: [orderId], references: [id])
+  memberVoucher   MemberVoucher?         @relation(fields: [memberVoucherId], references: [id])
 
   @@index([walletId, createdAt])
+  @@index([orderId])
+  @@index([memberVoucherId])
+  @@index([actorId])
+}
+
+model RedemptionIdempotency {
+  id             Int      @id @default(autoincrement())
+  memberId       Int
+  route          String   @db.VarChar(191)
+  idempotencyKey String   @db.VarChar(128)
+  requestHash    String   @db.VarChar(64)
+  definitionId   Int
+  voucherId      Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([memberId, route, idempotencyKey])
+  @@index([memberId])
+  @@index([voucherId])
 }
 
 model VoucherDefinition {
@@ -302,7 +337,7 @@ model MemberVoucher {
   membership                MerchantMembership  @relation(fields: [membershipId], references: [id])
   definition                VoucherDefinition   @relation(fields: [definitionId], references: [id])
   appliedOrder              Order?              @relation("AppliedVoucher")
-  pointTransaction          PointTransaction?
+  pointTransactions         PointTransaction[]
   fulfillment               RewardFulfillment?
 
   @@index([membershipId, status])

@@ -27,6 +27,7 @@ export async function getWallet(memberId: number, merchantId: number) {
       tier: ranked ? selectTier(membership.wallet?.netLifetimeEarned ?? "0", tiers) ?? "UNRANKED" : "UNRANKED",
       transactions: (membership?.wallet?.transactions ?? []).map((entry) => ({
         id: entry.id, type: entry.type, ...describeTransaction(entry), reason: entry.reason,
+        eventRef: entry.eventRef, source: entry.source, actorId: entry.actorId,
         orderId: entry.orderId, memberVoucherId: entry.memberVoucherId, createdAt: entry.createdAt.toISOString(),
       })),
     };
