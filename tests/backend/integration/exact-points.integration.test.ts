@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import {
   assertLedger, beginVnpay, cleanup, confirmVnpay, createMember, createOrder, createShop, env,
@@ -132,7 +133,13 @@ test("integer redemption keeps carry and lifetime while concurrent redemption ca
   await pay(shop, member);
   await pay(shop, member);
   const definition = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "One point", pointsCost: 1, discountAmount: "1000" } });
-  const redemptions = await Promise.all([0, 1].map(() => request<{ wallet: Wallet }>(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token)));
+  const redemptions = await Promise.all([0, 1].map((i) => request<{ wallet: Wallet }>(
+    `/api/member/vouchers/${definition.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": `concurrent-spend-${i}-${randomUUID()}` },
+  )));
   assert.deepEqual(redemptions.map(({ status }) => status).sort(), [201, 409]);
   const result = redemptions.find(({ status }) => status === 201)!.json.wallet;
   assert.equal(result.exactBalance, "0.2");
@@ -145,6 +152,114 @@ test("integer redemption keeps carry and lifetime while concurrent redemption ca
   assert.equal(persisted.transactions.at(-1)?.delta.toString(), "-1");
   assert.equal(persisted.netLifetimeEarned.toString(), "1.2");
   assert.equal((await wallet(shop, member)).fractionalCarry, "0.2");
+});
+
+test("redemption requires valid non-empty Idempotency-Key <= 128 chars", async () => {
+  const shop = await createShop();
+  const member = await createMember();
+  await pay(shop, member);
+  await pay(shop, member);
+  const definition = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "One point", pointsCost: 1, discountAmount: "1000" } });
+
+  // Missing header
+  const missing = await request(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token);
+  assert.equal(missing.status, 400);
+
+  // Empty string
+  const empty = await request(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token, undefined, { "Idempotency-Key": "" });
+  assert.equal(empty.status, 400);
+
+  // Whitespace only
+  const whitespace = await request(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token, undefined, { "Idempotency-Key": "   " });
+  assert.equal(whitespace.status, 400);
+
+  // Overlong (> 128 chars)
+  const overlong = await request(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token, undefined, { "Idempotency-Key": "a".repeat(129) });
+  assert.equal(overlong.status, 400);
+});
+
+test("same-key retry issues one voucher and one ledger debit, while different-definition key reuse conflicts", async () => {
+  const shop = await createShop();
+  const member = await createMember();
+  await pay(shop, member);
+  await pay(shop, member);
+  await pay(shop, member); // 1.8 points
+  const def1 = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "Voucher 1", pointsCost: 1, discountAmount: "1000" } });
+  const def2 = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "Voucher 2", pointsCost: 1, discountAmount: "2000" } });
+
+  const stableKey = `idem-key-${randomUUID()}`;
+  const first = await request<{ voucher: { id: number; title: string }; wallet: Wallet }>(
+    `/api/member/vouchers/${def1.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": stableKey },
+  );
+  assert.equal(first.status, 201);
+  assert.equal(first.json.voucher.title, "Voucher 1");
+  const firstVoucherId = first.json.voucher.id;
+
+  // Replay with exact same key and definition
+  const replay = await request<{ voucher: { id: number; title: string }; wallet: Wallet }>(
+    `/api/member/vouchers/${def1.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": stableKey },
+  );
+  assert.equal(replay.status, 201);
+  assert.equal(replay.json.voucher.id, firstVoucherId);
+  assert.equal(replay.json.voucher.title, "Voucher 1");
+
+  // Verify only 1 voucher exists and only 1 debit in ledger
+  const memberVouchers = await prisma.memberVoucher.findMany({ where: { membership: { memberId: member.id, merchantId: shop.id } } });
+  assert.equal(memberVouchers.length, 1);
+  assert.equal(memberVouchers[0].id, firstVoucherId);
+
+  // Check ledger: 3 EARN (0.6 each = 1.8) + 1 REDEEM_DISCOUNT (-1) = 0.8 balance
+  const stored = await assertLedger(shop, member, "0.8");
+  const debits = stored.transactions.filter((tx) => tx.type === "REDEEM_DISCOUNT");
+  assert.equal(debits.length, 1);
+  assert.equal(debits[0].delta.toString(), "-1");
+  assert.equal(debits[0].source, "MEMBER_REDEMPTION");
+  assert.equal(debits[0].actorId, member.id);
+  assert.equal(debits[0].eventRef, `redeem-voucher-${firstVoucherId}`);
+
+  // Reusing same key for DIFFERENT definition returns 409
+  const conflict = await request(
+    `/api/member/vouchers/${def2.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": stableKey },
+  );
+  assert.equal(conflict.status, 409);
+
+  // Concurrent redemptions with the SAME key and definition issue only one voucher
+  const concurrentKey = `concurrent-same-${randomUUID()}`;
+  const concurrentSame = await Promise.all([0, 1].map(() => request<{ voucher: { id: number }; wallet: Wallet }>(
+    `/api/member/vouchers/${def1.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": concurrentKey },
+  )));
+  // Wait: balance was 0.8, pointsCost is 1 -> so concurrent with new key would fail if insufficient points.
+  // Let's add points first if we want to test concurrent same-key success!
+  await pay(shop, member);
+  await pay(shop, member); // adds 1.2 points, balance = 2.0
+  const concurrentSuccessKey = `concurrent-success-${randomUUID()}`;
+  const concurrentBoth = await Promise.all([0, 1].map(() => request<{ voucher: { id: number }; wallet: Wallet }>(
+    `/api/member/vouchers/${def2.id}/redeem`,
+    "POST",
+    member.token,
+    undefined,
+    { "Idempotency-Key": concurrentSuccessKey },
+  )));
+  assert.deepEqual(concurrentBoth.map((res) => res.status), [201, 201]);
+  assert.equal(concurrentBoth[0].json.voucher.id, concurrentBoth[1].json.voucher.id);
+  // Only 1 debit occurred (2.0 - 1 = 1.0)
+  await assertLedger(shop, member, "1");
 });
 
 test("VNPay freezes tier, multiplier and policy at initiation; duplicate IPN preserves exact ledger", async () => {
@@ -204,7 +319,7 @@ test("legacy zero-reservation VNPay attempts retain their original integer award
       prisma.loyaltyWallet.update({ where: { id: stored.id }, data: { reservedPoints: 0 } }),
     ]);
     assert.equal(await confirmVnpay(legacy), "00");
-    const legacyCredit = await prisma.pointTransaction.findUniqueOrThrow({ where: { orderId: legacy.order.id } });
+    const legacyCredit = await prisma.pointTransaction.findFirstOrThrow({ where: { orderId: legacy.order.id } });
     assert.equal(legacyCredit.delta.toString(), "0");
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: legacy.order.id } })).earnedPointsExact?.toString(), "0");
     await assertLedger(shop, member, "0");

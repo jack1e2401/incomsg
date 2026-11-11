@@ -83,6 +83,9 @@ export async function completePaidOrder(
   await tx.pointTransaction.create({ data: {
     walletId: wallet.id, type: "EARN", delta: earned, balanceAfter, promotedToTier,
     reason: `Earned from order #${order.id}`, orderId: order.id,
+    eventRef: `order-earn-${order.id}`,
+    source: snapshot ? "VNPAY_IPN" : "MOCK_PAYMENT",
+    actorId: snapshot ? null : memberId,
   } });
   const audit: Prisma.InputJsonObject = {
     source: snapshot ? (snapshot.multiplier ? "VNPAY_INITIATION" : "LEGACY_VNPAY") : "MOCK_PAID",
