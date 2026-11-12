@@ -121,7 +121,6 @@ export function MerchantLoyaltyTransactions() {
               <option value="REDEEM_DISCOUNT">Đổi ưu đãi (REDEEM_DISCOUNT)</option>
               <option value="REDEEM_REWARD">Đổi quà (REDEEM_REWARD)</option>
               <option value="REDEMPTION_REVERSAL">Hoàn điểm đổi quà (REDEMPTION_REVERSAL)</option>
-              <option value="ADMIN_ADJUSTMENT">Điều chỉnh quản trị (ADMIN_ADJUSTMENT)</option>
             </Select>
           </Field>
           <Field label="Từ ngày">

@@ -1,24 +1,21 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { MagnifyingGlass, Plus, CheckCircle, WarningCircle, X, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { MagnifyingGlass, Plus, CheckCircle, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { AdminBlacklistEntryDto } from "../../api/commerce-types";
 import {
   Button,
-  BusyLabel,
   Card,
   EmptyState,
   ErrorState,
-  Field,
   Input,
   LoadingState,
   PageHeader,
   Select,
   StatusText,
-  Textarea,
 } from "../../components/ui";
 import { AdminReasonDialog } from "./AdminReasonDialog";
+import { AddBlacklistDialog } from "./AddBlacklistDialog";
 import { shortDate } from "../../lib/utils";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
@@ -57,8 +54,6 @@ export function AdminBlacklist() {
 
   // Add Dialog State
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [addEmail, setAddEmail] = useState("");
-  const [addReason, setAddReason] = useState("");
   const [addBusy, setAddBusy] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -123,35 +118,15 @@ export function AdminBlacklist() {
     setActiveFilter("ALL");
   }
 
-  async function handleAddSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleAddConfirm(input: { email: string; reason: string }) {
     if (!accessToken) return;
-
-    const emailTrimmed = addEmail.trim().toLowerCase();
-    const reasonTrimmed = addReason.trim();
-
-    if (!emailTrimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
-      setAddError("Vui lòng nhập địa chỉ email hợp lệ.");
-      return;
-    }
-    if (reasonTrimmed.length < 1 || reasonTrimmed.length > 255) {
-      setAddError("Lý do là bắt buộc (từ 1 đến 255 ký tự).");
-      return;
-    }
-
     setAddBusy(true);
     setAddError(null);
 
     try {
-      const response = await commerce.addAdminBlacklist(
-        { email: emailTrimmed, reason: reasonTrimmed },
-        accessToken,
-      );
+      const response = await commerce.addAdminBlacklist(input, accessToken);
       setNotice(`Đã thêm ${response.entry.email} vào danh sách đen.`);
       setAddDialogOpen(false);
-      setAddEmail("");
-      setAddReason("");
-      // Refresh list
       void fetchEntries();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Không thể thêm vào danh sách đen.";
@@ -360,79 +335,16 @@ export function AdminBlacklist() {
       )}
 
       {/* Add to Blacklist Dialog */}
-      <Dialog.Root open={addDialogOpen} onOpenChange={(open) => !addBusy && setAddDialogOpen(open)}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
-          <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-3xl p-6 shadow-2xl outline-none sm:p-7">
-            <div className="flex items-start justify-between">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fae7e3] text-[#a4473a]">
-                <WarningCircle size={24} weight="light" />
-              </span>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  aria-label="Đóng hộp thoại"
-                  disabled={addBusy}
-                  className="rounded-xl p-1.5 text-[#5e7264] hover:bg-[#edf2ea] disabled:opacity-50"
-                >
-                  <X size={20} />
-                </button>
-              </Dialog.Close>
-            </div>
-
-            <Dialog.Title className="mt-5 text-xl font-extrabold text-[#20392a]">
-              Thêm email vào danh sách đen
-            </Dialog.Title>
-            <Dialog.Description className="mt-2 text-sm leading-6 muted">
-              Email bị chặn sẽ không thể đăng ký tài khoản mới hoặc đăng nhập vào hệ thống.
-            </Dialog.Description>
-
-            <form onSubmit={handleAddSubmit} className="mt-5 space-y-4">
-              <Field label="Địa chỉ email *">
-                <Input
-                  type="email"
-                  required
-                  maxLength={191}
-                  placeholder="spam@example.com"
-                  value={addEmail}
-                  onChange={(e) => setAddEmail(e.target.value)}
-                  disabled={addBusy}
-                />
-              </Field>
-
-              <Field label="Lý do chặn *" hint={`${addReason.trim().length}/255 ký tự`}>
-                <Textarea
-                  required
-                  maxLength={255}
-                  rows={3}
-                  placeholder="Nhập lý do chặn email này..."
-                  value={addReason}
-                  onChange={(e) => setAddReason(e.target.value)}
-                  disabled={addBusy}
-                  className="min-h-24 resize-none"
-                />
-              </Field>
-
-              {addError && (
-                <p role="alert" className="rounded-xl bg-[#fae7e3] p-3 text-xs leading-5 text-[#a4473a]">
-                  {addError}
-                </p>
-              )}
-
-              <div className="mt-6 flex justify-end gap-2">
-                <Dialog.Close asChild>
-                  <Button type="button" variant="outline" disabled={addBusy}>
-                    Hủy
-                  </Button>
-                </Dialog.Close>
-                <Button type="submit" variant="danger" disabled={addBusy}>
-                  {addBusy ? <BusyLabel>Đang thêm</BusyLabel> : "Thêm vào danh sách"}
-                </Button>
-              </div>
-            </form>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <AddBlacklistDialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) setAddError(null);
+        }}
+        busy={addBusy}
+        error={addError}
+        onConfirm={handleAddConfirm}
+      />
 
       {/* Deactivate Reason Dialog */}
       {deactivateTarget && (
