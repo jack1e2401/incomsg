@@ -578,6 +578,38 @@ describe("M8 Admin Moderation UI", () => {
       });
     });
 
+    it("shows a distinct login alert for banned accounts", async () => {
+      mockFetchHandler = vi.fn((input) => {
+        if (String(input).includes("/api/auth/login")) {
+          return Promise.resolve(Response.json({ error: "ACCOUNT_BANNED" }, { status: 403 }));
+        }
+        return Promise.resolve(Response.json({}));
+      });
+
+      render(
+        <AuthSessionProvider>
+          <MemoryRouter initialEntries={["/login"]}>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+            </Routes>
+          </MemoryRouter>
+        </AuthSessionProvider>,
+      );
+
+      fireEvent.change(screen.getByPlaceholderText("ban@example.com"), {
+        target: { value: "banned@user.com" },
+      });
+      fireEvent.change(screen.getByPlaceholderText("Nhập mật khẩu"), {
+        target: { value: "password123" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent("Tài khoản đã bị cấm khỏi hệ thống.");
+      });
+      expect(screen.queryByText("Tài khoản đang bị tạm khóa. Vui lòng liên hệ quản trị viên.")).toBeNull();
+    });
+
     it("displays useful error feedback for blacklisted email during registration", async () => {
       mockFetchHandler = vi.fn((input) => {
         const url = String(input);

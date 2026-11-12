@@ -104,6 +104,23 @@ describe("Admin Abuse Reports UI & Navigation", () => {
     });
   });
 
+  it("labels each abuse report reason for compact layouts", async () => {
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/admin/abuse-reports")) {
+        return Response.json({ items: mockReports, nextCursor: null });
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    renderWithAdminSession(<AdminAbuseReports />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Lý do báo cáo")).toHaveLength(mockReports.length);
+      expect(screen.getByText("Thành viên lạm dụng mã giảm giá bất thường")).toBeInTheDocument();
+    });
+  });
+
   it("filters reports by merchantId and memberId", async () => {
     let capturedUrl = "";
 

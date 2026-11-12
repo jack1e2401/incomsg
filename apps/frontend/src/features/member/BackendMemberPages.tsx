@@ -37,6 +37,7 @@ import {
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
 import { MemberLoyaltyPolicyDialog } from "./MemberLoyaltyPolicyDialog";
+import { MemberLifetimeTierChart } from "./MemberLifetimeTierChart";
 import { useMemberCart } from "./useMemberCart";
 
 function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
@@ -754,6 +755,7 @@ export function MemberWallet() {
               </div>
             </Card>
           </div>
+          <MemberLifetimeTierChart wallet={wallet} />
           {!wallet.policy && (
             <div className="mt-7">
               <LoyaltyFormula />

@@ -96,7 +96,8 @@ export function AdminAbuseReportsTable({
               )}
             </div>
 
-            <div className="min-w-0">
+            <div className="min-w-0 rounded-xl bg-[#f7f9f5] p-3 xl:bg-transparent xl:p-0">
+              <p className="mb-1 text-[11px] font-bold text-[#5b6e60] xl:sr-only">Lý do báo cáo</p>
               <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[#3b4e40]">
                 {report.reason}
               </p>
