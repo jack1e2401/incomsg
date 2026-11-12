@@ -32,7 +32,7 @@ export type InventoryPanelProps = {
   movements: InventoryMovement[];
   onAdjust: (adjustment: InventoryAdjustment) => Promise<unknown>;
   mode?: "adjust" | "history";
-  availableLabel?: string;
+  subject?: "product" | "voucher";
 };
 
 const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN");
@@ -54,6 +54,13 @@ const movementLabels: Record<string, string> = {
   LEGACY_BACKFILL: "Chuyển dữ liệu tồn kho",
 };
 
+const voucherMovementLabels: Record<string, string> = {
+  INITIAL_STOCK: "Lượt phát hành ban đầu",
+  MANUAL_IN: "Tăng lượt phát hành",
+  MANUAL_OUT: "Giảm lượt phát hành",
+  LEGACY_BACKFILL: "Chuyển dữ liệu lượt phát hành",
+};
+
 function actorLabel(movement: InventoryMovement) {
   if (movement.actorEmail) return movement.actorEmail;
   if (movement.actorId !== null && movement.actorId !== undefined) return `Tài khoản #${movement.actorId}`;
@@ -65,9 +72,11 @@ export function InventoryPanel({
   movements,
   onAdjust,
   mode,
-  availableLabel = "Có thể bán",
+  subject = "product",
 }: InventoryPanelProps) {
   const titleId = useId();
+  const isVoucher = subject === "voucher";
+  const subjectLabel = isVoucher ? "Lượt phát hành" : "Tồn kho";
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,7 +89,7 @@ export function InventoryPanel({
     setSuccess("");
     const parsedQuantity = Number(quantity);
     const trimmedReason = reason.trim();
-    if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+    if (!Number.isSafeInteger(parsedQuantity) || parsedQuantity <= 0 || parsedQuantity > 2_147_483_647) {
       setError("Số lượng phải là số nguyên dương.");
       return;
     }
@@ -92,11 +101,17 @@ export function InventoryPanel({
     setLoading(true);
     try {
       await onAdjust({ direction, quantity: parsedQuantity, reason: trimmedReason });
-      setSuccess("Tồn kho đã được cập nhật.");
+      setSuccess(isVoucher ? "Đã cập nhật lượt phát hành." : "Tồn kho đã được cập nhật.");
       setQuantity("");
       setReason("");
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Không thể cập nhật tồn kho.");
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : isVoucher
+            ? "Không thể cập nhật lượt phát hành."
+            : "Không thể cập nhật tồn kho.",
+      );
     } finally {
       setLoading(false);
     }
@@ -108,21 +123,25 @@ export function InventoryPanel({
       className={mode ? "space-y-5" : "space-y-5 rounded-2xl border border-[#e4e9e1] bg-white p-5"}
     >
       <h2 id={titleId} className={mode ? "sr-only" : "text-lg font-bold"}>
-        Tồn kho
+        {subjectLabel}
       </h2>
       {mode !== "history" && (
         <>
           <dl className="grid grid-cols-3 gap-3 text-sm">
+            {!isVoucher && (
+              <>
+                <div>
+                  <dt className="muted">Tồn thực tế</dt>
+                  <dd className="mt-1 text-xl font-bold">{balance.onHandQuantity}</dd>
+                </div>
+                <div>
+                  <dt className="muted">Đã giữ chỗ</dt>
+                  <dd className="mt-1 text-xl font-bold">{balance.reservedQuantity}</dd>
+                </div>
+              </>
+            )}
             <div>
-              <dt className="muted">Tồn thực tế</dt>
-              <dd className="mt-1 text-xl font-bold">{balance.onHandQuantity}</dd>
-            </div>
-            <div>
-              <dt className="muted">Đã giữ chỗ</dt>
-              <dd className="mt-1 text-xl font-bold">{balance.reservedQuantity}</dd>
-            </div>
-            <div>
-              <dt className="muted">{availableLabel}</dt>
+              <dt className="muted">{isVoucher ? "Lượt còn lại" : "Có thể bán"}</dt>
               <dd className="mt-1 text-xl font-bold">{balance.availableQuantity}</dd>
             </div>
           </dl>
@@ -136,6 +155,7 @@ export function InventoryPanel({
                 inputMode="numeric"
                 type="number"
                 min="1"
+                max="2147483647"
                 step="1"
                 value={quantity}
                 onChange={(event) => setQuantity(event.target.value)}
@@ -146,6 +166,7 @@ export function InventoryPanel({
               <input
                 aria-label="Ghi chú"
                 className="rounded-lg border px-3 py-2"
+                maxLength={255}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               />
@@ -157,7 +178,7 @@ export function InventoryPanel({
                 onClick={(event) => void submit(event, "in")}
                 className="rounded-lg bg-[#315c3c] px-4 py-2 font-semibold text-white disabled:opacity-60"
               >
-                {loading ? "Đang lưu…" : "Nhập kho"}
+                {loading ? "Đang lưu…" : isVoucher ? "Tăng lượt phát hành" : "Nhập kho"}
               </button>
               <button
                 type="button"
@@ -165,7 +186,7 @@ export function InventoryPanel({
                 onClick={(event) => void submit(event, "out")}
                 className="rounded-lg border px-4 py-2 font-semibold disabled:opacity-60"
               >
-                {loading ? "Đang lưu…" : "Xuất kho"}
+                {loading ? "Đang lưu…" : isVoucher ? "Giảm lượt phát hành" : "Xuất kho"}
               </button>
             </div>
             {error && (
@@ -186,7 +207,9 @@ export function InventoryPanel({
         <div>
           {mode !== "history" && <h3 className="mb-2 font-bold">Lịch sử điều chỉnh</h3>}
           {movements.length === 0 ? (
-            <p className="text-sm muted">Chưa có lịch sử tồn kho.</p>
+            <p className="text-sm muted">
+              {isVoucher ? "Chưa có lịch sử phát hành." : "Chưa có lịch sử tồn kho."}
+            </p>
           ) : (
             <ul className="divide-y divide-[#edf1ea]">
               {movements.map((movement) => (
@@ -198,14 +221,20 @@ export function InventoryPanel({
                       {movement.quantityDelta}
                     </span>
                   </div>
-                  <p className="mt-1">{movementLabels[movement.movementType] ?? movement.movementType}</p>
+                  <p className="mt-1">
+                    {(isVoucher ? voucherMovementLabels[movement.movementType] : undefined) ??
+                      movementLabels[movement.movementType] ??
+                      movement.movementType}
+                  </p>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 muted">
                     <span>
-                      Tồn: {movement.onHandBefore} → {movement.onHandAfter}
+                      {isVoucher ? "Lượt còn lại" : "Tồn"}: {movement.onHandBefore} → {movement.onHandAfter}
                     </span>
-                    <span>
-                      Đã giữ: {movement.reservedBefore} → {movement.reservedAfter}
-                    </span>
+                    {!isVoucher && (
+                      <span>
+                        Đã giữ: {movement.reservedBefore} → {movement.reservedAfter}
+                      </span>
+                    )}
                     <span>Thực hiện bởi {actorLabel(movement)}</span>
                     <time dateTime={movement.createdAt}>{dateTime(movement.createdAt)}</time>
                   </div>

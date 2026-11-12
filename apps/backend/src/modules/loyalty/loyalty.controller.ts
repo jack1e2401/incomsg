@@ -28,6 +28,25 @@ export const getMemberWallet: RequestHandler = async (request, response) => {
   response.json({ wallet });
 };
 
+export const listMerchantMembers: RequestHandler = async (request, response) => {
+  const { email, cursor, limit } = request.query;
+  if (email !== undefined && (typeof email !== "string" || email.trim().length > 191)) {
+    throw new HttpError(400, "INVALID_INPUT");
+  }
+  const pageSize = limit === undefined ? 20 : readRouteId(limit);
+  if (pageSize > 100) throw new HttpError(400, "INVALID_INPUT");
+  response.json(await loyaltyService.listMerchantMembers(response.locals.user.id, {
+    email: typeof email === "string" ? email.trim() : undefined,
+    cursor: cursor === undefined ? undefined : readRouteId(cursor),
+    limit: pageSize,
+  }));
+};
+
+export const getMerchantMemberWallet: RequestHandler = async (request, response) => {
+  const memberId = readRouteId(request.params.memberId);
+  response.json(await loyaltyService.getMerchantMemberWallet(response.locals.user.id, memberId));
+};
+
 export const previewMemberEarning: RequestHandler = async (request, response) => {
   const merchantId = readRouteId(request.params.merchantId);
   const netOrderAmountVnd = request.body?.netOrderAmountVnd;

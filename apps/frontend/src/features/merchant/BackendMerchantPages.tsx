@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Package, Storefront } from "@phosphor-icons/react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
@@ -43,6 +43,7 @@ import { InventoryImportDialog } from "./InventoryImportDialog";
 import { MerchantProductTableRow } from "./MerchantProductTableRow";
 import { MerchantVoucherTableRow } from "./MerchantVoucherTableRow";
 import { MerchantLoyaltyHistory } from "./MerchantLoyaltyHistory";
+import { MerchantLoyaltyMembers } from "./MerchantLoyaltyMembers";
 import { OrderLoyaltyPolicySnapshot } from "../orders/OrderLoyaltyPolicySnapshot";
 
 export { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
@@ -709,15 +710,17 @@ export function MerchantVouchers() {
         { isActive: !definition.isActive },
         token,
       );
-      resource.setData((current) =>
-        (current ?? []).map((item) => (item.id === response.definition.id ? response.definition : item)),
-      );
+      updateDefinition(response.definition);
       setNotice("Đã cập nhật voucher.");
     } catch (reason) {
       setError(message(reason));
     } finally {
       setBusyId(null);
     }
+  }
+
+  function updateDefinition(definition: VoucherDefinitionDto) {
+    resource.setData((current) => current?.map((item) => item.id === definition.id ? definition : item) ?? null);
   }
 
   return (
@@ -876,6 +879,7 @@ export function MerchantVouchers() {
                   token={token}
                   statusBusy={busyId !== null}
                   onToggle={() => void toggle(definition)}
+                  onDefinitionChange={updateDefinition}
                   onInventoryChange={(availableQuantity) => resource.setData((current) =>
                     current?.map((item) => item.id === definition.id ? { ...item, availableQuantity } : item) ?? null,
                   )}
@@ -893,7 +897,9 @@ export function MerchantLoyalty() {
   const token = useToken();
   const resource = useResource(() => api.getLoyaltyConfig(token), [token]);
   const history = useResource(() => api.getLoyaltyPolicyHistory(token), [token]);
-  const [activeTab, setActiveTab] = useState<"CONFIG" | "LEDGER" | "HISTORY">("CONFIG");
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab");
+  const activeTab = tab === "ledger" || tab === "history" || tab === "members" ? tab : "config";
   const [draft, setDraft] = useState<LoyaltyConfigInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -959,34 +965,40 @@ export function MerchantLoyalty() {
   return (
     <>
       <PageHeader title="Cấu hình Loyalty" />
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
-          variant={activeTab === "CONFIG" ? "default" : "outline"}
-          onClick={() => setActiveTab("CONFIG")}
+          variant={activeTab === "config" ? "default" : "outline"}
+          aria-pressed={activeTab === "config"}
+          onClick={() => setParams({})}
         >
           Cấu hình quy tắc
         </Button>
         <Button
           type="button"
           size="sm"
-          variant={activeTab === "LEDGER" ? "default" : "outline"}
-          onClick={() => setActiveTab("LEDGER")}
+          variant={activeTab === "ledger" ? "default" : "outline"}
+          aria-pressed={activeTab === "ledger"}
+          onClick={() => setParams({ tab: "ledger" })}
         >
           Lịch sử giao dịch điểm
         </Button>
         <Button
           type="button"
           size="sm"
-          variant={activeTab === "HISTORY" ? "default" : "outline"}
-          onClick={() => setActiveTab("HISTORY")}
+          variant={activeTab === "history" ? "default" : "outline"}
+          aria-pressed={activeTab === "history"}
+          onClick={() => setParams({ tab: "history" })}
         >
           Lịch sử chính sách
         </Button>
+        <Button type="button" size="sm" variant={activeTab === "members" ? "default" : "outline"} aria-pressed={activeTab === "members"} onClick={() => setParams({ tab: "members" })}>
+          Thành viên
+        </Button>
       </div>
 
-      {activeTab === "CONFIG" ? (
+      {activeTab === "config" ? (
         resource.loading ? (
           <LoadingState cards={2} />
         ) : resource.error ? (
@@ -1167,8 +1179,10 @@ export function MerchantLoyalty() {
             </Card>
           </div>
         )
-      ) : activeTab === "LEDGER" ? (
+      ) : activeTab === "ledger" ? (
         <MerchantLoyaltyTransactions />
+      ) : activeTab === "members" ? (
+        <MerchantLoyaltyMembers token={token} memberId={params.get("memberId")} />
       ) : history.loading ? (
         <LoadingState cards={2} />
       ) : history.error ? (

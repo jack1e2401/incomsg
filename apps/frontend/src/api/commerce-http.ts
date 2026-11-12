@@ -30,6 +30,8 @@ import type {
   MerchantLoyaltyPreviewResponse,
   MerchantTransactionsResponse,
   MerchantTransactionsQuery,
+  MerchantLoyaltyMembersResponse,
+  MerchantLoyaltyMemberWalletResponse,
   RefundPreviewDto,
   RefundResponseDto,
   RewardCancelResponseDto,
@@ -218,6 +220,16 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
       return requestJson<WalletResponse>(fetcher, baseUrl, `/api/member/merchants/${merchantId}/wallet`, {
         token,
       });
+    },
+    listMerchantLoyaltyMembers(filters: { email: string; cursor: number | null }, token: string) {
+      const params = new URLSearchParams();
+      if (filters.email) params.set("email", filters.email);
+      if (filters.cursor !== null) params.set("cursor", String(filters.cursor));
+      const query = params.toString();
+      return requestJson<MerchantLoyaltyMembersResponse>(fetcher, baseUrl, `/api/merchant/loyalty/members${query ? `?${query}` : ""}`, { token });
+    },
+    getMerchantLoyaltyMemberWallet(memberId: string, token: string) {
+      return requestJson<MerchantLoyaltyMemberWalletResponse>(fetcher, baseUrl, `/api/merchant/loyalty/members/${encodeURIComponent(memberId)}/wallet`, { token });
     },
     listMerchantVoucherDefinitions(token: string) {
       return requestJson<VoucherDefinitionsResponse>(fetcher, baseUrl, "/api/merchant/vouchers", { token });

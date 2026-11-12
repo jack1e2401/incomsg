@@ -14,21 +14,24 @@ export const VALID_TRANSACTION_TYPES: readonly PointTransactionType[] = [
   "REDEMPTION_REVERSAL",
 ];
 
-export async function getWallet(memberId: number, merchantId: number) {
+async function readWallet(memberId: number, merchantId: number) {
   return prisma.$transaction(async (tx) => {
     const merchant = await tx.merchant.findFirst({ where: { id: merchantId, isActive: true }, select: { id: true } });
     if (!merchant) return "merchant_missing" as const;
     const [membership, rule, configuredTiers] = await Promise.all([
       tx.merchantMembership.findUnique({
         where: { memberId_merchantId: { memberId, merchantId } },
-        include: { wallet: { include: { transactions: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] } } } },
+        include: {
+          member: { select: { id: true, email: true } },
+          wallet: { include: { transactions: { orderBy: [{ createdAt: "desc" }, { id: "desc" }] } } },
+        },
       }),
       tx.loyaltyRule.findUnique({ where: { merchantId } }),
       tx.loyaltyTier.findMany({ where: { merchantId }, orderBy: { minLifetimePoints: "asc" } }),
     ]);
     const tiers = configuredTiers.length ? configuredTiers : defaultTiers;
     const ranked = membership && (membership.tierId !== null || membership.wallet?.transactions.some((entry) => entry.type === "EARN"));
-    return {
+    const wallet = {
       merchantId,
       policy: {
         merchantId, vndPerPoint: rule?.vndPerPoint ?? 10000, isActive: rule?.isActive ?? true,
@@ -42,7 +45,73 @@ export async function getWallet(memberId: number, merchantId: number) {
         orderId: entry.orderId, memberVoucherId: entry.memberVoucherId, createdAt: entry.createdAt.toISOString(),
       })),
     };
+    return { member: membership?.member ?? null, wallet };
   });
+}
+
+export async function getWallet(memberId: number, merchantId: number) {
+  const result = await readWallet(memberId, merchantId);
+  return result === "merchant_missing" ? result : result.wallet;
+}
+
+export async function getMerchantMemberWallet(merchantId: number, memberId: number) {
+  const result = await readWallet(memberId, merchantId);
+  if (result === "merchant_missing") throw new HttpError(404, "MERCHANT_NOT_FOUND");
+  if (!result.member) throw new HttpError(404, "MEMBER_NOT_FOUND");
+  return { member: result.member, wallet: result.wallet };
+}
+
+export type MerchantMemberFilters = { email?: string; cursor?: number; limit: number };
+
+export async function listMerchantMembers(merchantId: number, { email, cursor, limit }: MerchantMemberFilters) {
+  const [memberships, configuredTiers] = await prisma.$transaction([
+    prisma.merchantMembership.findMany({
+      where: {
+        merchantId,
+        ...(cursor !== undefined ? { id: { lt: cursor } } : {}),
+        ...(email ? { member: { email: { contains: email } } } : {}),
+      },
+      orderBy: { id: "desc" },
+      take: limit + 1,
+      include: {
+        member: { select: { id: true, email: true } },
+        wallet: {
+          include: {
+            transactions: {
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: 1,
+              select: { type: true, delta: true, createdAt: true },
+            },
+            _count: { select: { transactions: { where: { type: "EARN" } } } },
+          },
+        },
+      },
+    }),
+    prisma.loyaltyTier.findMany({ where: { merchantId }, orderBy: { minLifetimePoints: "asc" } }),
+  ]);
+  const tiers = configuredTiers.length ? configuredTiers : defaultTiers;
+  const page = memberships.slice(0, limit);
+  return {
+    items: page.map(({ member, wallet, tierId }) => {
+      const { availablePoints, netLifetimeEarned, pointDebt } = describeWallet(wallet);
+      const ranked = tierId !== null || (wallet?._count.transactions ?? 0) > 0;
+      const tier = ranked ? selectTier(netLifetimeEarned, tiers) ?? "UNRANKED" : "UNRANKED";
+      const latest = wallet?.transactions[0];
+      return {
+        ...member,
+        availablePoints,
+        netLifetimeEarned,
+        pointDebt,
+        tier,
+        latestChange: latest ? {
+          type: latest.type,
+          delta: exactPoints(latest.delta),
+          createdAt: latest.createdAt.toISOString(),
+        } : null,
+      };
+    }),
+    nextCursor: memberships.length > limit ? page.at(-1)!.id : null,
+  };
 }
 
 export async function previewMemberEarning(memberId: number, merchantId: number, netOrderAmountVnd: string) {

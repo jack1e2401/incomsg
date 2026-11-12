@@ -6,6 +6,9 @@ import {
   previewMemberEarning,
   previewMerchantPolicy,
   listMerchantTransactions,
+  listMerchantMembers,
+  getMerchantMemberWallet,
+  type MerchantMemberFilters,
   type MerchantTransactionFilters,
 } from "./loyalty.read.js";
 import type { TierLevel } from "./loyalty.calculation.js";
@@ -43,5 +46,17 @@ export const loyaltyService = {
     const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
     if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
     return listMerchantTransactions(merchant.id, filters);
+  },
+
+  async listMerchantMembers(ownerId: number, filters: MerchantMemberFilters) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return listMerchantMembers(merchant.id, filters);
+  },
+
+  async getMerchantMemberWallet(ownerId: number, memberId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return getMerchantMemberWallet(merchant.id, memberId);
   },
 };

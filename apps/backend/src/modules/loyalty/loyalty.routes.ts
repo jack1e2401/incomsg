@@ -4,6 +4,8 @@ import {
   getLoyaltyConfig,
   listLoyaltyPolicyHistory,
   getMemberWallet,
+  getMerchantMemberWallet,
+  listMerchantMembers,
   listMerchantTransactions,
   previewMemberEarning,
   previewMerchantPolicy,
@@ -17,6 +19,8 @@ merchantLoyaltyRoutes.put("/", putLoyaltyConfig);
 merchantLoyaltyRoutes.get("/history", listLoyaltyPolicyHistory);
 merchantLoyaltyRoutes.post("/preview", previewMerchantPolicy);
 merchantLoyaltyRoutes.get("/transactions", listMerchantTransactions);
+merchantLoyaltyRoutes.get("/members", listMerchantMembers);
+merchantLoyaltyRoutes.get("/members/:memberId/wallet", getMerchantMemberWallet);
 
 export const memberLoyaltyRoutes = Router();
 memberLoyaltyRoutes.get("/merchants/:merchantId/wallet", authenticate, requireRole("MEMBER"), getMemberWallet);

@@ -135,7 +135,12 @@ export const vouchersRepository = {
     });
     if (!updated.count) return null;
     const item = await prisma.voucherDefinition.findUnique({ where: { id }, include: definitionInclude });
-    return item ? toDefinitionDto(item) : null;
+    if (!item) return null;
+    const issued = item.type === "DISCOUNT" ? await prisma.inventoryMovement.aggregate({
+      where: { voucherDefinitionId: id, merchantId, movementType: "VOUCHER_REDEMPTION_OUT" },
+      _sum: { quantityDelta: true },
+    }) : null;
+    return toDefinitionDto(item, Math.abs(issued?._sum.quantityDelta ?? 0));
   },
   async getDefinition(id: number) {
     return prisma.voucherDefinition.findUnique({ where: { id } });

@@ -275,6 +275,19 @@ export interface MerchantTransactionsResponse {
   nextCursor: string | null;
 }
 
+export interface MerchantLoyaltyMemberDto {
+  id: number;
+  email: string;
+  tier: MemberTier;
+  availablePoints: number;
+  netLifetimeEarned: string;
+  pointDebt: string;
+  latestChange: Pick<WalletTransactionDto, "type" | "delta" | "createdAt"> | null;
+}
+
+export type MerchantLoyaltyMembersResponse = { items: MerchantLoyaltyMemberDto[]; nextCursor: number | null };
+export type MerchantLoyaltyMemberWalletResponse = { member: Pick<MerchantLoyaltyMemberDto, "id" | "email">; wallet: WalletDto };
+
 export interface MerchantLoyaltyPolicyVersionDto {
   id: number;
   version: number;

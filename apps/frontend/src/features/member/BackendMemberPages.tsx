@@ -17,11 +17,9 @@ import type {
   MemberVoucherDto,
   MemberVoucherStatus,
   OrderStatus,
-  PointTransactionType,
   VoucherDefinitionDto,
 } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
-import { LoyaltyFormula } from "../../components/LoyaltyFormula";
 import {
   StatusText,
   Button,
@@ -37,7 +35,7 @@ import {
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
 import { MemberLoyaltyPolicyDialog } from "./MemberLoyaltyPolicyDialog";
-import { MemberLifetimeTierChart } from "./MemberLifetimeTierChart";
+import { LoyaltyWalletContent } from "./LoyaltyWalletContent";
 import { useMemberCart } from "./useMemberCart";
 
 function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
@@ -708,130 +706,17 @@ export function MemberWallet() {
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
       ) : wallet ? (
-        <>
-          <div className="grid gap-5 lg:grid-cols-[1.05fr_.95fr]">
-            <Card
-              className="relative overflow-hidden p-5 text-white sm:p-8"
-              style={{ backgroundColor: "#2f583a", color: "white" }}
-            >
-              <p className="text-sm font-semibold text-white/70">Điểm có thể sử dụng</p>
-              <p className="mt-2 text-3xl font-extrabold tracking-[-.05em] sm:text-5xl lg:text-6xl break-words">
-                <span className="tabular-nums">{wallet.availablePoints.toLocaleString("vi-VN")}</span>
-                <span className="ml-2 text-base font-bold tracking-normal text-[#c5e89b]">điểm</span>
-              </p>
-              <p className="mt-2 text-sm text-white/80 break-words">
-                Phần lẻ:{" "}
-                <span className="font-semibold text-[#c5e89b] tabular-nums">{wallet.fractionalCarry}</span>
-              </p>
-              {wallet.pointDebt !== "0" && (
-                <p className="mt-1 text-sm text-[#fca5a5] break-words">
-                  Nợ điểm: <span className="font-semibold tabular-nums">{wallet.pointDebt}</span>
-                </p>
-              )}
-              <div className="mt-6 sm:mt-8 flex items-center justify-between gap-4 border-t border-white/15 pt-4 sm:pt-5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-white/65">Tổng điểm đã tích lũy</p>
-                  <p className="mt-1 text-lg sm:text-xl font-bold tabular-nums break-words">
-                    {wallet.netLifetimeEarned}
-                  </p>
-                </div>
-                <Wallet aria-hidden="true" size={24} weight="light" className="shrink-0 text-[#c5e89b]" />
-              </div>
-            </Card>
-            <Card className="member-gradient relative min-h-48 sm:min-h-56 overflow-hidden p-5 sm:p-8">
-              <div className="relative z-1 max-w-[68%] sm:max-w-[65%]">
-                <p className="text-sm font-semibold text-[#6c8168]">Hạng thành viên</p>
-                <h2 className="serif mt-2 sm:mt-3 text-2xl sm:text-3xl leading-tight text-[#294a32] break-words">
-                  {wallet.tier === "UNRANKED" ? "Chưa xếp hạng" : wallet.tier}
-                </h2>
-                <p className="mt-2 sm:mt-3 text-xs sm:text-sm leading-5 sm:leading-6 text-[#647a68] break-words">
-                  {wallet.tier === "UNRANKED"
-                    ? "Đơn đã thanh toán đầu tiên sẽ xác lập hạng theo tổng điểm tích lũy."
-                    : "Hạng dựa trên tổng điểm đã tích lũy; tiêu điểm không làm giảm hạng."}
-                </p>
-              </div>
-              <div className="pointer-events-none absolute -bottom-3 -right-3 h-28 w-28 sm:h-48 sm:w-48">
-                <MemberMascot mood="hello" />
-              </div>
-            </Card>
-          </div>
-          <MemberLifetimeTierChart wallet={wallet} />
-          {!wallet.policy && (
-            <div className="mt-7">
-              <LoyaltyFormula />
-            </div>
-          )}
-          <section className="mt-7">
-            <h2 className="mb-4 text-xl font-extrabold">Lịch sử điểm</h2>
-            {!wallet.transactions.length ? (
-              <EmptyState
-                title="Chưa có giao dịch điểm"
-                description="Giao dịch sẽ xuất hiện sau hoạt động tại cửa hàng này."
-                action={
-                  <Button asChild variant="outline">
-                    <Link to={`/member/${merchantId}`}>Khám phá gian hàng</Link>
-                  </Button>
-                }
-              />
-            ) : (
-              <div className="surface overflow-hidden rounded-[1.5rem] divide-y divide-[#edf1ea]">
-                {wallet.transactions.map((transaction) => {
-                  const isNegative = transaction.delta.startsWith("-");
-                  const isZero = transaction.delta === "0";
-                  const displayDelta = isNegative
-                    ? transaction.delta
-                    : isZero
-                      ? "0"
-                      : `+${transaction.delta}`;
-                  return (
-                    <div
-                      key={transaction.id}
-                      className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold break-words">{transaction.reason}</p>
-                        <p className="mt-1 text-xs muted break-words">
-                          {new Date(transaction.createdAt).toLocaleString("vi-VN")} ·{" "}
-                          {transactionTypeLabel(transaction.type)}
-                        </p>
-                        {transaction.orderId != null && (
-                          <p className="mt-1 text-xs">
-                            <Link
-                              to={`/member/${merchantId}/orders/${transaction.orderId}`}
-                              className="rounded font-medium underline hover:text-[#2f583a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
-                            >
-                              Đơn hàng #{transaction.orderId}
-                            </Link>
-                          </p>
-                        )}
-                        {transaction.memberVoucherId != null && (
-                          <p className="mt-1 text-xs">
-                            <Link
-                              to={`/member/${merchantId}/vouchers`}
-                              className="rounded font-medium underline hover:text-[#2f583a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
-                            >
-                              Voucher #{transaction.memberVoucherId}
-                            </Link>
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between sm:block sm:text-right">
-                        <p
-                          className={`font-extrabold tabular-nums break-words ${isNegative ? "text-[#a4473a]" : "text-[#357044]"}`}
-                        >
-                          {displayDelta}
-                        </p>
-                        <p className="text-xs muted tabular-nums sm:mt-1 break-words">
-                          Số dư {transaction.balanceAfter}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </>
+        <LoyaltyWalletContent
+          wallet={wallet}
+          tierArtwork={<MemberMascot mood="hello" />}
+          orderLink={(id) => `/member/${merchantId}/orders/${id}`}
+          voucherLink={`/member/${merchantId}/vouchers`}
+          emptyAction={
+            <Button asChild variant="outline">
+              <Link to={`/member/${merchantId}`}>Khám phá gian hàng</Link>
+            </Button>
+          }
+        />
       ) : null}
     </>
   );
@@ -1102,27 +987,6 @@ function OwnedVoucherCard({ voucher }: { voucher: MemberVoucherDto }) {
       )}
     </Card>
   );
-}
-
-function transactionTypeLabel(type: PointTransactionType) {
-  switch (type) {
-    case "EARN":
-      return "Tích điểm";
-    case "REDEEM_DISCOUNT":
-      return "Đổi ưu đãi";
-    case "REDEEM_REWARD":
-      return "Đổi quà";
-    case "EARN_REVERSAL":
-      return "Thu hồi tích điểm";
-    case "REDEMPTION_REVERSAL":
-      return "Hoàn điểm đổi thưởng";
-    case "ADMIN_ADJUSTMENT":
-      return "Điều chỉnh quản trị";
-    case "LEGACY_BACKFILL":
-      return "Khởi tạo ban đầu";
-    default:
-      return type;
-  }
 }
 
 function voucherStatusLabel(voucher: MemberVoucherDto) {
