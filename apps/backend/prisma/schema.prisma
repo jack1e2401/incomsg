@@ -128,6 +128,8 @@ model User {
   fulfilledRewards     RewardFulfillment[]   @relation("RewardFulfiller")
   cancelledRewards     RewardCancellation[]  @relation("RewardCanceller")
   refundsRequested     OrderRefund[]         @relation("RefundRequester")
+  abuseReportsFiled    MerchantAbuseReport[] @relation("AbuseReportReporter")
+  abuseReportsReceived MerchantAbuseReport[] @relation("AbuseReportMember")
 }
 
 model EmailBlacklistEntry {
@@ -160,6 +162,24 @@ model AdminAuditLog {
   @@index([targetType, targetId, createdAt])
 }
 
+model MerchantAbuseReport {
+  id         Int      @id @default(autoincrement())
+  merchantId Int
+  reporterId Int
+  memberId   Int
+  orderId    Int?
+  reason     String   @db.Text
+  createdAt  DateTime @default(now())
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  reporter   User     @relation("AbuseReportReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  member     User     @relation("AbuseReportMember", fields: [memberId], references: [id], onDelete: Restrict)
+  order      Order?   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([merchantId, createdAt])
+  @@index([memberId, createdAt])
+  @@index([orderId])
+}
+
 model MerchantApplication {
   id           Int               @id @default(autoincrement())
   applicantId  Int               @unique
@@ -190,6 +210,7 @@ model Merchant {
   tiers              LoyaltyTier[]
   loyaltyRule        LoyaltyRule?
   voucherDefinitions VoucherDefinition[]
+  abuseReports       MerchantAbuseReport[]
 }
 
 model Product {
@@ -232,6 +253,7 @@ model Order {
   paymentAttempt   PaymentAttempt?
   voucherReservation OrderVoucherReservation?
   refund           OrderRefund?
+  abuseReports     MerchantAbuseReport[]
 
   @@index([merchantId, status])
   @@index([memberId, createdAt])

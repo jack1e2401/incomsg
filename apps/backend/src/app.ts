@@ -12,6 +12,7 @@ import { merchantVoucherRoutes, publicVoucherRoutes, memberVoucherRoutes, member
 import { merchantLoyaltyRoutes, memberLoyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
 import { orderPaymentRoutes, vnpayRoutes } from "./modules/payments/payments.routes.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
+import { merchantAbuseReportRoutes } from "./modules/abuse-reports/abuse-reports.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
@@ -21,6 +22,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
+app.use("/api/merchant", merchantAbuseReportRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
 app.use("/api/member", memberLoyaltyRoutes);

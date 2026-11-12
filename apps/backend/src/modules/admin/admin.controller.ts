@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { adminService } from "./admin.service.js";
-import { readAuditListQuery, readBlacklistCreate, readBlacklistListQuery, readId, readMerchantStatusChange, readReasonBody, readUserListQuery, readUserStatusChange } from "./admin.validation.js";
+import { readAbuseReportListQuery, readAuditListQuery, readBlacklistCreate, readBlacklistListQuery, readId, readMerchantStatusChange, readReasonBody, readUserListQuery, readUserStatusChange } from "./admin.validation.js";
 
 export const listAdminMerchants: RequestHandler = async (_request, response) => {
   response.json({ merchants: await adminService.listMerchants() });
@@ -40,4 +40,8 @@ export const deactivateAdminBlacklist: RequestHandler = async (request, response
 
 export const listAdminAuditLogs: RequestHandler = async (request, response) => {
   response.json(await adminService.listAuditLogs(readAuditListQuery(request.query)));
+};
+
+export const listAdminAbuseReports: RequestHandler = async (request, response) => {
+  response.json(await adminService.listAbuseReports(readAbuseReportListQuery(request.query)));
 };

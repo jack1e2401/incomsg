@@ -47,3 +47,24 @@ application status and the old active flag, then removes stored `User.isActive`.
 Apply it with Prisma migrations before using this contract. Actor identity is
 snapshotted in audit so the historical event remains readable independently of
 later profile changes.
+
+## Merchant abuse reports
+
+`POST /api/merchant/abuse-reports` requires an active Merchant bearer token and
+accepts `{memberId,orderId?,reason}`. The target member must have a membership
+with the reporting Merchant. If an order is supplied, it must belong to both
+that Merchant and member. IDs must be positive integers; reason is trimmed and
+must contain 1–2,000 characters. Success returns 201 `{report}` with report,
+merchant, reporter, member and optional order IDs plus `createdAt`.
+
+`GET /api/admin/abuse-reports?merchantId=&memberId=&cursor=&limit=` is
+Admin-only and returns `{items,nextCursor}`. Each item includes the persisted
+report reason/time, Merchant name, reporter/member identity, and optional order
+summary. Reports are append-only evidence: neither endpoint changes account
+status, blacklist, points, wallet, or order state. There is no edit/delete or
+Merchant enforcement API. Foreign member/order targets return 404; invalid
+input returns 400; unauthenticated callers receive 401 and non-Merchant or
+non-Admin roles receive 403.
+
+Migration `20261112120000_merchant_abuse_reports` adds the report table and
+restrictive foreign keys; it does not rewrite existing account or commerce data.

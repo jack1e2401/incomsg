@@ -87,4 +87,24 @@ export const adminRepository = {
     });
     return pageResult(rows, query.limit);
   },
+
+  async listAbuseReports(query: PageQuery & { merchantId?: number; memberId?: number }) {
+    const rows = await prisma.merchantAbuseReport.findMany({
+      where: {
+        ...(query.cursor ? { id: { lt: query.cursor } } : {}),
+        ...(query.merchantId ? { merchantId: query.merchantId } : {}),
+        ...(query.memberId ? { memberId: query.memberId } : {}),
+      },
+      orderBy: { id: "desc" },
+      take: query.limit + 1,
+      select: {
+        id: true, merchantId: true, reporterId: true, memberId: true, orderId: true, reason: true, createdAt: true,
+        merchant: { select: { id: true, name: true } },
+        reporter: { select: { id: true, email: true } },
+        member: { select: { id: true, email: true } },
+        order: { select: { id: true, status: true, total: true, createdAt: true } },
+      },
+    });
+    return pageResult(rows, query.limit);
+  },
 };

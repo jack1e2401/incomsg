@@ -105,6 +105,13 @@ export function readAuditListQuery(value: unknown) {
   };
 }
 
+export function readAbuseReportListQuery(value: unknown) {
+  const query = readQuery(value, ["merchantId", "memberId", "cursor", "limit"]);
+  const merchantId = query.merchantId === undefined ? undefined : readId(query.merchantId);
+  const memberId = query.memberId === undefined ? undefined : readId(query.memberId);
+  return { ...readPage(query), merchantId, memberId };
+}
+
 export function readReasonBody(value: unknown): { reason: string } {
   const input = readObject(value);
   rejectUnknownKeys(input, ["reason"]);
