@@ -181,13 +181,13 @@ export function AdminUsers() {
     ? {
         title:
           actionTarget.targetStatus === "BANNED"
-            ? "Cấm vĩnh viễn tài khoản?"
+            ? "Cấm tài khoản?"
             : actionTarget.targetStatus === "SUSPENDED"
               ? "Tạm khóa tài khoản?"
               : "Mở khóa tài khoản?",
         description:
           actionTarget.targetStatus === "BANNED"
-            ? `Cấm ${actionTarget.user.email} sẽ ngăn đăng nhập và thu hồi token hiện có.`
+            ? `Cấm ${actionTarget.user.email} sẽ chặn đăng nhập và từ chối các yêu cầu cho đến khi Admin mở khóa.`
             : actionTarget.targetStatus === "SUSPENDED"
               ? `Tạm khóa ${actionTarget.user.email} sẽ tạm thời vô hiệu hóa quyền truy cập.`
               : `Mở khóa ${actionTarget.user.email} sẽ cho phép tài khoản hoạt động trở lại.`,

@@ -9,10 +9,10 @@ export function LoyaltyFormula({ config }: { config?: Pick<LoyaltyConfigDto, "vn
       {config?.isActive === false && <p className="mt-2 text-sm font-semibold">Tích điểm đang tạm dừng.</p>}
       <div className="mt-2 space-y-1 text-sm leading-6">
         <p>
-          <strong>Điểm cơ bản</strong> = làm tròn xuống (tiền thực trả sau giảm giá ÷ {rate}).
+          <strong>Điểm nhận</strong> = (tiền thực trả sau giảm giá ÷ {rate}) × hệ số hạng.
         </p>
         <p>
-          <strong>Điểm nhận</strong> = làm tròn xuống (điểm cơ bản × hệ số hạng).
+          Phần thập phân chưa thành điểm nguyên được lưu vào số dư tích lũy (fractional carry) và cộng dồn cho các đơn hàng tiếp theo.
         </p>
       </div>
       <p className="mt-2 text-sm leading-6 muted">

@@ -11,6 +11,7 @@ import {
   AdminMerchants,
 } from "../../../apps/frontend/src/features/admin/BackendAdminPages";
 import { LoginPage, RegisterPage } from "../../../apps/frontend/src/features/auth/AuthPages";
+import { ErrorState } from "../../../apps/frontend/src/components/ui";
 
 let mockFetchHandler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -213,6 +214,10 @@ describe("M8 Admin Moderation UI", () => {
       });
 
       fireEvent.click(screen.getByTitle("Cấm tài khoản active.user@example.com"));
+      expect(screen.getByText("Cấm tài khoản?")).toBeInTheDocument();
+      expect(
+        screen.getByText(/sẽ chặn đăng nhập và từ chối các yêu cầu cho đến khi Admin mở khóa/),
+      ).toBeInTheDocument();
       const textarea = screen.getByPlaceholderText("Nhập lý do thực hiện thao tác kiểm duyệt này...");
       fireEvent.change(textarea, { target: { value: "Cấm do vi phạm nghiêm trọng" } });
       fireEvent.click(screen.getByRole("button", { name: "Xác nhận cấm" }));
@@ -364,6 +369,11 @@ describe("M8 Admin Moderation UI", () => {
           screen.getByText("Email này đã nằm trong danh sách đen và đang hoạt động."),
         ).toBeInTheDocument();
       });
+
+      // Regression check: clicking X close button dismisses dialog even after duplicate error
+      const closeBtn = screen.getByLabelText("Đóng hộp thoại");
+      fireEvent.click(closeBtn);
+      expect(screen.queryByText("Thêm email vào danh sách đen")).not.toBeInTheDocument();
     });
 
     it("deactivates blacklist entry with required reason", async () => {
@@ -600,6 +610,26 @@ describe("M8 Admin Moderation UI", () => {
           screen.getByText("Địa chỉ email đã bị chặn trong danh sách đen."),
         ).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("Shared ErrorState translation", () => {
+    it("translates moderation and protected error codes to actionable Vietnamese", () => {
+      const { rerender } = render(<ErrorState message="ACCOUNT_SUSPENDED" />);
+      expect(
+        screen.getByText("Tài khoản đang bị tạm khóa. Vui lòng liên hệ quản trị viên."),
+      ).toBeInTheDocument();
+
+      rerender(<ErrorState message="ACCOUNT_BANNED" />);
+      expect(screen.getByText("Tài khoản đã bị cấm khỏi hệ thống.")).toBeInTheDocument();
+
+      rerender(<ErrorState message="EMAIL_BLACKLISTED" />);
+      expect(
+        screen.getByText("Địa chỉ email đã bị chặn trong danh sách đen."),
+      ).toBeInTheDocument();
+
+      rerender(<ErrorState message="MERCHANT_NOT_ACTIVE" />);
+      expect(screen.getByText("Cửa hàng đã bị tạm ngưng hoạt động.")).toBeInTheDocument();
     });
   });
 });

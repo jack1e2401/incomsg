@@ -108,6 +108,46 @@ describe("M7 Merchant Experience", () => {
     await waitFor(() => {
       expect(screen.getByText("6.250000000000")).toBeInTheDocument();
     });
+
+    // Verify obsolete floor copy was removed and exact formula with fractional carry is shown
+    expect(screen.queryByText(/làm tròn xuống/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/fractional carry/i)).toBeInTheDocument();
+  });
+
+  it("displays exact fractional earned points in MerchantOrders rather than rounding down to 0", async () => {
+    const orders = [
+      {
+        id: 99,
+        merchantId: 7,
+        memberId: 9,
+        memberEmail: "member@test.local",
+        status: "PAID",
+        subtotal: "6000",
+        discountAmount: "0",
+        total: "6000",
+        paidAt: "2026-11-12T00:00:00.000Z",
+        items: [{ productId: 1, productName: "Trà", unitPrice: "6000", quantity: 1, lineTotal: "6000" }],
+        earnedPoints: 0,
+        earnedPointsExact: "0.6",
+      },
+    ];
+
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/merchant/orders")) {
+        return Response.json({ orders });
+      }
+      if (url.includes("/api/merchant/rewards")) {
+        return Response.json({ rewards: [] });
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+    renderMerchantPage("/merchant/orders", <MerchantOrders />);
+
+    await waitFor(() => {
+      expect(screen.getByText("+0.6 điểm")).toBeInTheDocument();
+      expect(screen.queryByText("+0 điểm")).not.toBeInTheDocument();
+    });
   });
 
   it("handles merchant refund preview and reasoned refund submission in MerchantOrders", async () => {

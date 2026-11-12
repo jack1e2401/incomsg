@@ -8,6 +8,7 @@ import type {
 import { WarningCircle, CircleNotch, Package } from "@phosphor-icons/react";
 import { Button } from "./button";
 import { cn } from "../../lib/utils";
+import { translateApiError } from "../../api/commerce-http";
 
 export { Button } from "./button";
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -114,11 +115,12 @@ export function LoadingState({ cards = 3 }: { cards?: number }) {
   );
 }
 export function ErrorState({ message, retry }: { message: string; retry?: () => void }) {
+  const displayMessage = translateApiError(message);
   return (
     <Card className="flex min-h-52 flex-col items-center justify-center p-8 text-center">
       <WarningCircle size={30} className="text-[#a4473a]" />
       <h3 className="mt-3 font-bold">Không tải được dữ liệu</h3>
-      <p className="mt-2 text-sm muted">{message}</p>
+      <p className="mt-2 text-sm muted">{displayMessage}</p>
       {retry && (
         <Button variant="outline" className="mt-5" onClick={retry}>
           Thử lại

@@ -48,6 +48,18 @@ import type {
   AdminAuditLogsResponse,
 } from "./commerce-types";
 
+export function translateApiError(code: string): string {
+  const translations: Record<string, string> = {
+    ACCOUNT_SUSPENDED: "Tài khoản đang bị tạm khóa. Vui lòng liên hệ quản trị viên.",
+    ACCOUNT_BANNED: "Tài khoản đã bị cấm khỏi hệ thống.",
+    EMAIL_BLACKLISTED: "Địa chỉ email đã bị chặn trong danh sách đen.",
+    MERCHANT_NOT_ACTIVE: "Cửa hàng đã bị tạm ngưng hoạt động.",
+    UNAUTHORIZED: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+    FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
+  };
+  return translations[code] ?? code;
+}
+
 type FetchLike = typeof fetch;
 
 async function requestJson<T>(
