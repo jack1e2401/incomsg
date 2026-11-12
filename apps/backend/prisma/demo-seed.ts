@@ -8,8 +8,10 @@ import { createInventoryBalance } from "../src/modules/inventory/inventory.persi
 
 async function main(): Promise<void> {
   const database = new URL(process.env.DATABASE_URL ?? "");
-  if (!["localhost", "127.0.0.1", "[::1]"].includes(database.hostname) || database.pathname !== "/incomsg-test") {
-    throw new Error("Demo seed requires local incomsg-test");
+  const useMainDatabase = process.argv.includes("--main-db");
+  const databaseName = useMainDatabase ? "incomsg" : "incomsg-test";
+  if (database.protocol !== "mysql:" || !["localhost", "127.0.0.1", "[::1]"].includes(database.hostname) || database.pathname !== `/${databaseName}`) {
+    throw new Error(`Demo seed requires local ${databaseName}`);
   }
   const runId = new Date().toISOString().replace(/\D/g, "").slice(0, 14) + randomBytes(2).toString("hex");
   const password = process.env.DEMO_PASSWORD || randomBytes(16).toString("hex");
@@ -49,7 +51,7 @@ async function main(): Promise<void> {
       vouchers: { discount: discount.id, reward: rewardDefinition.id },
     };
   });
-  const credentialsPath = process.env.DEMO_DATA_FILE || join(tmpdir(), "incomsg-loyalty-demo.json");
+  const credentialsPath = process.env.DEMO_DATA_FILE || join(tmpdir(), useMainDatabase ? "incomsg-main-demo.json" : "incomsg-loyalty-demo.json");
   writeFileSync(credentialsPath, JSON.stringify({ ...data, password, started: false, completed: false }, null, 2), { mode: 0o600 });
   console.log(JSON.stringify({ ...data, credentialsPath }, null, 2));
 }

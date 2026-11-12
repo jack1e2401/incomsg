@@ -39,10 +39,9 @@ import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
 import { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "./MerchantRewardQueue";
-import { InventoryPanel } from "./InventoryPanel";
-import type { InventoryAdjustment } from "./InventoryPanel";
 import { InventoryImportDialog } from "./InventoryImportDialog";
 import { MerchantProductTableRow } from "./MerchantProductTableRow";
+import { MerchantVoucherTableRow } from "./MerchantVoucherTableRow";
 import { MerchantLoyaltyHistory } from "./MerchantLoyaltyHistory";
 import { OrderLoyaltyPolicySnapshot } from "../orders/OrderLoyaltyPolicySnapshot";
 
@@ -723,7 +722,7 @@ export function MerchantVouchers() {
 
   return (
     <>
-      <PageHeader title="Voucher" description="Tạo mẫu giảm giá hoặc quà tặng theo điểm của cửa hàng." />
+      <PageHeader title="Voucher" />
       <Card className="mb-6 max-w-3xl p-6 sm:p-8">
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={create}>
           <Field label="Loại voucher">
@@ -849,68 +848,45 @@ export function MerchantVouchers() {
           description="Tạo voucher đầu tiên cho chương trình của cửa hàng."
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {resource.data.map((definition) => (
-            <Card key={definition.id} className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs muted">{definition.type === "DISCOUNT" ? "Ưu đãi" : "Quà tặng"}</p>
-                  <h2 className="mt-1 font-extrabold">{definition.title}</h2>
-                </div>
-                <StatusText tone={definition.isActive ? "green" : "neutral"}>
-                  {definition.isActive ? "Đang hoạt động" : "Đã tắt"}
-                </StatusText>
-              </div>
-              <p className="mt-3 text-sm muted">
-                {definition.type === "DISCOUNT" && definition.discountAmount
-                  ? `Giảm ${formatPrice(definition.discountAmount)}`
-                  : definition.rewardDescription}
-              </p>
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-sm font-bold">
-                  {definition.pointsCost.toLocaleString("vi-VN")} điểm
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busyId !== null}
-                  onClick={() => void toggle(definition)}
-                >
-                  {busyId === definition.id ? (
-                    <BusyLabel>Đang lưu</BusyLabel>
-                  ) : definition.isActive ? (
-                    "Tắt voucher"
-                  ) : (
-                    "Bật voucher"
+        <div className="surface overflow-x-auto rounded-3xl">
+          <table aria-label="Danh sách voucher" className="w-full min-w-[760px] table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[28%]" />
+              <col className="w-[13%]" />
+              <col className="w-[12%]" />
+              <col className="w-[23%]" />
+              <col className="w-[16%]" />
+              <col className="w-[8%]" />
+            </colgroup>
+            <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+              <tr>
+                <th scope="col" className="px-5 py-4">Voucher</th>
+                <th scope="col" className="px-4 py-4">Loại</th>
+                <th scope="col" className="px-4 py-4">Điểm đổi</th>
+                <th scope="col" className="px-4 py-4">Số lượng</th>
+                <th scope="col" className="px-4 py-4">Trạng thái</th>
+                <th scope="col" className="px-4 py-4"><span className="sr-only">Thao tác</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {resource.data.map((definition) => (
+                <MerchantVoucherTableRow
+                  key={definition.id}
+                  definition={definition}
+                  token={token}
+                  statusBusy={busyId !== null}
+                  onToggle={() => void toggle(definition)}
+                  onInventoryChange={(availableQuantity) => resource.setData((current) =>
+                    current?.map((item) => item.id === definition.id ? { ...item, availableQuantity } : item) ?? null,
                   )}
-                </Button>
-              </div>
-              {definition.type === "DISCOUNT" && (
-                <>
-                  <p className="mt-2 text-sm muted">Còn {definition.availableQuantity ?? 0} lượt · Đã phát hành {definition.issuedQuantity ?? 0}</p>
-                  <MerchantVoucherInventory definition={definition} token={token} />
-                </>
-              )}
-            </Card>
-          ))}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </>
   );
-}
-
-function MerchantVoucherInventory({ definition, token }: { definition: VoucherDefinitionDto; token: string }) {
-  const resource = useResource(() => api.getVoucherInventory(definition.id, token), [definition.id, token]);
-  async function adjust(input: InventoryAdjustment) {
-    const key = typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `voucher-stock-${definition.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await api.adjustVoucherInventory(definition.id, input.direction, { quantity: input.quantity, reason: input.reason }, token, key);
-    resource.setData(await api.getVoucherInventory(definition.id, token));
-  }
-  if (resource.loading) return <p className="mt-3 text-xs muted">Đang tải lịch sử tồn kho…</p>;
-  if (resource.error || !resource.data) return <p role="alert" className="mt-3 text-xs text-[#a4473a]">Không tải được lịch sử tồn kho. {resource.error}</p>;
-  return <div className="mt-4"><InventoryPanel balance={resource.data.inventory} movements={resource.data.movements} onAdjust={adjust} /></div>;
 }
 
 export function MerchantLoyalty() {

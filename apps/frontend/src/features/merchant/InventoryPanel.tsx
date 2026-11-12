@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 export type InventoryBalance = {
   onHandQuantity: number;
@@ -31,6 +31,8 @@ export type InventoryPanelProps = {
   balance: InventoryBalance;
   movements: InventoryMovement[];
   onAdjust: (adjustment: InventoryAdjustment) => Promise<unknown>;
+  mode?: "adjust" | "history";
+  availableLabel?: string;
 };
 
 const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN");
@@ -58,7 +60,14 @@ function actorLabel(movement: InventoryMovement) {
   return "Hệ thống";
 }
 
-export function InventoryPanel({ balance, movements, onAdjust }: InventoryPanelProps) {
+export function InventoryPanel({
+  balance,
+  movements,
+  onAdjust,
+  mode,
+  availableLabel = "Có thể bán",
+}: InventoryPanelProps) {
+  const titleId = useId();
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -94,46 +103,118 @@ export function InventoryPanel({ balance, movements, onAdjust }: InventoryPanelP
   }
 
   return (
-    <section aria-labelledby="inventory-panel-title" className="space-y-5 rounded-2xl border border-[#e4e9e1] bg-white p-5">
-      <h2 id="inventory-panel-title" className="text-lg font-bold">Tồn kho</h2>
-      <dl className="grid grid-cols-3 gap-3 text-sm">
-        <div><dt className="muted">Tồn thực tế</dt><dd className="mt-1 text-xl font-bold">{balance.onHandQuantity}</dd></div>
-        <div><dt className="muted">Đã giữ chỗ</dt><dd className="mt-1 text-xl font-bold">{balance.reservedQuantity}</dd></div>
-        <div><dt className="muted">Có thể bán</dt><dd className="mt-1 text-xl font-bold">{balance.availableQuantity}</dd></div>
-      </dl>
+    <section
+      aria-labelledby={titleId}
+      className={mode ? "space-y-5" : "space-y-5 rounded-2xl border border-[#e4e9e1] bg-white p-5"}
+    >
+      <h2 id={titleId} className={mode ? "sr-only" : "text-lg font-bold"}>
+        Tồn kho
+      </h2>
+      {mode !== "history" && (
+        <>
+          <dl className="grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <dt className="muted">Tồn thực tế</dt>
+              <dd className="mt-1 text-xl font-bold">{balance.onHandQuantity}</dd>
+            </div>
+            <div>
+              <dt className="muted">Đã giữ chỗ</dt>
+              <dd className="mt-1 text-xl font-bold">{balance.reservedQuantity}</dd>
+            </div>
+            <div>
+              <dt className="muted">{availableLabel}</dt>
+              <dd className="mt-1 text-xl font-bold">{balance.availableQuantity}</dd>
+            </div>
+          </dl>
 
-      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
-        <label className="grid gap-1 text-sm font-semibold">Số lượng
-          <input aria-label="Số lượng" className="rounded-lg border px-3 py-2" inputMode="numeric" type="number" min="1" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-        </label>
-        <label className="grid gap-1 text-sm font-semibold">Ghi chú
-          <input aria-label="Ghi chú" className="rounded-lg border px-3 py-2" value={reason} onChange={(event) => setReason(event.target.value)} />
-        </label>
-        <div className="flex gap-2 sm:col-span-2">
-          <button type="button" disabled={loading} onClick={(event) => void submit(event, "in")} className="rounded-lg bg-[#315c3c] px-4 py-2 font-semibold text-white disabled:opacity-60">{loading ? "Đang lưu…" : "Nhập kho"}</button>
-          <button type="button" disabled={loading} onClick={(event) => void submit(event, "out")} className="rounded-lg border px-4 py-2 font-semibold disabled:opacity-60">{loading ? "Đang lưu…" : "Xuất kho"}</button>
+          <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => event.preventDefault()}>
+            <label className="grid gap-1 text-sm font-semibold">
+              Số lượng
+              <input
+                aria-label="Số lượng"
+                className="rounded-lg border px-3 py-2"
+                inputMode="numeric"
+                type="number"
+                min="1"
+                step="1"
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              Ghi chú
+              <input
+                aria-label="Ghi chú"
+                className="rounded-lg border px-3 py-2"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </label>
+            <div className="flex gap-2 sm:col-span-2">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={(event) => void submit(event, "in")}
+                className="rounded-lg bg-[#315c3c] px-4 py-2 font-semibold text-white disabled:opacity-60"
+              >
+                {loading ? "Đang lưu…" : "Nhập kho"}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={(event) => void submit(event, "out")}
+                className="rounded-lg border px-4 py-2 font-semibold disabled:opacity-60"
+              >
+                {loading ? "Đang lưu…" : "Xuất kho"}
+              </button>
+            </div>
+            {error && (
+              <p role="alert" className="sm:col-span-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+            {success && (
+              <p role="status" className="sm:col-span-2 text-sm text-green-800">
+                {success}
+              </p>
+            )}
+          </form>
+        </>
+      )}
+
+      {mode !== "adjust" && (
+        <div>
+          {mode !== "history" && <h3 className="mb-2 font-bold">Lịch sử điều chỉnh</h3>}
+          {movements.length === 0 ? (
+            <p className="text-sm muted">Chưa có lịch sử tồn kho.</p>
+          ) : (
+            <ul className="divide-y divide-[#edf1ea]">
+              {movements.map((movement) => (
+                <li key={movement.id} className="py-3 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="font-semibold">{movement.reason}</span>
+                    <span>
+                      {movement.quantityDelta > 0 ? "+" : ""}
+                      {movement.quantityDelta}
+                    </span>
+                  </div>
+                  <p className="mt-1">{movementLabels[movement.movementType] ?? movement.movementType}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 muted">
+                    <span>
+                      Tồn: {movement.onHandBefore} → {movement.onHandAfter}
+                    </span>
+                    <span>
+                      Đã giữ: {movement.reservedBefore} → {movement.reservedAfter}
+                    </span>
+                    <span>Thực hiện bởi {actorLabel(movement)}</span>
+                    <time dateTime={movement.createdAt}>{dateTime(movement.createdAt)}</time>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        {error && <p role="alert" className="sm:col-span-2 text-sm text-red-700">{error}</p>}
-        {success && <p role="status" className="sm:col-span-2 text-sm text-green-800">{success}</p>}
-      </form>
-
-      <div>
-        <h3 className="mb-2 font-bold">Lịch sử điều chỉnh</h3>
-        {movements.length === 0 ? <p className="text-sm muted">Chưa có lịch sử tồn kho.</p> : (
-          <ul className="divide-y divide-[#edf1ea]">
-            {movements.map((movement) => <li key={movement.id} className="py-3 text-sm">
-              <div className="flex justify-between gap-3"><span className="font-semibold">{movement.reason}</span><span>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span></div>
-              <p className="mt-1">{movementLabels[movement.movementType] ?? movement.movementType}</p>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 muted">
-                <span>Tồn: {movement.onHandBefore} → {movement.onHandAfter}</span>
-                <span>Đã giữ: {movement.reservedBefore} → {movement.reservedAfter}</span>
-                <span>Thực hiện bởi {actorLabel(movement)}</span>
-                <time dateTime={movement.createdAt}>{dateTime(movement.createdAt)}</time>
-              </div>
-            </li>)}
-          </ul>
-        )}
-      </div>
+      )}
     </section>
   );
 }

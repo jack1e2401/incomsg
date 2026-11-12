@@ -1,26 +1,26 @@
-import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import { fileURLToPath } from "node:url";
-import { testDatabaseUrl } from "./test-database-config.mjs";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(import.meta.dirname, "..");
 const backend = resolve(root, "apps/backend");
-const backendEnvFile = resolve(backend, ".env");
-const backendConfig = existsSync(backendEnvFile) ? parseEnv(readFileSync(backendEnvFile, "utf8")) : {};
-const environment = { ...backendConfig, ...process.env };
-const databaseUrl = testDatabaseUrl(environment);
+const frontend = resolve(root, "apps/frontend");
+const envFile = resolve(backend, ".env");
+const backendConfig = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
+const frontendOrigin = new URL(process.env.FRONTEND_ORIGIN ?? backendConfig.FRONTEND_ORIGIN ?? "http://localhost:5173");
+const backendRequire = createRequire(resolve(backend, "package.json"));
+const frontendRequire = createRequire(resolve(frontend, "package.json"));
+const vite = resolve(dirname(frontendRequire.resolve("vite/package.json")), "bin/vite.js");
 
 const processes = [
-  spawn(process.execPath, [resolve(backend, "node_modules/tsx/dist/cli.mjs"), "watch", "src/server.ts"], {
+  spawn(process.execPath, [backendRequire.resolve("tsx/cli"), "watch", "src/server.ts"], {
     cwd: backend,
-    env: { ...environment, DATABASE_URL: databaseUrl, PAYMENT_MODE: "mock" },
     stdio: "inherit",
   }),
-  spawn(process.execPath, [resolve(root, "node_modules/vite/bin/vite.js"), "--configLoader", "runner", "--host", "127.0.0.1"], {
-    cwd: resolve(root, "apps/frontend"),
-    env: process.env,
+  spawn(process.execPath, [vite, "--configLoader", "runner", "--host", frontendOrigin.hostname, "--port", frontendOrigin.port || "5173", "--strictPort"], {
+    cwd: frontend,
     stdio: "inherit",
   }),
 ];
@@ -45,4 +45,3 @@ for (const child of processes) {
 
 process.on("SIGINT", () => stop());
 process.on("SIGTERM", () => stop());
-console.info("Development servers use local incomsg-test with mock payments.");
