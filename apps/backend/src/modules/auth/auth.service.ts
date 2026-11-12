@@ -34,11 +34,18 @@ export const authService = {
       throw new HttpError(401, "INVALID_CREDENTIALS");
     }
 
+    if (identity.blacklisted) throw new HttpError(403, "EMAIL_BLACKLISTED");
+    if (identity.user.accountStatus === "SUSPENDED") throw new HttpError(403, "ACCOUNT_SUSPENDED");
+    if (identity.user.accountStatus === "BANNED") throw new HttpError(403, "ACCOUNT_BANNED");
     if (identity.user.role === "MERCHANT") {
-      if (identity.applicationStatus === "PENDING") throw new HttpError(403, "MERCHANT_PENDING");
-      if (identity.applicationStatus === "REJECTED") throw new HttpError(403, "MERCHANT_REJECTED");
+      if (identity.user.accountStatus === "PENDING_APPROVAL" || identity.applicationStatus === "PENDING") {
+        throw new HttpError(403, "MERCHANT_PENDING");
+      }
+      if (identity.user.accountStatus === "REJECTED" || identity.applicationStatus === "REJECTED") {
+        throw new HttpError(403, "MERCHANT_REJECTED");
+      }
     }
-    if (!identity.user.isActive) throw new HttpError(403, "ACCOUNT_INACTIVE");
+    if (identity.user.accountStatus !== "ACTIVE") throw new HttpError(403, "ACCOUNT_INACTIVE");
     if (
       identity.user.role === "MERCHANT" &&
       (identity.applicationStatus !== "APPROVED" || !identity.merchant?.isActive)

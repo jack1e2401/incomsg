@@ -23,7 +23,7 @@ before(async () => {
     prisma.user.create({ data: { email: emails[0], passwordHash: "fixture", role: "ADMIN" } }),
     prisma.user.create({ data: { email: emails[1], passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: emails[2], passwordHash: "fixture", role: "MEMBER" } }),
-    prisma.user.create({ data: { email: emails[3], passwordHash: "fixture", role: "MERCHANT", isActive: false } }),
+    prisma.user.create({ data: { email: emails[3], passwordHash: "fixture", role: "MERCHANT", accountStatus: "PENDING_APPROVAL" } }),
   ]);
   const [active, inactive] = await Promise.all([
     prisma.merchant.create({ data: { ownerId: owner.id, name: "Admin read active", slug: `admin-read-${suffix}` } }),

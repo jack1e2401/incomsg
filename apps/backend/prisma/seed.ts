@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   }
 
   await prisma.user.create({
-    data: { email, passwordHash: await hashPassword(password), role: "ADMIN", isActive: true },
+    data: { email, passwordHash: await hashPassword(password), role: "ADMIN", accountStatus: "ACTIVE" },
   });
   console.info("Admin created.");
 }

@@ -25,7 +25,14 @@ export const authenticate: RequestHandler = async (request, response, next) => {
 
   const user = await authRepository.findUser(userId);
   if (!user) throw new HttpError(401, "UNAUTHORIZED");
+  if (user.accountStatus === "SUSPENDED") throw new HttpError(403, "ACCOUNT_SUSPENDED");
+  if (user.accountStatus === "BANNED") throw new HttpError(403, "ACCOUNT_BANNED");
+  if (user.accountStatus === "PENDING_APPROVAL") throw new HttpError(403, "MERCHANT_PENDING");
+  if (user.accountStatus === "REJECTED") throw new HttpError(403, "MERCHANT_REJECTED");
   if (!user.isActive) throw new HttpError(403, "ACCOUNT_INACTIVE");
+  if (user.role === "MERCHANT" && user.merchantIsActive !== true) {
+    throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+  }
   response.locals.user = user;
   next();
 };

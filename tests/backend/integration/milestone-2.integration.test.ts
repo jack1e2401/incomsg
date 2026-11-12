@@ -27,7 +27,7 @@ before(async () => {
       email: adminEmail,
       passwordHash: await hashPassword(adminPassword),
       role: "ADMIN",
-      isActive: true,
+      accountStatus: "ACTIVE",
     },
   });
   server = app.listen(0, "127.0.0.1");
