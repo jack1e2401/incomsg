@@ -20,6 +20,14 @@ function run(args, cwd) {
 console.log("MySQL integration target: local incomsg-test");
 run([require.resolve("prisma/build/index.js"), "migrate", "deploy", "--config", "prisma7.config.ts"], backend);
 if (!process.argv.includes("--migrate-only")) {
-  const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
-  run([npmCli, "run", "test:db", "--workspace", "apps/backend"], root);
+  const fileIndex = process.argv.indexOf("--test-file");
+  if (fileIndex !== -1) {
+    const file = process.argv[fileIndex + 1];
+    if (!file || !/^[a-z0-9-]+\.integration\.test\.ts$/.test(file)) throw new Error("--test-file requires an integration test basename");
+    run([require.resolve("prisma/build/index.js"), "generate"], backend);
+    run([require.resolve("tsx/cli"), "--test", "--test-concurrency=1", resolve(root, "tests/backend/integration", file)], root);
+  } else {
+    const npmCli = process.env.npm_execpath ?? resolve(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
+    run([npmCli, "run", "test:db", "--workspace", "apps/backend"], root);
+  }
 }

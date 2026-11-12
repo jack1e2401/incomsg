@@ -15,6 +15,10 @@
     "test:frontend": "npm test --workspace apps/frontend",
     "test:backend": "npm test --workspace apps/backend",
     "test:db": "node scripts/test-backend-db.mjs",
+    "demo:backend": "node scripts/loyalty-demo.mjs serve",
+    "demo:frontend": "node scripts/loyalty-demo.mjs frontend",
+    "demo:seed": "node scripts/loyalty-demo.mjs seed",
+    "demo:verify": "node scripts/loyalty-demo.mjs verify",
     "test:e2e": "playwright test --config tests/frontend/playwright.config.ts"
   },
   "devDependencies": {
