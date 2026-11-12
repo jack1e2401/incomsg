@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -10,11 +10,16 @@ import {
   Gift,
   Receipt,
   SignOut,
-  Sparkle,
 } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
-import type { MemberVoucherDto, PointTransactionType, VoucherDefinitionDto } from "../../api/commerce-types";
+import type {
+  MemberVoucherDto,
+  MemberVoucherStatus,
+  OrderStatus,
+  PointTransactionType,
+  VoucherDefinitionDto,
+} from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
 import { LoyaltyFormula } from "../../components/LoyaltyFormula";
 import {
@@ -31,8 +36,44 @@ import {
   Select,
 } from "../../components/ui";
 import { MemberMascot } from "./MemberMascot";
-import { MemberLoyaltyPolicyDialog, memberTierLabel } from "./MemberLoyaltyPolicyDialog";
+import { MemberLoyaltyPolicyDialog } from "./MemberLoyaltyPolicyDialog";
 import { useMemberCart } from "./useMemberCart";
+
+function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
+  switch (status) {
+    case "PAID":
+      return "green";
+    case "PENDING":
+    case "REFUND_PENDING":
+      return "amber";
+    case "REFUNDED":
+      return "purple";
+    case "FAILED":
+      return "red";
+    case "CANCELLED":
+    default:
+      return "neutral";
+  }
+}
+
+function orderStatusLabel(status: OrderStatus): string {
+  switch (status) {
+    case "PAID":
+      return "Đã thanh toán";
+    case "PENDING":
+      return "Chờ thanh toán";
+    case "REFUND_PENDING":
+      return "Đang hoàn tiền";
+    case "REFUNDED":
+      return "Đã hoàn tiền";
+    case "FAILED":
+      return "Thất bại";
+    case "CANCELLED":
+      return "Đã hủy";
+    default:
+      return status;
+  }
+}
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 const money = (value: string | bigint) =>
@@ -40,14 +81,6 @@ const money = (value: string | bigint) =>
     typeof value === "bigint" ? value : Number(value),
   );
 type MemberContext = { merchantId: number; cart: ReturnType<typeof useMemberCart> };
-type PaymentPollPhase = "initial" | "polling" | "stopped" | "error" | "failed";
-type PaymentPollState = {
-  key: string;
-  count: number;
-  failed: boolean;
-  phase: PaymentPollPhase;
-  error: string;
-};
 
 function useMerchantContext() {
   return useOutletContext<MemberContext>();
@@ -75,7 +108,7 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
   const cartBadge = cartQuantity > 0 && (
     <span
       aria-hidden="true"
-      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#335e3d] px-1 text-[10px] font-bold leading-none text-white tabular-nums"
+      className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[#335e3d] px-1 text-[10px] font-bold leading-none text-white tabular-nums"
     >
       {cartQuantity}
     </span>
@@ -92,7 +125,10 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
     <div className="min-h-dvh bg-[#fcfcf8] pb-20 lg:pb-0">
       <header className="sticky top-0 z-20 border-b border-[#e5ece3] bg-[#fcfcf8]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-7">
-          <Link to="/member" className="font-extrabold tracking-tight text-[#24452f]">
+          <Link
+            to="/member"
+            className="rounded-md font-extrabold tracking-tight text-[#24452f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
+          >
             loyalty<span className="text-[#89b461]">.</span>
           </Link>
           <span className="min-w-0 truncate text-xs font-semibold text-[#527353]">
@@ -106,7 +142,7 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
                 end={end}
                 aria-label={isCart ? cartLabel : undefined}
                 className={({ isActive }) =>
-                  `inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold ${isActive ? "bg-[#e8f1e2] text-[#335e3d]" : "text-[#718176]"}`
+                  `inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${isActive ? "bg-[#e8f1e2] text-[#335e3d]" : "text-[#718176] hover:bg-[#edf4e9]"}`
                 }
               >
                 {label}
@@ -118,13 +154,13 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
             type="button"
             aria-label="Đăng xuất"
             title="Đăng xuất"
-            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-2 text-xs font-semibold text-[#54725a] hover:bg-[#edf4e9] sm:px-3"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-2 text-xs font-semibold text-[#54725a] hover:bg-[#edf4e9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] sm:px-3"
             onClick={() => {
               logout();
               navigate("/login", { replace: true });
             }}
           >
-            <SignOut size={16} /> <span className="hidden sm:inline">Đăng xuất</span>
+            <SignOut aria-hidden="true" size={16} /> <span className="hidden sm:inline">Đăng xuất</span>
           </button>
         </div>
       </header>
@@ -142,14 +178,14 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
             end={end}
             aria-label={isCart ? cartLabel : undefined}
             className={({ isActive }) =>
-              `flex min-w-0 flex-1 flex-col items-center gap-1 py-1 text-[9px] font-bold ${isActive ? "text-[#335e3d]" : "text-[#718176]"}`
+              `flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md py-1 text-[9px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${isActive ? "text-[#335e3d]" : "text-[#718176]"}`
             }
           >
             <span className="relative">
-              <Icon size={20} />
+              <Icon aria-hidden="true" size={20} />
               {isCart && cartBadge && <span className="absolute -top-1.5 -right-3">{cartBadge}</span>}
             </span>
-            <span className="truncate">{label}</span>
+            <span className="max-w-full truncate px-0.5 text-center">{label}</span>
           </NavLink>
         ))}
       </nav>
@@ -176,24 +212,38 @@ export function MemberStorefront() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {products.data.map((product) => (
             <Card key={product.id} className="overflow-hidden">
-              <Link to={`product/${product.id}`} className="block aspect-[4/3] bg-[#edf2e9]">
+              <Link
+                to={`product/${product.id}`}
+                className="block aspect-[4/3] bg-[#edf2e9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
+                aria-label={`Xem chi tiết ${product.name}`}
+              >
                 {product.imageUrl ? (
                   <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="grid h-full place-items-center text-[#709275]">
-                    <Storefront size={36} />
+                    <Storefront aria-hidden="true" size={36} />
                   </div>
                 )}
               </Link>
-              <div className="p-5">
-                <h2 className="font-extrabold text-[#294432]">{product.name}</h2>
-                <p className="mt-2 line-clamp-2 text-sm muted">{product.description}</p>
-                <p className="mt-4 text-lg font-extrabold text-[#335e3d]">{money(product.price)}</p>
-                <div className="mt-4 flex gap-2">
-                  <Button asChild variant="outline">
-                    <Link to={`product/${product.id}`}>Chi tiết</Link>
+              <div className="p-4 sm:p-5">
+                <h2 className="font-extrabold text-[#294432] break-words">{product.name}</h2>
+                <p className="mt-2 line-clamp-2 text-sm muted break-words">{product.description}</p>
+                <p className="mt-4 text-lg font-extrabold text-[#335e3d] tabular-nums">
+                  {money(product.price)}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild variant="outline" className="flex-1 sm:flex-none">
+                    <Link to={`product/${product.id}`} aria-label={`Chi tiết ${product.name}`}>
+                      Chi tiết
+                    </Link>
                   </Button>
-                  <Button disabled={!cart.canAdd(product.id)} onClick={() => cart.addProduct(product)}>
+                  <Button
+                    type="button"
+                    className="flex-1 sm:flex-none"
+                    disabled={!cart.canAdd(product.id)}
+                    aria-label={`Chọn mua ${product.name}`}
+                    onClick={() => cart.addProduct(product)}
+                  >
                     Chọn mua
                   </Button>
                 </div>
@@ -220,15 +270,23 @@ export function MemberProduct() {
   const product = products.data?.find((item) => item.id === productId);
   if (!product)
     return (
-      <EmptyState title="Không tìm thấy sản phẩm" description="Sản phẩm có thể đã được ẩn hoặc ngừng bán." />
+      <EmptyState
+        title="Không tìm thấy sản phẩm"
+        description="Sản phẩm có thể đã được ẩn hoặc ngừng bán."
+        action={
+          <Button asChild variant="outline">
+            <Link to={`/member/${merchantId}`}>Về gian hàng</Link>
+          </Button>
+        }
+      />
     );
   return (
     <>
       <Link
         to={`/member/${merchantId}`}
-        className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-[#335e3d]"
+        className="mb-5 inline-flex items-center gap-2 rounded text-sm font-bold text-[#335e3d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
       >
-        <ArrowLeft size={16} /> Gian hàng
+        <ArrowLeft aria-hidden="true" size={16} /> Gian hàng
       </Link>
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="aspect-square overflow-hidden rounded-[1.7rem] bg-[#edf2e9]">
@@ -236,7 +294,7 @@ export function MemberProduct() {
             <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
           ) : (
             <div className="grid h-full place-items-center text-[#709275]">
-              <Storefront size={54} />
+              <Storefront aria-hidden="true" size={54} />
             </div>
           )}
         </div>
@@ -244,17 +302,25 @@ export function MemberProduct() {
           <StatusText tone="green" className="w-fit">
             Đang bán
           </StatusText>
-          <h1 className="mt-5 text-4xl font-extrabold text-[#294432]">{product.name}</h1>
-          <p className="mt-4 text-2xl font-extrabold text-[#335e3d]">{money(product.price)}</p>
+          <h1 className="mt-4 sm:mt-5 text-2xl font-extrabold text-[#294432] break-words sm:text-4xl">
+            {product.name}
+          </h1>
+          <p className="mt-3 sm:mt-4 text-xl font-extrabold text-[#335e3d] tabular-nums break-words sm:text-2xl">
+            {money(product.price)}
+          </p>
           {product.description && (
-            <p className="mt-6 whitespace-pre-line text-sm leading-7 muted">{product.description}</p>
+            <p className="mt-5 sm:mt-6 whitespace-pre-line text-sm leading-7 muted break-words">
+              {product.description}
+            </p>
           )}
           <Button
-            className="mt-8 w-fit"
+            type="button"
+            className="mt-6 sm:mt-8 w-full sm:w-fit"
             disabled={!cart.canAdd(product.id)}
+            aria-label={`Chọn mua ${product.name}`}
             onClick={() => cart.addProduct(product)}
           >
-            <ShoppingCart size={18} /> Chọn mua
+            <ShoppingCart aria-hidden="true" size={18} /> Chọn mua
           </Button>
         </div>
       </div>
@@ -281,31 +347,44 @@ export function MemberCart() {
         <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
           <div className="space-y-3">
             {cart.lines.map(({ product, quantity }) => (
-              <Card key={product.id} className="p-5">
-                <h2 className="font-extrabold">{product.name}</h2>
-                <p className="mt-2 text-sm muted">{money(product.price)} mỗi sản phẩm</p>
-                <Field label="Số lượng">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={99}
-                    aria-label={`Số lượng ${product.name}`}
-                    value={quantity}
-                    onChange={(event) => cart.setQuantity(product.id, event.target.valueAsNumber)}
-                  />
-                </Field>
-                <Button variant="ghost" className="mt-3" onClick={() => cart.removeProduct(product.id)}>
+              <Card key={product.id} className="p-4 sm:p-5">
+                <h2 className="font-extrabold break-words">{product.name}</h2>
+                <p className="mt-1 text-sm muted tabular-nums break-words">
+                  {money(product.price)} mỗi sản phẩm
+                </p>
+                <div className="mt-3">
+                  <Field label="Số lượng">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={99}
+                      aria-label={`Số lượng ${product.name}`}
+                      value={quantity}
+                      onChange={(event) => {
+                        const val = event.target.valueAsNumber;
+                        if (!Number.isNaN(val)) cart.setQuantity(product.id, val);
+                      }}
+                    />
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="mt-3 text-[#a4473a] hover:text-[#8d382d]"
+                  aria-label={`Bỏ ${product.name} khỏi giỏ hàng`}
+                  onClick={() => cart.removeProduct(product.id)}
+                >
                   Bỏ sản phẩm
                 </Button>
               </Card>
             ))}
           </div>
-          <Card className="h-fit p-5">
+          <Card className="h-fit p-4 sm:p-5">
             <p className="text-xs muted">Tạm tính</p>
-            <p className="mt-2 text-2xl font-extrabold">{money(cart.subtotal)}</p>
+            <p className="mt-2 text-2xl font-extrabold tabular-nums break-words">{money(cart.subtotal)}</p>
             <Button asChild className="mt-5 w-full">
               <Link to={`/member/${merchantId}/checkout`}>
-                Tiếp tục <ArrowRight size={16} />
+                Tiếp tục <ArrowRight aria-hidden="true" size={16} />
               </Link>
             </Button>
           </Card>
@@ -322,16 +401,61 @@ export function MemberCheckout() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [voucherId, setVoucherId] = useState("");
+  const [earningEstimate, setEarningEstimate] = useState<string | null>(null);
   const vouchers = useResource(
     () => commerce.listMemberVouchers(merchantId, accessToken!).then((response) => response.vouchers),
     [merchantId, accessToken],
   );
-  const availableDiscounts = (vouchers.data ?? []).filter(
-    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && !voucher.reserved,
+  const availableDiscounts = useMemo(
+    () =>
+      (vouchers.data ?? []).filter(
+        (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && !voucher.reserved,
+      ),
+    [vouchers.data],
   );
-  const reservedDiscounts = (vouchers.data ?? []).filter(
-    (voucher) => voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && voucher.reserved,
+  const reservedDiscounts = useMemo(
+    () =>
+      (vouchers.data ?? []).filter(
+        (voucher) =>
+          voucher.type === "DISCOUNT" &&
+          (voucher.status === "RESERVED" || (voucher.status === "AVAILABLE" && voucher.reserved)),
+      ),
+    [vouchers.data],
   );
+
+  const selectedDiscountAmount = useMemo(() => {
+    if (!voucherId || !vouchers.data) return "0";
+    const voucher = vouchers.data.find(
+      (v) => String(v.id) === voucherId && v.type === "DISCOUNT" && v.status === "AVAILABLE" && !v.reserved,
+    );
+    return voucher?.discountAmount ?? "0";
+  }, [voucherId, vouchers.data]);
+
+  const netOrderAmountString = useMemo(() => {
+    const discountVal = BigInt(selectedDiscountAmount);
+    const netAmount = cart.subtotal > discountVal ? cart.subtotal - discountVal : 0n;
+    return String(netAmount);
+  }, [cart.subtotal, selectedDiscountAmount]);
+
+  useEffect(() => {
+    let active = true;
+    if (!accessToken || !cart.lines.length) {
+      setEarningEstimate(null);
+      return;
+    }
+    commerce
+      .previewMemberEarning(merchantId, netOrderAmountString, accessToken)
+      .then((res) => {
+        if (active) setEarningEstimate(res.estimatedPointsExact);
+      })
+      .catch(() => {
+        if (active) setEarningEstimate(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accessToken, merchantId, netOrderAmountString, cart.lines.length]);
+
   async function submit() {
     if (!cart.lines.length || !accessToken || busy) return;
     setBusy(true);
@@ -354,6 +478,7 @@ export function MemberCheckout() {
       setBusy(false);
     }
   }
+
   return (
     <>
       <PageHeader title="Xác nhận đơn hàng" />
@@ -369,64 +494,107 @@ export function MemberCheckout() {
         />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
-          <Card className="p-5">
+          <Card className="p-4 sm:p-5">
             <ul className="divide-y divide-[#e5ece3]">
               {cart.lines.map(({ product, quantity }) => (
                 <li key={product.id} className="flex items-center justify-between gap-3 py-3">
-                  <span className="font-extrabold">{product.name}</span>
-                  <span className="shrink-0 text-sm muted">× {quantity}</span>
+                  <span className="min-w-0 font-extrabold break-words">{product.name}</span>
+                  <span className="shrink-0 text-sm muted tabular-nums">× {quantity}</span>
                 </li>
               ))}
             </ul>
             {vouchers.loading ? (
-              <p className="mt-4 text-sm muted">Đang tải voucher khả dụng…</p>
+              <div role="status" aria-live="polite" className="mt-4 flex items-center gap-2 text-sm muted">
+                <BusyLabel>Đang tải voucher khả dụng…</BusyLabel>
+              </div>
             ) : vouchers.error ? (
-              <div className="mt-4 rounded-xl bg-[#fff1d6] p-4">
-                <p className="text-sm text-[#97682a]">Không tải được voucher: {vouchers.error}</p>
-                <Button className="mt-2" size="sm" variant="outline" onClick={vouchers.reload}>
+              <div role="alert" className="mt-4 rounded-xl bg-[#fff1d6] p-4 text-[#97682a]">
+                <p className="text-sm font-semibold">Không tải được voucher</p>
+                <p className="mt-1 text-xs break-words">{vouchers.error}</p>
+                <Button
+                  type="button"
+                  className="mt-3 w-full sm:w-auto"
+                  size="sm"
+                  variant="outline"
+                  onClick={vouchers.reload}
+                >
                   Thử lại
                 </Button>
               </div>
             ) : (
-              <Field label="Voucher giảm giá">
-                <Select value={voucherId} onChange={(event) => setVoucherId(event.target.value)}>
-                  <option value="">Không sử dụng voucher</option>
-                  {availableDiscounts.map((voucher) => (
-                    <option key={voucher.id} value={voucher.id}>
-                      {voucher.title} · giảm {voucher.discountAmount ? money(voucher.discountAmount) : "—"}
-                    </option>
-                  ))}
-                </Select>
-                {!availableDiscounts.length && (
-                  <span className="mt-2 block text-xs muted">Bạn chưa có voucher giảm giá khả dụng.</span>
-                )}
-                {reservedDiscounts.length > 0 && (
-                  <p className="mt-3 rounded-lg bg-[#fff1d6] p-3 text-xs leading-5 text-[#97682a]">
-                    {reservedDiscounts.map((voucher) => `“${voucher.title}”`).join(", ")} đang được giữ bởi
-                    đơn chờ thanh toán nên không thể dùng cho đơn hàng này hoặc ở cửa hàng khác.
-                  </p>
-                )}
-              </Field>
+              <div className="mt-4">
+                <Field label="Voucher giảm giá">
+                  <Select
+                    id="checkout-voucher-select"
+                    aria-label="Voucher giảm giá"
+                    value={voucherId}
+                    onChange={(event) => setVoucherId(event.target.value)}
+                  >
+                    <option value="">Không sử dụng voucher</option>
+                    {availableDiscounts.map((voucher) => (
+                      <option key={voucher.id} value={voucher.id}>
+                        {voucher.title} · giảm {voucher.discountAmount ? money(voucher.discountAmount) : "—"}
+                      </option>
+                    ))}
+                  </Select>
+                  {!availableDiscounts.length && (
+                    <span className="mt-2 block text-xs muted">Bạn chưa có voucher giảm giá khả dụng.</span>
+                  )}
+                  {reservedDiscounts.length > 0 && (
+                    <p className="mt-3 rounded-lg bg-[#fff1d6] p-3 text-xs leading-5 text-[#97682a] break-words">
+                      {reservedDiscounts.map((voucher) => `“${voucher.title}”`).join(", ")} đang được giữ bởi
+                      đơn chờ thanh toán nên không thể dùng cho đơn hàng này hoặc ở cửa hàng khác.
+                    </p>
+                  )}
+                </Field>
+              </div>
             )}
           </Card>
-          <Card className="h-fit p-5">
-            <p className="font-extrabold">Đơn chờ thanh toán</p>
-            <p className="mt-2 text-sm muted">Tạm tính: {money(cart.subtotal)}</p>
+          <Card className="h-fit p-4 sm:p-5">
+            <p className="font-extrabold text-[#20392a]">Đơn chờ thanh toán</p>
+            <div className="mt-3 space-y-2 border-b border-[#e5ece3] pb-3 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="muted">Tạm tính</span>
+                <span className="shrink-0 font-semibold tabular-nums break-words">
+                  {money(cart.subtotal)}
+                </span>
+              </div>
+              {selectedDiscountAmount !== "0" && (
+                <div className="flex justify-between gap-2 text-[#357044]">
+                  <span>Voucher giảm giá</span>
+                  <span className="shrink-0 font-semibold tabular-nums break-words">
+                    −{money(selectedDiscountAmount)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2 pt-1 font-bold">
+                <span>Tổng dự tính</span>
+                <span className="shrink-0 text-base text-[#335e3d] tabular-nums break-words">
+                  {money(netOrderAmountString)}
+                </span>
+              </div>
+            </div>
+            {earningEstimate != null && (
+              <p className="mt-3 text-xs text-[#357044] break-words">
+                Ước tính tích lũy: +{earningEstimate} điểm
+              </p>
+            )}
             {error && (
-              <p role="alert" className="mt-4 text-sm text-red-700">
+              <p role="alert" className="mt-4 text-sm text-red-700 break-words">
                 {error}
               </p>
             )}
             <Button
+              type="button"
               className="mt-5 w-full"
-              disabled={busy || vouchers.loading || Boolean(vouchers.error)}
+              disabled={busy || vouchers.loading}
               onClick={submit}
             >
               {busy ? (
                 <BusyLabel>Đang tạo đơn</BusyLabel>
               ) : (
                 <>
-                  Tạo đơn <ArrowRight size={16} />
+                  Tạo đơn <ArrowRight aria-hidden="true" size={16} />
                 </>
               )}
             </Button>
@@ -437,252 +605,8 @@ export function MemberCheckout() {
   );
 }
 
-export function MemberOrderResult() {
-  const { merchantId } = useMerchantContext();
-  const { accessToken } = useAuthSession();
-  const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "mock" ? "mock" : "vnpay";
-  const orderId = Number(useParams().orderId);
-  const pollKey = `${merchantId}:${orderId}`;
-  const pollKeyRef = useRef(pollKey);
-  pollKeyRef.current = pollKey;
-  const orderResource = useResource(
-    () => commerce.getMemberOrder(orderId, accessToken!).then(({ order }) => order),
-    [orderId, merchantId, accessToken],
-  );
-  const order = orderResource.data?.merchantId === merchantId ? orderResource.data : null;
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState("");
-  const [pollState, setPollState] = useState<PaymentPollState>(() => ({
-    key: pollKey,
-    count: 0,
-    failed: false,
-    phase: "initial",
-    error: "",
-  }));
-  const currentPollState =
-    pollState.key === pollKey
-      ? pollState
-      : { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" };
-  const pollCount = currentPollState.count;
-  const paymentFailed = currentPollState.failed;
-  const paymentError = currentPollState.error;
+export { MemberOrderResult } from "./MemberOrderResult";
 
-  const pollPaymentStatus = useCallback(
-    async (reset = false) => {
-      if (!accessToken) return;
-      const previous =
-        reset || pollState.key !== pollKey
-          ? { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" }
-          : pollState;
-      try {
-        const status = await commerce.getPaymentStatus(orderId, accessToken);
-        if (pollKeyRef.current !== pollKey) return;
-        if (status.orderStatus === "PAID") {
-          setPollState({ ...previous, phase: "stopped", error: "" });
-          orderResource.reload();
-        } else if (status.paymentStatus === "FAILED") {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: true,
-            phase: "failed",
-            error: "",
-          });
-        } else if (status.paymentStatus === "CREATED") {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "polling",
-            error: "",
-          });
-        } else {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "stopped",
-            error: "",
-          });
-        }
-      } catch (reason) {
-        if (pollKeyRef.current === pollKey)
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "error",
-            error: reason instanceof Error ? reason.message : "Không thể kết nối máy chủ.",
-          });
-      }
-    },
-    [accessToken, orderId, orderResource.reload, pollKey, pollState],
-  );
-
-  useEffect(() => {
-    if (
-      !order ||
-      order.status !== "PENDING" ||
-      paymentMode !== "vnpay" ||
-      (currentPollState.phase !== "initial" && currentPollState.phase !== "polling") ||
-      paymentFailed ||
-      pollCount >= 30
-    )
-      return;
-    const timer = window.setTimeout(
-      () => void pollPaymentStatus(),
-      currentPollState.phase === "initial" ? 0 : 2000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [currentPollState.phase, order, paymentFailed, paymentMode, pollCount, pollPaymentStatus]);
-
-  async function pay() {
-    if (!order || !accessToken || busy || order.status !== "PENDING") return;
-    setBusy(true);
-    setActionError("");
-    try {
-      if (paymentMode === "mock") {
-        const response = await commerce.payMockOrder(order.id, accessToken);
-        orderResource.setData(response.order);
-      } else {
-        setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
-        const response = await commerce.createVnpayPayment(order.id, accessToken);
-        if ("paymentUrl" in response) {
-          window.location.assign(response.paymentUrl);
-        } else {
-          orderResource.reload();
-        }
-      }
-    } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : "Không thể bắt đầu thanh toán");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function checkAgain() {
-    setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
-    void pollPaymentStatus(true);
-  }
-
-  if (orderResource.loading) return <LoadingState cards={1} />;
-  if (orderResource.error) return <ErrorState message={orderResource.error} retry={orderResource.reload} />;
-  if (!order)
-    return (
-      <Unavailable
-        title="Không tải được đơn hàng"
-        description="Đơn không tồn tại hoặc không thuộc cửa hàng hiện tại."
-      />
-    );
-  return (
-    <>
-      <PageHeader title={`Đơn #${order.id}`} />
-      <Card className="p-6">
-        <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
-          {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
-        </StatusText>
-        <div className="mt-5 space-y-3">
-          {order.items.map((item) => (
-            <div key={item.productId} className="flex justify-between gap-3 text-sm">
-              <span>
-                {item.productName} × {item.quantity}
-              </span>
-              <span className="font-bold">{money(item.lineTotal)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 space-y-2 border-t border-[#e5ece3] pt-5 text-sm">
-          <div className="flex justify-between gap-3">
-            <span className="muted">Tạm tính</span>
-            <span>{money(order.subtotal)}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="muted">Voucher giảm giá</span>
-            <span>−{money(order.discountAmount)}</span>
-          </div>
-        </div>
-        <div className="mt-3 flex justify-between border-t border-[#e5ece3] pt-4 font-extrabold">
-          <span>Tổng cộng</span>
-          <span>{money(order.total)}</span>
-        </div>
-        {actionError && (
-          <p role="alert" className="mt-4 text-sm text-red-700">
-            {actionError}
-          </p>
-        )}
-        {paymentMode === "vnpay" && paymentError && (
-          <p role="alert" className="mt-4 text-sm text-red-700">
-            Không kiểm tra được trạng thái thanh toán. {paymentError}
-          </p>
-        )}
-        {order.status === "PENDING" ? (
-          <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
-            <p className="text-xs leading-5 text-[#97682a]">
-              {paymentFailed
-                ? "Giao dịch VNPay không thành công. Hãy tạo đơn mới để thử lại."
-                : "Đơn đang chờ thanh toán. Điểm được cập nhật sau khi giao dịch hoàn tất."}
-            </p>
-            {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
-              <p role="status" className="mt-2 text-xs text-[#97682a]">
-                Chưa nhận được kết quả sau 30 lần kiểm tra. Bạn có thể kiểm tra lại trạng thái.
-              </p>
-            )}
-            {!paymentFailed && (
-              <Button className="mt-4" disabled={busy} onClick={pay}>
-                {busy ? (
-                  <BusyLabel>Đang chuyển thanh toán</BusyLabel>
-                ) : paymentMode === "vnpay" ? (
-                  "Thanh toán qua VNPay"
-                ) : (
-                  "Thanh toán thử"
-                )}
-              </Button>
-            )}
-            {paymentFailed && (
-              <Button asChild className="mt-4">
-                <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
-              </Button>
-            )}
-            {paymentMode === "vnpay" && !paymentFailed && (
-              <Button className="ml-2 mt-4" variant="outline" onClick={checkAgain}>
-                {paymentError ? "Thử lại trạng thái" : "Kiểm tra lại"}
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="mt-5 rounded-2xl bg-[#e8f1e2] p-4 text-[#294a32] sm:p-5">
-            <div role="status">
-              <p className="text-sm">Thanh toán đã được máy chủ xác nhận.</p>
-              {order.earnedPointsExact !== "0" ? (
-                <p className="mt-2 text-xl font-extrabold">Bạn vừa nhận +{order.earnedPointsExact} điểm</p>
-              ) : (
-                <p className="mt-2 text-sm">Đơn này không phát sinh điểm.</p>
-              )}
-              {order.promotedToTier && (
-                <p className="mt-3 flex items-center gap-2 font-bold">
-                  <Sparkle aria-hidden="true" size={18} weight="fill" className="shrink-0" />
-                  Chúc mừng! Bạn đã lên hạng {memberTierLabel[order.promotedToTier]}.
-                </p>
-              )}
-            </div>
-            <Button asChild variant="outline" size="sm" className="mt-4">
-              <Link to={`/member/${merchantId}/wallet`}>Xem ví điểm</Link>
-            </Button>
-          </div>
-        )}
-      </Card>
-    </>
-  );
-}
-
-function Unavailable({ title, description }: { title: string; description: string }) {
-  return (
-    <>
-      <PageHeader title={title} />
-      <EmptyState title="Chưa khả dụng" description={description} />
-    </>
-  );
-}
 export function MemberOrders() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
@@ -698,26 +622,45 @@ export function MemberOrders() {
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
       ) : !resource.data?.length ? (
-        <EmptyState title="Chưa có đơn hàng" description="Đơn bạn tạo tại cửa hàng này sẽ xuất hiện ở đây." />
+        <EmptyState
+          title="Chưa có đơn hàng"
+          description="Đơn bạn tạo tại cửa hàng này sẽ xuất hiện ở đây."
+          action={
+            <Button asChild>
+              <Link to={`/member/${merchantId}`}>Mua sắm ngay</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-3">
           {resource.data.map((order) => (
-            <Card key={order.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
-              <div>
-                <p className="font-extrabold">Đơn #{order.id}</p>
-                <p className="mt-1 text-xs muted">
+            <Card
+              key={order.id}
+              className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-extrabold break-words">Đơn #{order.id}</p>
+                <p className="mt-1 text-xs muted break-words">
                   {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
                 </p>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="font-bold">{money(order.total)}</p>
-                  <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
-                    {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
+              <div className="flex items-center justify-between gap-4 sm:justify-end">
+                <div className="text-left sm:text-right">
+                  <p className="font-bold tabular-nums break-words">{money(order.total)}</p>
+                  <StatusText tone={orderStatusTone(order.status)}>
+                    {orderStatusLabel(order.status)}
                   </StatusText>
+                  {order.refundStatus === "PENDING_PROVIDER" && (
+                    <p className="text-[10px] text-[#97682a] break-words">Chờ cổng hoàn tiền</p>
+                  )}
                 </div>
-                <Button asChild variant="outline">
-                  <Link to={`/member/${merchantId}/orders/${order.id}`}>Chi tiết</Link>
+                <Button asChild variant="outline" size="sm" className="shrink-0">
+                  <Link
+                    to={`/member/${merchantId}/orders/${order.id}`}
+                    aria-label={`Chi tiết đơn hàng #${order.id}`}
+                  >
+                    Chi tiết
+                  </Link>
                 </Button>
               </div>
             </Card>
@@ -727,6 +670,7 @@ export function MemberOrders() {
     </>
   );
 }
+
 export function MemberWallet() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
@@ -753,43 +697,46 @@ export function MemberWallet() {
         <>
           <div className="grid gap-5 lg:grid-cols-[1.05fr_.95fr]">
             <Card
-              className="relative overflow-hidden p-6 text-white sm:p-8"
+              className="relative overflow-hidden p-5 text-white sm:p-8"
               style={{ backgroundColor: "#2f583a", color: "white" }}
             >
               <p className="text-sm font-semibold text-white/70">Điểm có thể sử dụng</p>
-              <p className="mt-3 text-5xl font-extrabold tracking-[-.07em] sm:text-6xl">
-                {wallet.availablePoints.toLocaleString("vi-VN")}
+              <p className="mt-2 text-3xl font-extrabold tracking-[-.05em] sm:text-5xl lg:text-6xl break-words">
+                <span className="tabular-nums">{wallet.availablePoints.toLocaleString("vi-VN")}</span>
                 <span className="ml-2 text-base font-bold tracking-normal text-[#c5e89b]">điểm</span>
               </p>
-              <p className="mt-2 text-sm text-white/80">
-                Phần lẻ: <span className="font-semibold text-[#c5e89b]">{wallet.fractionalCarry}</span>
+              <p className="mt-2 text-sm text-white/80 break-words">
+                Phần lẻ:{" "}
+                <span className="font-semibold text-[#c5e89b] tabular-nums">{wallet.fractionalCarry}</span>
               </p>
               {wallet.pointDebt !== "0" && (
-                <p className="mt-1 text-sm text-[#fca5a5]">
-                  Nợ điểm: <span className="font-semibold">{wallet.pointDebt}</span>
+                <p className="mt-1 text-sm text-[#fca5a5] break-words">
+                  Nợ điểm: <span className="font-semibold tabular-nums">{wallet.pointDebt}</span>
                 </p>
               )}
-              <div className="mt-8 flex items-center justify-between gap-4 border-t border-white/15 pt-5">
-                <div>
+              <div className="mt-6 sm:mt-8 flex items-center justify-between gap-4 border-t border-white/15 pt-4 sm:pt-5">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs text-white/65">Tổng điểm đã tích lũy</p>
-                  <p className="mt-1 text-xl font-bold">{wallet.netLifetimeEarned}</p>
+                  <p className="mt-1 text-lg sm:text-xl font-bold tabular-nums break-words">
+                    {wallet.netLifetimeEarned}
+                  </p>
                 </div>
-                <Wallet size={24} weight="light" className="shrink-0 text-[#c5e89b]" />
+                <Wallet aria-hidden="true" size={24} weight="light" className="shrink-0 text-[#c5e89b]" />
               </div>
             </Card>
-            <Card className="member-gradient relative min-h-56 overflow-hidden p-6 sm:p-8">
-              <div className="relative z-1 max-w-[65%]">
+            <Card className="member-gradient relative min-h-48 sm:min-h-56 overflow-hidden p-5 sm:p-8">
+              <div className="relative z-1 max-w-[68%] sm:max-w-[65%]">
                 <p className="text-sm font-semibold text-[#6c8168]">Hạng thành viên</p>
-                <h2 className="serif mt-3 text-3xl leading-tight text-[#294a32]">
+                <h2 className="serif mt-2 sm:mt-3 text-2xl sm:text-3xl leading-tight text-[#294a32] break-words">
                   {wallet.tier === "UNRANKED" ? "Chưa xếp hạng" : wallet.tier}
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-[#647a68]">
+                <p className="mt-2 sm:mt-3 text-xs sm:text-sm leading-5 sm:leading-6 text-[#647a68] break-words">
                   {wallet.tier === "UNRANKED"
                     ? "Đơn đã thanh toán đầu tiên sẽ xác lập hạng theo tổng điểm tích lũy."
                     : "Hạng dựa trên tổng điểm đã tích lũy; tiêu điểm không làm giảm hạng."}
                 </p>
               </div>
-              <div className="pointer-events-none absolute -bottom-3 -right-3 h-40 w-40 sm:h-48 sm:w-48">
+              <div className="pointer-events-none absolute -bottom-3 -right-3 h-28 w-28 sm:h-48 sm:w-48">
                 <MemberMascot mood="hello" />
               </div>
             </Card>
@@ -805,6 +752,11 @@ export function MemberWallet() {
               <EmptyState
                 title="Chưa có giao dịch điểm"
                 description="Giao dịch sẽ xuất hiện sau hoạt động tại cửa hàng này."
+                action={
+                  <Button asChild variant="outline">
+                    <Link to={`/member/${merchantId}`}>Khám phá gian hàng</Link>
+                  </Button>
+                }
               />
             ) : (
               <div className="surface overflow-hidden rounded-[1.5rem] divide-y divide-[#edf1ea]">
@@ -819,11 +771,11 @@ export function MemberWallet() {
                   return (
                     <div
                       key={transaction.id}
-                      className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
+                      className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold">{transaction.reason}</p>
-                        <p className="mt-1 text-xs muted">
+                        <p className="text-sm font-bold break-words">{transaction.reason}</p>
+                        <p className="mt-1 text-xs muted break-words">
                           {new Date(transaction.createdAt).toLocaleString("vi-VN")} ·{" "}
                           {transactionTypeLabel(transaction.type)}
                         </p>
@@ -831,7 +783,7 @@ export function MemberWallet() {
                           <p className="mt-1 text-xs">
                             <Link
                               to={`/member/${merchantId}/orders/${transaction.orderId}`}
-                              className="font-medium underline hover:text-[#2f583a]"
+                              className="rounded font-medium underline hover:text-[#2f583a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
                             >
                               Đơn hàng #{transaction.orderId}
                             </Link>
@@ -841,18 +793,22 @@ export function MemberWallet() {
                           <p className="mt-1 text-xs">
                             <Link
                               to={`/member/${merchantId}/vouchers`}
-                              className="font-medium underline hover:text-[#2f583a]"
+                              className="rounded font-medium underline hover:text-[#2f583a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
                             >
                               Voucher #{transaction.memberVoucherId}
                             </Link>
                           </p>
                         )}
                       </div>
-                      <div className="text-right">
-                        <p className={`font-extrabold ${isNegative ? "text-[#a4473a]" : "text-[#357044]"}`}>
+                      <div className="flex items-center justify-between sm:block sm:text-right">
+                        <p
+                          className={`font-extrabold tabular-nums break-words ${isNegative ? "text-[#a4473a]" : "text-[#357044]"}`}
+                        >
                           {displayDelta}
                         </p>
-                        <p className="mt-1 text-xs muted">Số dư {transaction.balanceAfter}</p>
+                        <p className="text-xs muted tabular-nums sm:mt-1 break-words">
+                          Số dư {transaction.balanceAfter}
+                        </p>
                       </div>
                     </div>
                   );
@@ -865,12 +821,14 @@ export function MemberWallet() {
     </>
   );
 }
+
 export function MemberVouchers() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
+  const idempotencyKeysRef = useRef<Record<number, string>>({});
   const catalog = useResource(
     () => commerce.listPublicVoucherDefinitions(merchantId).then((response) => response.definitions),
     [merchantId],
@@ -883,13 +841,23 @@ export function MemberVouchers() {
     () => commerce.getMemberWallet(merchantId, accessToken!).then((response) => response.wallet),
     [merchantId, accessToken],
   );
+
   async function redeem(definition: VoucherDefinitionDto) {
     if (!accessToken || busyId !== null) return;
     setBusyId(definition.id);
     setActionError("");
     setNotice("");
+
+    const key =
+      idempotencyKeysRef.current[definition.id] ||
+      (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    idempotencyKeysRef.current[definition.id] = key;
+
     try {
-      const response = await commerce.redeemVoucher(definition.id, accessToken);
+      const response = await commerce.redeemVoucher(definition.id, accessToken, key);
+      delete idempotencyKeysRef.current[definition.id];
       owned.setData((current) => [response.voucher, ...(current ?? [])]);
       wallet.setData((current) =>
         current
@@ -910,6 +878,7 @@ export function MemberVouchers() {
       setBusyId(null);
     }
   }
+
   if (catalog.loading || owned.loading || wallet.loading) return <LoadingState cards={2} />;
   if (catalog.error || owned.error || wallet.error)
     return (
@@ -922,28 +891,38 @@ export function MemberVouchers() {
         }}
       />
     );
+
   return (
     <>
       <PageHeader title="Voucher" />
       {actionError && (
-        <p role="alert" className="mb-4 text-sm text-[#a4473a]">
-          {actionError}
-        </p>
+        <div role="alert" className="mb-4 rounded-xl bg-[#fee2e2] p-3 text-sm text-[#a4473a]">
+          <p className="break-words">{actionError}</p>
+        </div>
       )}
       {notice && (
-        <p role="status" className="mb-4 text-sm text-[#357044]">
-          {notice}
-        </p>
+        <div role="status" className="mb-4 rounded-xl bg-[#e8f1e2] p-3 text-sm text-[#357044]">
+          <p className="break-words">{notice}</p>
+        </div>
       )}
       {wallet.data && (
-        <p className="mb-5 text-sm font-semibold">
-          Điểm khả dụng tại cửa hàng này: {wallet.data.availablePoints.toLocaleString("vi-VN")}
+        <p className="mb-5 text-sm font-semibold break-words">
+          Điểm khả dụng tại cửa hàng này:{" "}
+          <span className="tabular-nums">{wallet.data.availablePoints.toLocaleString("vi-VN")}</span>
         </p>
       )}
-      <section className="mb-8">
+      <section id="store-vouchers" className="mb-8">
         <h2 className="mb-3 text-lg font-extrabold">Voucher của cửa hàng</h2>
         {!catalog.data?.length ? (
-          <EmptyState title="Chưa có voucher" description="Cửa hàng chưa đăng voucher đang hoạt động." />
+          <EmptyState
+            title="Chưa có voucher"
+            description="Cửa hàng chưa đăng voucher đang hoạt động."
+            action={
+              <Button asChild variant="outline">
+                <Link to={`/member/${merchantId}`}>Xem gian hàng</Link>
+              </Button>
+            }
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {catalog.data.map((voucher) => {
@@ -954,6 +933,7 @@ export function MemberVouchers() {
                   voucher={voucher}
                   busy={busyId === voucher.id}
                   disabled={busyId !== null || !canRedeem}
+                  canRedeem={canRedeem}
                   onRedeem={() => void redeem(voucher)}
                 />
               );
@@ -967,6 +947,17 @@ export function MemberVouchers() {
           <EmptyState
             title="Bạn chưa có voucher"
             description="Voucher đã đổi tại cửa hàng này sẽ xuất hiện ở đây."
+            action={
+              catalog.data?.length ? (
+                <Button asChild variant="outline">
+                  <a href="#store-vouchers">Xem voucher có thể đổi</a>
+                </Button>
+              ) : (
+                <Button asChild variant="outline">
+                  <Link to={`/member/${merchantId}`}>Xem gian hàng</Link>
+                </Button>
+              )
+            }
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -979,6 +970,7 @@ export function MemberVouchers() {
     </>
   );
 }
+
 export function MemberRewards() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
@@ -997,7 +989,15 @@ export function MemberRewards() {
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
       ) : !resource.data?.length ? (
-        <EmptyState title="Chưa có quà tặng" description="Voucher quà đã nhận sẽ xuất hiện tại đây." />
+        <EmptyState
+          title="Chưa có quà tặng"
+          description="Voucher quà đã nhận sẽ xuất hiện tại đây."
+          action={
+            <Button asChild variant="outline">
+              <Link to={`/member/${merchantId}/vouchers`}>Đổi quà từ voucher</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {resource.data.map((voucher) => (
@@ -1013,43 +1013,61 @@ function VoucherDefinitionCard({
   voucher,
   busy,
   disabled,
+  canRedeem,
   onRedeem,
 }: {
   voucher: VoucherDefinitionDto;
   busy: boolean;
   disabled: boolean;
+  canRedeem: boolean;
   onRedeem: () => void;
 }) {
   const redeemLabel = voucher.type === "REWARD" ? "Đổi quà" : "Đổi voucher";
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-extrabold">{voucher.title}</h3>
-        <StatusText tone="green">{voucher.type === "DISCOUNT" ? "Ưu đãi" : "Quà tặng"}</StatusText>
+        <h3 className="font-extrabold break-words">{voucher.title}</h3>
+        <StatusText tone="green" className="shrink-0">
+          {voucher.type === "DISCOUNT" ? "Ưu đãi" : "Quà tặng"}
+        </StatusText>
       </div>
-      <p className="mt-3 text-sm muted">
+      <p className="mt-3 text-sm muted break-words">
         {voucher.type === "DISCOUNT" && voucher.discountAmount
           ? `Giảm ${money(voucher.discountAmount)}`
           : voucher.rewardDescription}
       </p>
-      <p className="mt-5 text-sm font-bold">{voucher.pointsCost.toLocaleString("vi-VN")} điểm</p>
-      <Button className="mt-4 w-full" disabled={disabled} onClick={onRedeem}>
+      <p className="mt-4 text-sm font-bold tabular-nums">{voucher.pointsCost.toLocaleString("vi-VN")} điểm</p>
+      <Button
+        type="button"
+        className="mt-4 w-full"
+        disabled={disabled}
+        aria-label={`${redeemLabel} “${voucher.title}”`}
+        onClick={onRedeem}
+      >
         {busy ? <BusyLabel>Đang đổi</BusyLabel> : redeemLabel}
       </Button>
+      {!canRedeem && <p className="mt-1.5 text-center text-[11px] text-[#97682a]">Chưa đủ điểm để đổi</p>}
     </Card>
   );
 }
 
+function voucherStatusTone(status: MemberVoucherStatus): "neutral" | "green" | "amber" | "red" {
+  if (status === "FULFILLED" || status === "USED") return "neutral";
+  if (status === "CANCELLED") return "red";
+  if (status === "PENDING_FULFILLMENT" || status === "RESERVED") return "amber";
+  return "green";
+}
+
 function OwnedVoucherCard({ voucher }: { voucher: MemberVoucherDto }) {
   return (
-    <Card className="p-5">
+    <Card className="p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-extrabold">{voucher.title}</h3>
-        <StatusText tone={voucher.status === "FULFILLED" || voucher.status === "USED" ? "neutral" : "amber"}>
+        <h3 className="font-extrabold break-words">{voucher.title}</h3>
+        <StatusText tone={voucherStatusTone(voucher.status)} className="shrink-0">
           {voucherStatusLabel(voucher)}
         </StatusText>
       </div>
-      <p className="mt-3 text-sm muted">
+      <p className="mt-3 text-sm muted break-words">
         {voucher.type === "DISCOUNT" && voucher.discountAmount
           ? `Giảm ${money(voucher.discountAmount)}`
           : voucher.rewardDescription}
@@ -1067,17 +1085,37 @@ function OwnedVoucherCard({ voucher }: { voucher: MemberVoucherDto }) {
 }
 
 function transactionTypeLabel(type: PointTransactionType) {
-  if (type === "EARN") return "Tích điểm";
-  if (type === "REDEEM_DISCOUNT") return "Đổi ưu đãi";
-  return "Đổi quà";
+  switch (type) {
+    case "EARN":
+      return "Tích điểm";
+    case "REDEEM_DISCOUNT":
+      return "Đổi ưu đãi";
+    case "REDEEM_REWARD":
+      return "Đổi quà";
+    case "EARN_REVERSAL":
+      return "Thu hồi tích điểm";
+    case "REDEMPTION_REVERSAL":
+      return "Hoàn điểm đổi thưởng";
+    case "ADMIN_ADJUSTMENT":
+      return "Điều chỉnh quản trị";
+    case "LEGACY_BACKFILL":
+      return "Khởi tạo ban đầu";
+    default:
+      return type;
+  }
 }
 
 function voucherStatusLabel(voucher: MemberVoucherDto) {
-  if (voucher.type === "DISCOUNT" && voucher.status === "AVAILABLE" && voucher.reserved)
+  if (voucher.status === "PENDING_FULFILLMENT") return "Chờ cửa hàng trao";
+  if (voucher.status === "CANCELLED") return "Đã hủy";
+  if (voucher.status === "USED") return "Đã sử dụng";
+  if (voucher.status === "FULFILLED") return "Đã trao";
+  if (voucher.status === "RESERVED" || (voucher.status === "AVAILABLE" && voucher.reserved))
     return "Đang giữ cho đơn chờ";
-  if (voucher.type === "REWARD" && voucher.status === "AVAILABLE") return "Chờ cửa hàng trao";
-  if (voucher.status === "AVAILABLE") return "Còn hiệu lực";
-  return voucher.status === "USED" ? "Đã sử dụng" : "Đã trao";
+  if (voucher.status === "AVAILABLE") {
+    return voucher.type === "REWARD" ? "Chờ cửa hàng trao" : "Còn hiệu lực";
+  }
+  return voucher.status;
 }
 
 export function MemberLanding() {
@@ -1096,7 +1134,8 @@ export function MemberLanding() {
     <main className="relative mx-auto grid min-h-dvh max-w-5xl items-center gap-8 px-4 py-12 sm:px-8 lg:grid-cols-2">
       <button
         type="button"
-        className="absolute right-4 top-4 rounded-full px-3 py-2 text-xs font-semibold text-[#54725a] hover:bg-[#edf4e9]"
+        aria-label="Đăng xuất"
+        className="absolute right-4 top-4 rounded-full px-3 py-2 text-xs font-semibold text-[#54725a] hover:bg-[#edf4e9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
         onClick={() => {
           logout();
           navigate("/login", { replace: true });
@@ -1105,14 +1144,16 @@ export function MemberLanding() {
         Đăng xuất
       </button>
       <div>
-        <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[#24452f] sm:text-5xl">
+        <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-[#24452f] break-words sm:text-5xl">
           Mua sắm theo cửa hàng
         </h1>
-        <p className="mt-4 text-sm leading-7 muted">
+        <p className="mt-4 text-sm leading-7 muted break-words">
           Chọn cửa hàng để khám phá sản phẩm và ví điểm riêng của bạn.
         </p>
         {merchants.loading ? (
-          <p className="mt-5 text-sm muted">Đang tải cửa hàng…</p>
+          <div role="status" aria-live="polite" className="mt-5 flex items-center gap-2 text-sm muted">
+            <BusyLabel>Đang tải cửa hàng…</BusyLabel>
+          </div>
         ) : merchants.error ? (
           <div className="mt-5 max-w-md">
             <ErrorState message={merchants.error} retry={merchants.reload} />
@@ -1121,7 +1162,7 @@ export function MemberLanding() {
           <p className="mt-5 text-sm muted">Hiện chưa có cửa hàng đang hoạt động.</p>
         ) : (
           <form
-            className="mt-6 flex gap-2"
+            className="mt-6 flex flex-col gap-2 sm:flex-row"
             onSubmit={(event) => {
               event.preventDefault();
               if (Number.isInteger(parsed) && parsed > 0) navigate(`/member/${parsed}`);
@@ -1142,8 +1183,8 @@ export function MemberLanding() {
                 </option>
               ))}
             </Select>
-            <Button type="submit">
-              Mở <ArrowRight size={16} />
+            <Button type="submit" className="w-full shrink-0 sm:w-auto">
+              Mở <ArrowRight aria-hidden="true" size={16} />
             </Button>
           </form>
         )}

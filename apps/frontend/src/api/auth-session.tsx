@@ -30,7 +30,8 @@ const AuthSessionContext = createContext<AuthSessionValue | null>(null);
 
 function readSession(): LoginResponse | null {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "null");
+    const raw = sessionStorage.getItem(SESSION_KEY) ?? sessionStorage.getItem("loyalty.auth.session");
+    const value: unknown = JSON.parse(raw ?? "null");
     if (!value || typeof value !== "object") return null;
     const session = value as Partial<LoginResponse>;
     if (
