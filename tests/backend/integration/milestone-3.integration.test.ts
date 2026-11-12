@@ -74,6 +74,7 @@ after(async () => {
   const membershipIds = memberships.map(({ id }) => id);
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
   const walletIds = wallets.map(({ id }) => id);
+  await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.pointTransaction.deleteMany({ where: { walletId: { in: walletIds } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
@@ -81,9 +82,11 @@ after(async () => {
   const orderIds = orders.map(({ id }) => id);
   await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+  await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
@@ -102,7 +105,7 @@ async function request(path: string, method: string, token?: string, body?: Reco
 }
 
 async function createTestProduct(name = "Demo Coffee", price = "150000") {
-  const result = await request("/api/merchant/products", "POST", merchantAToken, { name, price });
+  const result = await request("/api/merchant/products", "POST", merchantAToken, { name, price, initialQuantity: 100 });
   assert.equal(result.response.status, 201);
   return result.json.product as { id: number; name: string; price: string };
 }

@@ -21,6 +21,7 @@ export interface ProductDto {
   kind: ProductKind;
   price: string;
   status: ProductStatus;
+  inventory: { availableQuantity: number; onHandQuantity?: number; reservedQuantity?: number };
 }
 
 interface ProductFields {
@@ -30,7 +31,7 @@ interface ProductFields {
 }
 
 export type ProductInput = ProductFields &
-  ({ kind?: "SALE"; price: string } | { kind: "REWARD"; price?: never });
+  ({ kind?: "SALE"; price: string; initialQuantity?: number } | { kind: "REWARD"; price?: never; initialQuantity?: number });
 
 export type ProductPatch = Partial<ProductFields> & { price?: string; status?: ProductStatus };
 
@@ -57,6 +58,8 @@ export interface OrderDto {
   discountAmount: string;
   total: string;
   paidAt: string | null;
+  stockReservedUntil?: string | null;
+  appliedLoyaltyPolicy?: AppliedLoyaltyPolicySnapshot | null;
   items: OrderItemDto[];
   earnedPoints?: number | null;
   earnedPointsExact: string | null;
@@ -65,6 +68,18 @@ export interface OrderDto {
   refundStatus?: RefundStatus | string | null;
   loyaltyEvents?: WalletTransactionDto[];
   actions?: OrderActionsDto;
+}
+
+export interface AppliedLoyaltyPolicySnapshot {
+  policyVersionId: number;
+  version: number;
+  publishedAt: string;
+  capturedAt: string;
+  vndPerPoint: number;
+  isActive: boolean;
+  tierLevel: TierLevel;
+  multiplier: string;
+  tiers: LoyaltyTierDto[];
 }
 
 export type PaymentStatusDto = {
@@ -118,13 +133,15 @@ export interface VoucherDefinitionDto {
   rewardDescription: string | null;
   rewardProductId: number | null;
   isActive: boolean;
+  availableQuantity: number | null;
+  issuedQuantity: number | null;
 }
 
 export type VoucherDefinitionInput = {
   title: string;
   pointsCost: number;
 } & (
-  | { type: "DISCOUNT"; discountAmount: string; rewardDescription?: null }
+  | { type: "DISCOUNT"; discountAmount: string; initialQuantity: number; rewardDescription?: null }
   | { type: "REWARD"; discountAmount: null; rewardProductId: number }
 );
 
@@ -256,6 +273,51 @@ export interface MerchantLedgerItemDto extends WalletTransactionDto {
 export interface MerchantTransactionsResponse {
   items: MerchantLedgerItemDto[];
   nextCursor: string | null;
+}
+
+export interface MerchantLoyaltyPolicyVersionDto {
+  id: number;
+  version: number;
+  vndPerPoint: number;
+  isActive: boolean;
+  tiers: LoyaltyTierDto[];
+  source: "MERCHANT_PUBLISH" | "LEGACY_BACKFILL";
+  publishedAt: string;
+  publishedById: number | null;
+  publishedByEmail: string | null;
+  isCurrent: boolean;
+}
+
+export type MerchantLoyaltyHistoryResponse = { versions: MerchantLoyaltyPolicyVersionDto[] };
+
+export interface InventorySummaryDto {
+  onHandQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+}
+
+export interface InventoryMovementDto {
+  id: number;
+  movementType: string;
+  quantityDelta: number;
+  onHandBefore: number;
+  onHandAfter: number;
+  reservedBefore: number;
+  reservedAfter: number;
+  reason: string;
+  actorId: number | null;
+  actorEmail: string | null;
+  createdAt: string;
+}
+
+export interface InventoryResponse {
+  inventory: InventorySummaryDto;
+  movements: InventoryMovementDto[];
+}
+
+export interface InventoryAdjustmentResponse {
+  inventory: InventorySummaryDto;
+  replayed: boolean;
 }
 
 export interface MerchantTransactionsQuery {

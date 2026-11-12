@@ -82,6 +82,8 @@ export type OrderDto = {
   discountAmount: string;
   total: string;
   paidAt: string | null;
+  stockReservedUntil?: string | null;
+  appliedLoyaltyPolicy?: AppliedLoyaltyPolicyDto | null;
   items: OrderItemDto[];
   earnedPoints?: number | null;
   earnedPointsExact: string | null;
@@ -90,6 +92,18 @@ export type OrderDto = {
   refundStatus?: RefundStatus | null;
   loyaltyEvents?: OrderLoyaltyEventDto[];
   actions?: OrderActionsDto;
+};
+
+export type AppliedLoyaltyPolicyDto = {
+  policyVersionId: number;
+  version: number;
+  publishedAt: string;
+  capturedAt: string;
+  vndPerPoint: number;
+  isActive: boolean;
+  tierLevel: TierLevel;
+  multiplier: string;
+  tiers: { level: TierLevel; minLifetimePoints: number; multiplier: string }[];
 };
 
 export type CancelOrderResult = {

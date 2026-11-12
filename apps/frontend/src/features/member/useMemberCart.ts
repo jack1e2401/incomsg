@@ -41,7 +41,8 @@ function readCart(storageKey: string, merchantId: number): CartLine[] {
 
 function canAddLine(lines: CartLine[], productId: number): boolean {
   const line = lines.find(({ product }) => product.id === productId);
-  return line ? line.quantity < maxQuantity : lines.length < maxLines;
+  const available = line?.product.inventory?.availableQuantity ?? maxQuantity;
+  return available > 0 && (line ? line.quantity < Math.min(maxQuantity, available) : lines.length < maxLines);
 }
 
 export function useMemberCart(storageKey: string, merchantId: number) {
@@ -63,10 +64,15 @@ export function useMemberCart(storageKey: string, merchantId: number) {
       (sum, { product, quantity }) => sum + BigInt(product.price) * BigInt(quantity),
       0n,
     ),
-    canAdd: (productId: number) => canAddLine(lines, productId),
+    canAdd: (productId: number, availableQuantity?: number) => {
+      const line = lines.find(({ product }) => product.id === productId);
+      const available = availableQuantity ?? line?.product.inventory?.availableQuantity ?? maxQuantity;
+      return available > 0 && (line ? line.quantity < Math.min(maxQuantity, available) : lines.length < maxLines);
+    },
     addProduct(product: ProductDto) {
       setLines((previous) => {
-        if (product.merchantId !== merchantId || !canAddLine(previous, product.id)) return previous;
+        if (product.merchantId !== merchantId || !canAddLine(previous, product.id) ||
+            (product.inventory && (previous.find((line) => line.product.id === product.id)?.quantity ?? 0) >= product.inventory.availableQuantity)) return previous;
         if (previous.some((line) => line.product.id === product.id)) {
           return previous.map((line) =>
             line.product.id === product.id ? { product, quantity: line.quantity + 1 } : line,
@@ -78,7 +84,11 @@ export function useMemberCart(storageKey: string, merchantId: number) {
     setQuantity(productId: number, quantity: number) {
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQuantity) return;
       setLines((previous) =>
-        previous.map((line) => (line.product.id === productId ? { ...line, quantity } : line)),
+        previous.map((line) => {
+          if (line.product.id !== productId) return line;
+          const available = line.product.inventory?.availableQuantity ?? maxQuantity;
+          return quantity <= available ? { ...line, quantity } : line;
+        }),
       );
     },
     removeProduct(productId: number) {

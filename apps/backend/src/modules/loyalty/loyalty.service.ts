@@ -20,7 +20,13 @@ export const loyaltyService = {
   async saveConfig(ownerId: number, input: LoyaltyConfigInput) {
     const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
     if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
-    return loyaltyRepository.saveConfig(merchant.id, input);
+    return loyaltyRepository.saveConfig(merchant.id, ownerId, input);
+  },
+
+  async listPolicyHistory(ownerId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return loyaltyRepository.listHistory(merchant.id);
   },
 
   async previewMemberEarning(memberId: number, merchantId: number, netOrderAmountVnd: string) {

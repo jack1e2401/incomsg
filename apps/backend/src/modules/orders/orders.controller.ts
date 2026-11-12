@@ -35,6 +35,12 @@ export const listMerchantOrders: RequestHandler = async (_request, response) => 
   response.json({ orders });
 };
 
+export const getMerchantOrder: RequestHandler = async (request, response) => {
+  const orderId = readRouteId(request.params.orderId!);
+  const order = await ordersService.getMerchantOrder(response.locals.user.id, orderId);
+  response.json({ order });
+};
+
 export const cancelOrder: RequestHandler = async (request, response) => {
   const orderId = readRouteId(request.params.orderId);
   try {

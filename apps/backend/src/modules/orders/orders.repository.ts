@@ -16,6 +16,7 @@ import { HttpError } from "../../lib/http-error.js";
 import { describeWallet, exactPoints } from "../loyalty/loyalty.balance.js";
 import { points, selectTier } from "../loyalty/loyalty.calculation.js";
 import { defaultTiers, loadEarningPolicy } from "../loyalty/loyalty.config.js";
+import { reserveOrderInventory, releaseOrderInventory, releaseExpiredMockOrders } from "../inventory/inventory.order.js";
 
 type OrderReadRecord = Prisma.OrderGetPayload<{
   include: {
@@ -97,6 +98,7 @@ export const ordersRepository = {
           requestedDiscount = voucher.snapshotDiscountAmount ?? new Prisma.Decimal(0);
         }
         const { discountAmount, total } = calculateDiscountedTotal(input.subtotal, requestedDiscount);
+        const now = new Date();
         const created = await tx.order.create({
           data: {
             memberId: input.memberId,
@@ -106,6 +108,8 @@ export const ordersRepository = {
             discountAmount,
             total,
             voucherId: input.voucherId,
+            stockReservedAt: now,
+            stockReservedUntil: new Date(now.getTime() + 5 * 60 * 1000),
             paidAt: null,
             items: { create: input.items },
           },
@@ -115,6 +119,12 @@ export const ordersRepository = {
             refund: true,
             pointTransactions: true,
           },
+        });
+        await reserveOrderInventory(tx, {
+          merchantId: input.merchantId,
+          orderId: created.id,
+          memberId: input.memberId,
+          items: created.items,
         });
         if (input.voucherId !== null) {
           await tx.orderVoucherReservation.create({
@@ -135,13 +145,18 @@ export const ordersRepository = {
     return toOrderDto(order);
   },
 
-  async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid" | "vnpay_attempt_exists"> {
+  async markPaid(memberId: number, orderId: number): Promise<OrderDto | "missing" | "already_paid" | "vnpay_attempt_exists" | "reservation_expired"> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
-      const order = await tx.order.findFirst({ where: { id: orderId, memberId }, select: { id: true, status: true } });
+      const order = await tx.order.findFirst({ where: { id: orderId, memberId }, include: { items: true, paymentAttempt: true } });
       if (!order) return "missing";
       if (order.status !== "PENDING") return "already_paid";
-      const attempt = await tx.paymentAttempt.findUnique({ where: { orderId }, select: { id: true } });
-      if (attempt) return "vnpay_attempt_exists";
+      if (order.paymentAttempt) return "vnpay_attempt_exists";
+      if (order.stockReservedUntil && order.stockReservedUntil.getTime() <= Date.now()) {
+        await releaseOrderInventory(tx, order, memberId, "Order stock reservation expired after five minutes");
+        await tx.order.updateMany({ where: { id: orderId, memberId, status: "PENDING" }, data: { status: "CANCELLED" } });
+        await tx.orderVoucherReservation.deleteMany({ where: { orderId } });
+        return "reservation_expired";
+      }
       return loyaltyRepository.completePaidOrder(tx, orderId, memberId);
     }, { isolationLevel: "Serializable" }));
   },
@@ -150,7 +165,7 @@ export const ordersRepository = {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const order = await tx.order.findFirst({
         where: { id: orderId, memberId },
-        include: { paymentAttempt: true, voucherReservation: true },
+        include: { paymentAttempt: true, voucherReservation: true, items: true },
       });
       if (!order) throw new HttpError(404, "ORDER_NOT_FOUND");
       if (order.status !== "PENDING") {
@@ -161,6 +176,8 @@ export const ordersRepository = {
           throw new OrderNotCancellableError(order.status, order.paymentAttempt.status);
         }
       }
+
+      await releaseOrderInventory(tx, order, memberId, `Cancelled by member #${memberId}`);
 
       const deletedReservation = await tx.orderVoucherReservation.deleteMany({
         where: { orderId },
@@ -228,6 +245,16 @@ export const ordersRepository = {
       };
     });
   },
+
+  async findMerchantOrder(merchantId: number, orderId: number) {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, merchantId },
+      include: { items: true, pointTransactions: true, paymentAttempt: true, refund: true },
+    });
+    return order ? toOrderReadDto(order) : null;
+  },
+
+  releaseExpiredMockOrders,
 
   async refundOrder(merchantId: number, ownerId: number, orderId: number, reason: string): Promise<RefundResponseDto> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {

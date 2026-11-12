@@ -85,6 +85,7 @@ describe("commerce HTTP contract", () => {
         title: "Ưu đãi",
         pointsCost: 100,
         discountAmount: "10000",
+        initialQuantity: 5,
         rewardDescription: null,
       },
       "merchant-token",
@@ -105,6 +106,7 @@ describe("commerce HTTP contract", () => {
       title: "Ưu đãi",
       pointsCost: 100,
       discountAmount: "10000",
+      initialQuantity: 5,
       rewardDescription: null,
     });
   });

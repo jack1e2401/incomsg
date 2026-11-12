@@ -6,6 +6,7 @@ import { loadEarningPolicy } from "./loyalty.config.js";
 import { canReservePoints } from "./points-reservation.js";
 import { toOrderDto } from "../orders/orders.serialization.js";
 import type { OrderDto } from "../orders/orders.types.js";
+import { consumeOrderInventory } from "../inventory/inventory.order.js";
 
 export interface EarningSnapshot {
   vndPerPoint: number;
@@ -31,6 +32,7 @@ export async function completePaidOrder(
   const order = await tx.order.findUniqueOrThrow({
     where: { id: orderId }, include: { items: true, voucher: { include: { membership: true } } },
   });
+  await consumeOrderInventory(tx, order);
   if (order.voucherId !== null) {
     const voucher = order.voucher;
     if (!voucher || voucher.snapshotType !== "DISCOUNT" || voucher.membership.memberId !== memberId ||
@@ -93,12 +95,15 @@ export async function completePaidOrder(
     capturedAt: order.paidAt!.toISOString(), pointScale, rounding: "HALF_UP",
     netOrderAmount: order.total.toFixed(0), vndPerPoint, ruleActive, tierLevel,
     multiplier: multiplier.toFixed(2), earnedPointsExact: exactPoints(earned),
+    policyVersionId: policy.policyVersion.id,
+    policyVersion: policy.policyVersion.version,
+    policyPublishedAt: policy.policyVersion.publishedAt.toISOString(),
     tiers: policy.tiers.map((tier) => ({ level: tier.level, minLifetimePoints: tier.minLifetimePoints, multiplier: tier.multiplier.toFixed(2) })),
     ...(snapshot?.policy ? { frozenPolicy: snapshot.policy as Prisma.InputJsonValue } : {}),
   };
   const paid = await tx.order.update({
     where: { id: order.id },
-    data: { earnedPointsExact: earned, loyaltySnapshot: audit },
+    data: { earnedPointsExact: earned, loyaltySnapshot: audit, loyaltyPolicyVersionId: policy.policyVersion.id },
     include: { items: true, paymentAttempt: true, refund: true, pointTransactions: true },
   });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });

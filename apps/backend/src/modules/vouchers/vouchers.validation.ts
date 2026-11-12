@@ -31,16 +31,19 @@ export function readIdempotencyKey(value: unknown): string {
 
 export function readDefinitionInput(value: unknown, allowLegacyReward = false): DefinitionInput {
   const input = record(value);
-  if (Object.keys(input).some((key) => !["type", "title", "pointsCost", "discountAmount", "rewardDescription", "rewardProductId"].includes(key))) invalid();
+  if (Object.keys(input).some((key) => !["type", "title", "pointsCost", "discountAmount", "rewardDescription", "rewardProductId", "initialQuantity"].includes(key))) invalid();
   if (input.title === undefined || input.pointsCost === undefined) invalid();
   validateFields(input, false);
   const title = (input.title as string).trim();
   const pointsCost = input.pointsCost as number;
+  const initialQuantity = input.initialQuantity === undefined ? 0 : input.initialQuantity;
+  if (typeof initialQuantity !== "number" || !Number.isSafeInteger(initialQuantity) || initialQuantity < 0 || initialQuantity > maxInt) invalid();
   if (input.type === "DISCOUNT") {
     if (!amount(input.discountAmount) || input.rewardDescription != null || input.rewardProductId != null) invalid();
-    return { type: "DISCOUNT", title, pointsCost, discountAmount: input.discountAmount, rewardDescription: null, rewardProductId: null };
+    return { type: "DISCOUNT", title, pointsCost, discountAmount: input.discountAmount, rewardDescription: null, rewardProductId: null, initialQuantity };
   }
   if (input.type === "REWARD") {
+    if (input.initialQuantity !== undefined) invalid();
     if (input.discountAmount != null) invalid();
     if (positiveInt(input.rewardProductId) && input.rewardDescription == null) {
       return { type: "REWARD", title, pointsCost, discountAmount: null, rewardDescription: null, rewardProductId: input.rewardProductId };

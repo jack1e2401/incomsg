@@ -12,7 +12,7 @@ import {
   SignOut,
 } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
-import { createCommerceClient } from "../../api/commerce-http";
+import { createCommerceClient, translateApiError } from "../../api/commerce-http";
 import type {
   MemberVoucherDto,
   MemberVoucherStatus,
@@ -231,6 +231,7 @@ export function MemberStorefront() {
                 <p className="mt-4 text-lg font-extrabold text-[#335e3d] tabular-nums">
                   {money(product.price)}
                 </p>
+                <p className="mt-1 text-xs muted">Còn {product.inventory.availableQuantity} sản phẩm</p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button asChild variant="outline" className="flex-1 sm:flex-none">
                     <Link to={`product/${product.id}`} aria-label={`Chi tiết ${product.name}`}>
@@ -240,11 +241,11 @@ export function MemberStorefront() {
                   <Button
                     type="button"
                     className="flex-1 sm:flex-none"
-                    disabled={!cart.canAdd(product.id)}
-                    aria-label={`Chọn mua ${product.name}`}
+                    disabled={!cart.canAdd(product.id, product.inventory.availableQuantity)}
+                    aria-label={product.inventory.availableQuantity > 0 ? `Chọn mua ${product.name}` : `${product.name} đã hết hàng`}
                     onClick={() => cart.addProduct(product)}
                   >
-                    Chọn mua
+                    {product.inventory.availableQuantity > 0 ? "Chọn mua" : "Hết hàng"}
                   </Button>
                 </div>
               </div>
@@ -299,8 +300,8 @@ export function MemberProduct() {
           )}
         </div>
         <div className="flex flex-col justify-center">
-          <StatusText tone="green" className="w-fit">
-            Đang bán
+          <StatusText tone={product.inventory.availableQuantity > 0 ? "green" : "amber"} className="w-fit">
+            {product.inventory.availableQuantity > 0 ? "Đang bán" : "Hết hàng"}
           </StatusText>
           <h1 className="mt-4 sm:mt-5 text-2xl font-extrabold text-[#294432] break-words sm:text-4xl">
             {product.name}
@@ -313,14 +314,15 @@ export function MemberProduct() {
               {product.description}
             </p>
           )}
+          <p className="mt-3 text-sm muted">Còn {product.inventory.availableQuantity} sản phẩm</p>
           <Button
             type="button"
             className="mt-6 sm:mt-8 w-full sm:w-fit"
-            disabled={!cart.canAdd(product.id)}
+            disabled={!cart.canAdd(product.id, product.inventory.availableQuantity)}
             aria-label={`Chọn mua ${product.name}`}
             onClick={() => cart.addProduct(product)}
           >
-            <ShoppingCart aria-hidden="true" size={18} /> Chọn mua
+            <ShoppingCart aria-hidden="true" size={18} /> {product.inventory.availableQuantity > 0 ? "Chọn mua" : "Hết hàng"}
           </Button>
         </div>
       </div>
@@ -330,6 +332,7 @@ export function MemberProduct() {
 
 export function MemberCart() {
   const { merchantId, cart } = useMerchantContext();
+  const stockIssue = cart.lines.find(({ product, quantity }) => quantity > (product.inventory?.availableQuantity ?? quantity));
   return (
     <>
       <PageHeader title="Giỏ hàng" />
@@ -357,7 +360,7 @@ export function MemberCart() {
                     <Input
                       type="number"
                       min={1}
-                      max={99}
+                      max={Math.min(99, product.inventory?.availableQuantity ?? 99)}
                       aria-label={`Số lượng ${product.name}`}
                       value={quantity}
                       onChange={(event) => {
@@ -382,8 +385,9 @@ export function MemberCart() {
           <Card className="h-fit p-4 sm:p-5">
             <p className="text-xs muted">Tạm tính</p>
             <p className="mt-2 text-2xl font-extrabold tabular-nums break-words">{money(cart.subtotal)}</p>
-            <Button asChild className="mt-5 w-full">
-              <Link to={`/member/${merchantId}/checkout`}>
+            {stockIssue && <p role="alert" className="mt-3 text-sm text-[#a4473a]">Số lượng {stockIssue.product.name} vượt tồn kho hiện tại.</p>}
+            <Button asChild className="mt-5 w-full" disabled={Boolean(stockIssue)}>
+              <Link to={`/member/${merchantId}/checkout`} aria-disabled={Boolean(stockIssue)}>
                 Tiếp tục <ArrowRight aria-hidden="true" size={16} />
               </Link>
             </Button>
@@ -436,6 +440,7 @@ export function MemberCheckout() {
     const netAmount = cart.subtotal > discountVal ? cart.subtotal - discountVal : 0n;
     return String(netAmount);
   }, [cart.subtotal, selectedDiscountAmount]);
+  const stockIssue = cart.lines.find(({ product, quantity }) => quantity > (product.inventory?.availableQuantity ?? quantity));
 
   useEffect(() => {
     let active = true;
@@ -458,6 +463,10 @@ export function MemberCheckout() {
 
   async function submit() {
     if (!cart.lines.length || !accessToken || busy) return;
+    if (stockIssue) {
+      setError(`Số lượng ${stockIssue.product.name} vượt tồn kho hiện tại. Hãy điều chỉnh giỏ hàng.`);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -473,7 +482,10 @@ export function MemberCheckout() {
       navigate(`/member/${merchantId}/orders/${order.id}`, { state: { order } });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo đơn");
-      if (reason instanceof Error && reason.message.includes("VOUCHER")) vouchers.reload();
+      if (reason instanceof Error) {
+        setError(translateApiError(reason.message));
+        if (reason.message.includes("VOUCHER")) vouchers.reload();
+      }
     } finally {
       setBusy(false);
     }
@@ -579,6 +591,7 @@ export function MemberCheckout() {
                 Ước tính tích lũy: +{earningEstimate} điểm
               </p>
             )}
+            {stockIssue && <p role="alert" className="mt-3 text-sm text-[#a4473a]">Số lượng {stockIssue.product.name} vượt tồn kho hiện tại.</p>}
             {error && (
               <p role="alert" className="mt-4 text-sm text-red-700 break-words">
                 {error}
@@ -587,7 +600,7 @@ export function MemberCheckout() {
             <Button
               type="button"
               className="mt-5 w-full"
-              disabled={busy || vouchers.loading}
+              disabled={busy || vouchers.loading || Boolean(stockIssue)}
               onClick={submit}
             >
               {busy ? (
@@ -869,11 +882,12 @@ export function MemberVouchers() {
           : current,
       );
       wallet.reload();
+      catalog.reload();
       setNotice(
         `Đã đổi “${response.voucher.title}”. Số dư điểm mới: ${response.wallet.availablePoints.toLocaleString("vi-VN")} điểm.`,
       );
     } catch (reason) {
-      setActionError(reason instanceof Error ? reason.message : "Không thể đổi voucher");
+      setActionError(reason instanceof Error ? translateApiError(reason.message) : "Không thể đổi voucher");
     } finally {
       setBusyId(null);
     }
@@ -926,7 +940,8 @@ export function MemberVouchers() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {catalog.data.map((voucher) => {
-              const canRedeem = Boolean(wallet.data && wallet.data.availablePoints >= voucher.pointsCost);
+              const outOfStock = voucher.availableQuantity !== null && voucher.availableQuantity <= 0;
+              const canRedeem = Boolean(wallet.data && wallet.data.availablePoints >= voucher.pointsCost && !outOfStock);
               return (
                 <VoucherDefinitionCard
                   key={voucher.id}
@@ -1037,6 +1052,7 @@ function VoucherDefinitionCard({
           : voucher.rewardDescription}
       </p>
       <p className="mt-4 text-sm font-bold tabular-nums">{voucher.pointsCost.toLocaleString("vi-VN")} điểm</p>
+      <p className="mt-1 text-xs muted">{voucher.availableQuantity === null ? "Có sẵn" : `${voucher.availableQuantity} còn lại`}</p>
       <Button
         type="button"
         className="mt-4 w-full"
@@ -1046,7 +1062,9 @@ function VoucherDefinitionCard({
       >
         {busy ? <BusyLabel>Đang đổi</BusyLabel> : redeemLabel}
       </Button>
-      {!canRedeem && <p className="mt-1.5 text-center text-[11px] text-[#97682a]">Chưa đủ điểm để đổi</p>}
+      {voucher.availableQuantity !== null && voucher.availableQuantity <= 0 ? (
+        <p className="mt-1.5 text-center text-[11px] text-[#a4473a]">Đã hết hàng</p>
+      ) : !canRedeem ? <p className="mt-1.5 text-center text-[11px] text-[#97682a]">Chưa đủ điểm để đổi</p> : null}
     </Card>
   );
 }

@@ -50,6 +50,9 @@ import type {
   CreateAbuseReportResponse,
   AdminAbuseReportsQuery,
   AdminAbuseReportsResponse,
+  InventoryAdjustmentResponse,
+  InventoryResponse,
+  MerchantLoyaltyHistoryResponse,
 } from "./commerce-types";
 
 export function translateApiError(code: string): string {
@@ -62,6 +65,12 @@ export function translateApiError(code: string): string {
     FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
     MEMBER_NOT_FOUND: "Không tìm thấy thành viên trong cửa hàng.",
     ORDER_NOT_FOUND: "Không tìm thấy đơn hàng tương ứng.",
+    INSUFFICIENT_PRODUCT_STOCK: "Sản phẩm không còn đủ số lượng. Hãy tải lại giỏ hàng.",
+    VOUCHER_OUT_OF_STOCK: "Voucher đã hết lượt phát hành.",
+    REWARD_OUT_OF_STOCK: "Quà đang hết hàng, merchant chưa thể xác nhận trao.",
+    INSUFFICIENT_AVAILABLE_INVENTORY: "Số lượng xuất vượt quá hàng hiện có, bao gồm hàng đã giữ chỗ.",
+    ORDER_RESERVATION_EXPIRED: "Thời gian giữ hàng đã hết. Vui lòng tạo đơn mới.",
+    IDEMPOTENCY_KEY_CONFLICT: "Mã yêu cầu đã được dùng cho thao tác khác. Hãy thử lại.",
   };
   return translations[code] ?? code;
 }
@@ -135,6 +144,22 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         body: patch,
       });
     },
+    getProductInventory(productId: number, token: string) {
+      return requestJson<InventoryResponse>(fetcher, baseUrl, `/api/merchant/products/${productId}/stock/movements`, { token });
+    },
+    adjustProductInventory(productId: number, direction: "in" | "out", body: { quantity: number; reason: string; returnToStock?: boolean }, token: string, requestKey: string) {
+      return requestJson<InventoryAdjustmentResponse>(fetcher, baseUrl, `/api/merchant/products/${productId}/stock/${direction}`, {
+        method: "POST", token, body, headers: { "Idempotency-Key": requestKey },
+      });
+    },
+    getRewardInventory(productId: number, token: string) {
+      return requestJson<InventoryResponse>(fetcher, baseUrl, `/api/merchant/rewards/${productId}/stock/movements`, { token });
+    },
+    adjustRewardInventory(productId: number, direction: "in" | "out", body: { quantity: number; reason: string; returnToStock?: boolean }, token: string, requestKey: string) {
+      return requestJson<InventoryAdjustmentResponse>(fetcher, baseUrl, `/api/merchant/rewards/${productId}/stock/${direction}`, {
+        method: "POST", token, body, headers: { "Idempotency-Key": requestKey },
+      });
+    },
     listPublicProducts(merchantId: number) {
       return requestJson<ProductsResponse>(fetcher, baseUrl, `/api/merchants/${merchantId}/products`);
     },
@@ -173,6 +198,9 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
     listMerchantOrders(token: string) {
       return requestJson<MerchantOrdersResponse>(fetcher, baseUrl, "/api/merchant/orders", { token });
     },
+    getMerchantOrder(orderId: number, token: string) {
+      return requestJson<OrderResponse>(fetcher, baseUrl, `/api/merchant/orders/${orderId}`, { token });
+    },
     getLoyaltyConfig(token: string) {
       return requestJson<LoyaltyConfigResponse>(fetcher, baseUrl, "/api/merchant/loyalty", { token });
     },
@@ -182,6 +210,9 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         token,
         body: input,
       });
+    },
+    getLoyaltyPolicyHistory(token: string) {
+      return requestJson<MerchantLoyaltyHistoryResponse>(fetcher, baseUrl, "/api/merchant/loyalty/history", { token });
     },
     getMemberWallet(merchantId: number, token: string) {
       return requestJson<WalletResponse>(fetcher, baseUrl, `/api/member/merchants/${merchantId}/wallet`, {
@@ -196,6 +227,14 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         method: "POST",
         token,
         body: input,
+      });
+    },
+    getVoucherInventory(definitionId: number, token: string) {
+      return requestJson<InventoryResponse>(fetcher, baseUrl, `/api/merchant/vouchers/${definitionId}/stock/movements`, { token });
+    },
+    adjustVoucherInventory(definitionId: number, direction: "in" | "out", body: { quantity: number; reason: string }, token: string, requestKey: string) {
+      return requestJson<InventoryAdjustmentResponse>(fetcher, baseUrl, `/api/merchant/vouchers/${definitionId}/stock/${direction}`, {
+        method: "POST", token, body, headers: { "Idempotency-Key": requestKey },
       });
     },
     updateVoucherDefinition(id: number, patch: VoucherDefinitionPatch, token: string) {

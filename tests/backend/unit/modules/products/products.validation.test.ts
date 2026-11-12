@@ -7,12 +7,14 @@ const invalidInput = { statusCode: 400, code: "INVALID_INPUT" };
 test("defaults to SALE when kind is omitted", () => {
   assert.deepEqual(readProductInput({ name: " Coffee ", price: "20000" }), {
     name: "Coffee", kind: "SALE", price: "20000",
+    initialQuantity: 0,
   });
 });
 
 test("accepts an explicit SALE product with a positive price", () => {
   assert.deepEqual(readProductInput({ name: "Coffee", kind: "SALE", price: "20000" }), {
     name: "Coffee", kind: "SALE", price: "20000",
+    initialQuantity: 0,
   });
 });
 
@@ -23,7 +25,7 @@ test("accepts a REWARD product without a price", () => {
     description: "Một chiếc ly",
     imageUrl: "https://example.test/cup.jpg",
   };
-  assert.deepEqual(readProductInput(input), { ...input, name: "Ly sứ" });
+  assert.deepEqual(readProductInput(input), { ...input, name: "Ly sứ", initialQuantity: 0 });
 });
 
 test("rejects an unsupported product kind", () => {

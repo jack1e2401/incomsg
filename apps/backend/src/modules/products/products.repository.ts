@@ -1,6 +1,8 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { ProductInput, ProductPatch } from "./products.types.js";
+import { createInventoryBalance } from "../inventory/inventory.persistence.js";
+import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 
 const productSelection = {
   id: true,
@@ -11,23 +13,31 @@ const productSelection = {
   price: true,
   kind: true,
   status: true,
+  inventoryBalance: { select: { onHandQuantity: true, reservedQuantity: true } },
 } as const;
 
 const sellableProductFilter = { kind: "SALE", status: "ACTIVE" } as const;
 
 export const productsRepository = {
-  async create(merchantId: number, input: ProductInput) {
-    return prisma.product.create({
-      data: {
+  async create(merchantId: number, actorId: number, input: ProductInput) {
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
+        data: {
+          merchantId,
+          name: input.name,
+          kind: input.kind,
+          price: new Prisma.Decimal(input.kind === "REWARD" ? "0" : input.price),
+          description: input.description ?? null,
+          imageUrl: input.imageUrl ?? null,
+        },
+      });
+      await createInventoryBalance(tx, {
         merchantId,
-        name: input.name,
-        kind: input.kind,
-        price: new Prisma.Decimal(input.kind === "REWARD" ? "0" : input.price),
-        description: input.description ?? null,
-        imageUrl: input.imageUrl ?? null,
-      },
-      select: productSelection,
-    });
+        ownerType: input.kind === "REWARD" ? "REWARD_PRODUCT" : "SALE_PRODUCT",
+        productId: product.id,
+      }, input.initialQuantity ?? 0, actorId);
+      return tx.product.findUniqueOrThrow({ where: { id: product.id }, select: productSelection });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
 
   async listByMerchant(merchantId: number, sellableOnly: boolean) {

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Package, Storefront } from "@phosphor-icons/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
@@ -38,6 +39,12 @@ import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
 import { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "./MerchantRewardQueue";
+import { InventoryPanel } from "./InventoryPanel";
+import type { InventoryAdjustment } from "./InventoryPanel";
+import { InventoryImportDialog } from "./InventoryImportDialog";
+import { MerchantProductTableRow } from "./MerchantProductTableRow";
+import { MerchantLoyaltyHistory } from "./MerchantLoyaltyHistory";
+import { OrderLoyaltyPolicySnapshot } from "../orders/OrderLoyaltyPolicySnapshot";
 
 export { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 export { MerchantRefundDialog } from "./MerchantRefundDialog";
@@ -187,6 +194,7 @@ type ProductForm = {
   description: string;
   imageUrl: string;
   status: ProductDto["status"];
+  initialQuantity: string;
 };
 const emptyProduct: ProductForm = {
   kind: "SALE",
@@ -195,6 +203,7 @@ const emptyProduct: ProductForm = {
   description: "",
   imageUrl: "",
   status: "ACTIVE",
+  initialQuantity: "0",
 };
 
 export function MerchantProducts() {
@@ -205,6 +214,8 @@ export function MerchantProducts() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   function open(product?: ProductDto) {
     setEditing(product ?? "new");
@@ -217,6 +228,7 @@ export function MerchantProducts() {
             description: product.description ?? "",
             imageUrl: product.imageUrl ?? "",
             status: product.status,
+            initialQuantity: "0",
           }
         : emptyProduct,
     );
@@ -239,8 +251,8 @@ export function MerchantProducts() {
         editing === "new"
           ? await api.createProduct(
               form.kind === "REWARD"
-                ? { ...fields, kind: "REWARD" }
-                : { ...fields, price: form.price.trim() },
+                ? { ...fields, kind: "REWARD", initialQuantity: Number(form.initialQuantity) }
+                : { ...fields, price: form.price.trim(), initialQuantity: Number(form.initialQuantity) },
               token,
             )
           : await api.updateProduct(
@@ -294,7 +306,14 @@ export function MerchantProducts() {
 
   return (
     <>
-      <PageHeader title="Sản phẩm" action={<Button onClick={() => open()}>Thêm sản phẩm</Button>} />
+      <PageHeader title="Sản phẩm" action={<div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)}>Nhập Excel</Button><Button onClick={() => open()}>Thêm sản phẩm</Button></div>} />
+      <InventoryImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        products={resource.data?.products ?? []}
+        token={token}
+        onImported={() => setInventoryRefreshKey((value) => value + 1)}
+      />
       {notice && (
         <p role="status" className="mb-4 rounded-xl bg-[#e1f2df] p-4 text-sm text-[#357044]">
           {notice}
@@ -305,11 +324,14 @@ export function MerchantProducts() {
           {error}
         </p>
       )}
-      {editing && (
-        <Card className="mb-6 p-6 sm:p-8">
-          <h2 className="text-lg font-extrabold">
+      <Dialog.Root open={editing !== null} onOpenChange={(open) => !open && !busy && setEditing(null)}>
+        {editing && <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
+          <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl p-6 shadow-2xl outline-none sm:p-8">
+          <Dialog.Title className="text-lg font-extrabold">
             {editing === "new" ? "Thêm sản phẩm" : `Sửa sản phẩm #${editing.id}`}
-          </h2>
+          </Dialog.Title>
+          <Dialog.Description className="sr-only">Nhập thông tin sản phẩm và lưu thay đổi.</Dialog.Description>
           <form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field label="Loại sản phẩm">
               <Select
@@ -338,6 +360,11 @@ export function MerchantProducts() {
                   value={form.price}
                   onChange={(event) => setForm({ ...form, price: event.target.value })}
                 />
+              </Field>
+            )}
+            {editing === "new" && (
+              <Field label="Số lượng ban đầu">
+                <Input required type="number" min={0} max={2147483647} step={1} value={form.initialQuantity} onChange={(event) => setForm({ ...form, initialQuantity: event.target.value })} />
               </Field>
             )}
             <div className="sm:col-span-2">
@@ -386,8 +413,9 @@ export function MerchantProducts() {
               </Button>
             </div>
           </form>
-        </Card>
-      )}
+          </Dialog.Content>
+        </Dialog.Portal>}
+      </Dialog.Root>
       {resource.loading ? (
         <LoadingState cards={3} />
       ) : resource.error ? (
@@ -398,37 +426,39 @@ export function MerchantProducts() {
           description="Thêm sản phẩm để bán hoặc dùng làm quà đổi thưởng."
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {resource.data.products.map((product) => (
-            <Card key={product.id} className="overflow-hidden p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="mt-1 font-extrabold">{product.name}</h2>
-                </div>
-                <StatusText tone={product.status === "ACTIVE" ? "green" : "amber"}>
-                  {product.status === "HIDDEN"
-                    ? "Đã ẩn"
-                    : product.kind === "REWARD"
-                      ? "Đang hoạt động"
-                      : "Đang bán"}
-                </StatusText>
-              </div>
-              <p className="mt-3 text-lg font-extrabold text-[#335e3d]">
-                {product.kind === "REWARD" ? "Chỉ đổi thưởng" : formatPrice(product.price)}
-              </p>
-              {product.description && (
-                <p className="mt-2 line-clamp-2 text-sm muted">{product.description}</p>
-              )}
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => open(product)}>
-                  Chỉnh sửa
-                </Button>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => changeStatus(product)}>
-                  {product.status === "ACTIVE" ? "Ẩn" : "Hiển thị"}
-                </Button>
-              </div>
-            </Card>
-          ))}
+        <div className="surface overflow-x-auto rounded-3xl">
+          <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
+            <colgroup>
+              <col className="w-[25%]" />
+              <col className="w-[9%]" />
+              <col className="w-[12%]" />
+              <col className="w-[32%]" />
+              <col className="w-[14%]" />
+              <col className="w-[8%]" />
+            </colgroup>
+            <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+              <tr>
+                <th scope="col" className="px-5 py-4">Sản phẩm</th>
+                <th scope="col" className="px-4 py-4">Nhóm</th>
+                <th scope="col" className="px-4 py-4">Giá</th>
+                <th scope="col" className="px-4 py-4">Tồn kho</th>
+                <th scope="col" className="px-4 py-4">Trạng thái</th>
+                <th scope="col" className="px-4 py-4"><span className="sr-only">Thao tác</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {resource.data.products.map((product) => (
+                <MerchantProductTableRow
+                  key={product.id}
+                  product={product}
+                  token={token}
+                  refreshKey={inventoryRefreshKey}
+                  onEdit={() => open(product)}
+                  onStatusChange={() => void changeStatus(product)}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </>
@@ -462,6 +492,11 @@ function MerchantPurchaseOrders() {
   const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<OrderDto | null>(null);
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<(OrderDto & { memberEmail?: string }) | null>(null);
+  const [policyOrderId, setPolicyOrderId] = useState<number | null>(null);
+  const policyOrder = useResource(
+    () => policyOrderId === null ? Promise.resolve(null) : api.getMerchantOrder(policyOrderId, token).then(({ order }) => order),
+    [policyOrderId, token],
+  );
   const [notice, setNotice] = useState("");
 
   return (
@@ -538,6 +573,11 @@ function MerchantPurchaseOrders() {
                       </p>
                     )}
                   <div className="mt-3 flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+                    {order.paidAt && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPolicyOrderId(policyOrderId === order.id ? null : order.id)}>
+                        {policyOrderId === order.id ? "Ẩn chính sách" : "Chính sách đã áp dụng"}
+                      </Button>
+                    )}
                     {canRefund && (
                       <Button
                         type="button"
@@ -558,6 +598,11 @@ function MerchantPurchaseOrders() {
                     </Button>
                   </div>
                 </div>
+                {policyOrderId === order.id && (
+                  <div className="sm:col-span-2">
+                    {policyOrder.loading ? <p className="text-sm muted">Đang tải chính sách…</p> : policyOrder.error ? <p role="alert" className="text-sm text-[#a4473a]">{policyOrder.error}</p> : <OrderLoyaltyPolicySnapshot policy={policyOrder.data?.appliedLoyaltyPolicy ?? null} />}
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -596,6 +641,7 @@ export function MerchantVouchers() {
   const [title, setTitle] = useState("");
   const [pointsCost, setPointsCost] = useState("");
   const [discountAmount, setDiscountAmount] = useState("");
+  const [initialQuantity, setInitialQuantity] = useState("0");
   const [rewardProductId, setRewardProductId] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -629,13 +675,14 @@ export function MerchantVouchers() {
       const input: VoucherDefinitionInput =
         kind === "REWARD"
           ? { ...terms, type: kind, discountAmount: null, rewardProductId: Number(rewardProductId) }
-          : { ...terms, type: kind, discountAmount, rewardDescription: null };
+          : { ...terms, type: kind, discountAmount, initialQuantity: Number(initialQuantity), rewardDescription: null };
       const response = await api.createVoucherDefinition(input, token);
       resource.setData((current) => [...(current ?? []), response.definition]);
       setKind("");
       setTitle("");
       setPointsCost("");
       setDiscountAmount("");
+      setInitialQuantity("0");
       setRewardProductId("");
       setNotice("Đã tạo voucher.");
     } catch (reason) {
@@ -714,15 +761,20 @@ export function MerchantVouchers() {
                 />
               </Field>
               {kind === "DISCOUNT" ? (
-                <Field label="Số tiền giảm (VND)">
-                  <Input
-                    required
-                    inputMode="numeric"
-                    pattern="[1-9][0-9]{0,14}"
-                    value={discountAmount}
-                    onChange={(event) => setDiscountAmount(event.target.value)}
-                  />
-                </Field>
+                <>
+                  <Field label="Số tiền giảm (VND)">
+                    <Input
+                      required
+                      inputMode="numeric"
+                      pattern="[1-9][0-9]{0,14}"
+                      value={discountAmount}
+                      onChange={(event) => setDiscountAmount(event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Số lượt phát hành ban đầu">
+                    <Input required type="number" min={0} max={2147483647} step={1} value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} />
+                  </Field>
+                </>
               ) : (
                 <div>
                   <Field label="Sản phẩm đổi thưởng">
@@ -833,6 +885,12 @@ export function MerchantVouchers() {
                   )}
                 </Button>
               </div>
+              {definition.type === "DISCOUNT" && (
+                <>
+                  <p className="mt-2 text-sm muted">Còn {definition.availableQuantity ?? 0} lượt · Đã phát hành {definition.issuedQuantity ?? 0}</p>
+                  <MerchantVoucherInventory definition={definition} token={token} />
+                </>
+              )}
             </Card>
           ))}
         </div>
@@ -841,10 +899,25 @@ export function MerchantVouchers() {
   );
 }
 
+function MerchantVoucherInventory({ definition, token }: { definition: VoucherDefinitionDto; token: string }) {
+  const resource = useResource(() => api.getVoucherInventory(definition.id, token), [definition.id, token]);
+  async function adjust(input: InventoryAdjustment) {
+    const key = typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `voucher-stock-${definition.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await api.adjustVoucherInventory(definition.id, input.direction, { quantity: input.quantity, reason: input.reason }, token, key);
+    resource.setData(await api.getVoucherInventory(definition.id, token));
+  }
+  if (resource.loading) return <p className="mt-3 text-xs muted">Đang tải lịch sử tồn kho…</p>;
+  if (resource.error || !resource.data) return <p role="alert" className="mt-3 text-xs text-[#a4473a]">Không tải được lịch sử tồn kho. {resource.error}</p>;
+  return <div className="mt-4"><InventoryPanel balance={resource.data.inventory} movements={resource.data.movements} onAdjust={adjust} /></div>;
+}
+
 export function MerchantLoyalty() {
   const token = useToken();
   const resource = useResource(() => api.getLoyaltyConfig(token), [token]);
-  const [activeTab, setActiveTab] = useState<"CONFIG" | "LEDGER">("CONFIG");
+  const history = useResource(() => api.getLoyaltyPolicyHistory(token), [token]);
+  const [activeTab, setActiveTab] = useState<"CONFIG" | "LEDGER" | "HISTORY">("CONFIG");
   const [draft, setDraft] = useState<LoyaltyConfigInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -877,6 +950,7 @@ export function MerchantLoyalty() {
     try {
       const result = await api.putLoyaltyConfig(form, token);
       resource.setData(result);
+      history.reload();
       setDraft(null);
       setNotice("Đã lưu cấu hình.");
     } catch (reason) {
@@ -925,6 +999,14 @@ export function MerchantLoyalty() {
           onClick={() => setActiveTab("LEDGER")}
         >
           Lịch sử giao dịch điểm
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeTab === "HISTORY" ? "default" : "outline"}
+          onClick={() => setActiveTab("HISTORY")}
+        >
+          Lịch sử chính sách
         </Button>
       </div>
 
@@ -1109,8 +1191,14 @@ export function MerchantLoyalty() {
             </Card>
           </div>
         )
-      ) : (
+      ) : activeTab === "LEDGER" ? (
         <MerchantLoyaltyTransactions />
+      ) : history.loading ? (
+        <LoadingState cards={2} />
+      ) : history.error ? (
+        <ErrorState message={history.error} retry={history.reload} />
+      ) : (
+        <Card className="max-w-4xl p-5 sm:p-7"><MerchantLoyaltyHistory versions={history.data?.versions ?? []} /></Card>
       )}
     </>
   );

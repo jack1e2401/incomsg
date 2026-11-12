@@ -26,6 +26,14 @@ export const ordersService = {
     return ordersRepository.listMerchantOrders(merchant.id);
   },
 
+  async getMerchantOrder(ownerId: number, orderId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    const order = await ordersRepository.findMerchantOrder(merchant.id, orderId);
+    if (!order) throw new HttpError(404, "ORDER_NOT_FOUND");
+    return order;
+  },
+
   async createOrder(memberId: number, input: CreateOrderInput): Promise<OrderDto> {
     const products = await productsRepository.findSellableProducts(input.items.map(({ productId }) => productId));
     const merchantId = products[0]?.merchantId;
@@ -64,11 +72,16 @@ export const ordersService = {
     if (result === "missing") throw new HttpError(404, "ORDER_NOT_FOUND");
     if (result === "already_paid") throw new HttpError(409, "ORDER_ALREADY_PAID");
     if (result === "vnpay_attempt_exists") throw new HttpError(409, "VNPAY_ATTEMPT_EXISTS");
+    if (result === "reservation_expired") throw new HttpError(409, "ORDER_RESERVATION_EXPIRED");
     return result;
   },
 
   async cancelOrder(memberId: number, orderId: number) {
     return ordersRepository.cancelOrder(memberId, orderId);
+  },
+
+  expirePendingOrders() {
+    return ordersRepository.releaseExpiredMockOrders();
   },
 
   async getRefundPreview(ownerId: number, orderId: number) {

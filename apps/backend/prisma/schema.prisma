@@ -112,6 +112,34 @@ enum MemberVoucherStatus {
   CANCELLED
 }
 
+enum InventoryOwnerType {
+  SALE_PRODUCT
+  REWARD_PRODUCT
+  DISCOUNT_VOUCHER
+}
+
+enum InventoryMovementType {
+  INITIAL_STOCK
+  MANUAL_IN
+  MANUAL_OUT
+  RETURN_IN
+  ORDER_RESERVE
+  ORDER_RELEASE
+  SALE_OUT
+  REWARD_RESERVE
+  REWARD_CANCEL_RELEASE
+  REWARD_FULFILL_OUT
+  REWARD_LEGACY_RESERVE
+  VOUCHER_REDEMPTION_OUT
+  REDEMPTION_REVERSAL_IN
+  LEGACY_BACKFILL
+}
+
+enum LoyaltyPolicyVersionSource {
+  MERCHANT_PUBLISH
+  LEGACY_BACKFILL
+}
+
 model User {
   id                   Int                   @id @default(autoincrement())
   email                String                @unique @db.VarChar(191)
@@ -130,6 +158,8 @@ model User {
   refundsRequested     OrderRefund[]         @relation("RefundRequester")
   abuseReportsFiled    MerchantAbuseReport[] @relation("AbuseReportReporter")
   abuseReportsReceived MerchantAbuseReport[] @relation("AbuseReportMember")
+  publishedLoyaltyPolicies LoyaltyPolicyVersion[] @relation("LoyaltyPolicyPublisher")
+  inventoryMovements InventoryMovement[] @relation("InventoryMovementActor")
 }
 
 model EmailBlacklistEntry {
@@ -211,6 +241,9 @@ model Merchant {
   loyaltyRule        LoyaltyRule?
   voucherDefinitions VoucherDefinition[]
   abuseReports       MerchantAbuseReport[]
+  policyVersions     LoyaltyPolicyVersion[]
+  inventoryBalances InventoryBalance[]
+  inventoryMovements InventoryMovement[]
 }
 
 model Product {
@@ -227,6 +260,9 @@ model Product {
   merchant    Merchant      @relation(fields: [merchantId], references: [id])
   orderItems  OrderItem[]
   rewardVoucherDefinitions VoucherDefinition[]
+  rewardVoucherSnapshots MemberVoucher[] @relation("RewardProductSnapshot")
+  inventoryBalance InventoryBalance?
+  inventoryMovements InventoryMovement[] @relation("ProductInventoryMovements")
 
   @@index([merchantId, status])
 }
@@ -242,6 +278,10 @@ model Order {
   voucherId        Int?
   earnedPointsExact Decimal?         @db.Decimal(38, 12)
   loyaltySnapshot  Json?
+  loyaltyPolicyVersionId Int?
+  stockReservedAt DateTime?
+  stockReservedUntil DateTime?
+  stockReleasedAt DateTime?
   paidAt           DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -254,10 +294,14 @@ model Order {
   voucherReservation OrderVoucherReservation?
   refund           OrderRefund?
   abuseReports     MerchantAbuseReport[]
+  loyaltyPolicyVersion LoyaltyPolicyVersion? @relation(fields: [loyaltyPolicyVersionId], references: [id], onDelete: Restrict)
+  inventoryMovements InventoryMovement[]
 
   @@index([merchantId, status])
   @@index([memberId, createdAt])
   @@index([voucherId])
+  @@index([merchantId, status, stockReservedUntil])
+  @@index([loyaltyPolicyVersionId])
 }
 
 model PaymentAttempt {
@@ -340,6 +384,25 @@ model LoyaltyRule {
   merchant    Merchant @relation(fields: [merchantId], references: [id])
 }
 
+model LoyaltyPolicyVersion {
+  id            Int                       @id @default(autoincrement())
+  merchantId    Int
+  version       Int
+  vndPerPoint   Int
+  isActive      Boolean
+  tiers         Json
+  source        LoyaltyPolicyVersionSource @default(MERCHANT_PUBLISH)
+  publishedById Int?
+  publishedAt   DateTime                  @default(now())
+  merchant      Merchant                  @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  publishedBy   User?                     @relation("LoyaltyPolicyPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+  orders        Order[]
+
+  @@unique([merchantId, version])
+  @@index([merchantId, publishedAt])
+  @@index([publishedById])
+}
+
 model LoyaltyWallet {
   id                   Int                @id @default(autoincrement())
   membershipId         Int                @unique
@@ -407,6 +470,8 @@ model VoucherDefinition {
   merchant          Merchant        @relation(fields: [merchantId], references: [id])
   rewardProduct     Product?        @relation(fields: [rewardProductId], references: [id], onDelete: Restrict)
   memberVouchers    MemberVoucher[]
+  inventoryBalance InventoryBalance?
+  inventoryMovements InventoryMovement[] @relation("VoucherInventoryMovements")
 
   @@index([merchantId, type, isActive])
   @@index([rewardProductId])
@@ -421,6 +486,8 @@ model MemberVoucher {
   snapshotPointsCost        Int
   snapshotDiscountAmount    Decimal?            @db.Decimal(15, 0)
   snapshotRewardDescription String?             @db.Text
+  rewardProductIdSnapshot   Int?
+  rewardInventoryReserved   Boolean             @default(false)
   status                    MemberVoucherStatus @default(AVAILABLE)
   redeemedAt                DateTime            @default(now())
   usedAt                    DateTime?
@@ -431,9 +498,66 @@ model MemberVoucher {
   pointTransactions         PointTransaction[]
   fulfillment               RewardFulfillment?
   cancellation              RewardCancellation?
+  rewardProduct             Product?             @relation("RewardProductSnapshot", fields: [rewardProductIdSnapshot], references: [id], onDelete: Restrict)
+  inventoryMovements        InventoryMovement[]
 
   @@index([membershipId, status])
   @@index([definitionId])
+}
+
+model InventoryBalance {
+  id                  Int                @id @default(autoincrement())
+  merchantId          Int
+  ownerType           InventoryOwnerType
+  productId           Int?               @unique
+  voucherDefinitionId Int?               @unique
+  onHandQuantity      Int                @default(0)
+  reservedQuantity    Int                @default(0)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  merchant            Merchant           @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  product             Product?           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  voucherDefinition   VoucherDefinition? @relation(fields: [voucherDefinitionId], references: [id], onDelete: Restrict)
+  movements           InventoryMovement[]
+
+  @@index([merchantId, ownerType])
+}
+
+model InventoryMovement {
+  id                  Int                  @id @default(autoincrement())
+  balanceId           Int
+  merchantId          Int
+  ownerType           InventoryOwnerType
+  movementType        InventoryMovementType
+  quantityDelta       Int
+  onHandBefore        Int
+  onHandAfter         Int
+  reservedBefore      Int
+  reservedAfter       Int
+  productId           Int?
+  voucherDefinitionId Int?
+  orderId             Int?
+  memberVoucherId     Int?
+  actorId             Int?
+  reason              String               @db.VarChar(255)
+  eventRef            String               @unique @db.VarChar(191)
+  requestKey          String?              @db.VarChar(128)
+  createdAt           DateTime             @default(now())
+  balance             InventoryBalance     @relation(fields: [balanceId], references: [id], onDelete: Restrict)
+  merchant            Merchant             @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  product             Product?             @relation("ProductInventoryMovements", fields: [productId], references: [id], onDelete: Restrict)
+  voucherDefinition   VoucherDefinition?   @relation("VoucherInventoryMovements", fields: [voucherDefinitionId], references: [id], onDelete: Restrict)
+  order               Order?               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  memberVoucher       MemberVoucher?        @relation(fields: [memberVoucherId], references: [id], onDelete: Restrict)
+  actor               User?                @relation("InventoryMovementActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([merchantId, requestKey])
+  @@index([merchantId, createdAt])
+  @@index([productId, createdAt])
+  @@index([voucherDefinitionId, createdAt])
+  @@index([orderId])
+  @@index([memberVoucherId])
+  @@index([actorId])
 }
 
 model OrderVoucherReservation {

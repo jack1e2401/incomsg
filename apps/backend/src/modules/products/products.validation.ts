@@ -3,7 +3,7 @@ import type { ProductInput, ProductPatch } from "./products.types.js";
 
 const maxId = 2_147_483_647;
 const sharedFields = ["name", "price", "description", "imageUrl"];
-const createFields = [...sharedFields, "kind"];
+const createFields = [...sharedFields, "kind", "initialQuantity"];
 const patchFields = [...sharedFields, "status"];
 
 function readObject(value: unknown): Record<string, unknown> {
@@ -60,11 +60,15 @@ export function readProductInput(value: unknown): ProductInput {
   const kind = "kind" in input ? input.kind : "SALE";
   if (kind !== "SALE" && kind !== "REWARD") throw new HttpError(400, "INVALID_INPUT");
   if (kind === "REWARD" && "price" in input) throw new HttpError(400, "INVALID_INPUT");
+  const initialQuantity = input.initialQuantity === undefined ? 0 : input.initialQuantity;
+  if (typeof initialQuantity !== "number" || !Number.isSafeInteger(initialQuantity) || initialQuantity < 0 || initialQuantity > maxId) {
+    throw new HttpError(400, "INVALID_INPUT");
+  }
 
   const name = readName(input.name);
   const result: ProductInput = kind === "REWARD"
-    ? { name, kind }
-    : { name, kind, price: readPrice(input.price) };
+    ? { name, kind, initialQuantity }
+    : { name, kind, price: readPrice(input.price), initialQuantity };
   if ("description" in input) result.description = readDescription(input.description);
   if ("imageUrl" in input) result.imageUrl = readImageUrl(input.imageUrl);
   return result;

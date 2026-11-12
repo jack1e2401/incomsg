@@ -3,6 +3,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
+import { releaseOrderInventory } from "../inventory/inventory.order.js";
 
 const maxVnpayAmount = 999_999_999_999n;
 
@@ -109,6 +110,8 @@ export const paymentsRepository = {
         });
         if (released.count !== 1) throw new Error("Loyalty reservation is missing");
         if (input.responseCode !== "00" || input.transactionStatus !== "00") {
+          const failedOrder = await tx.order.findUnique({ where: { id: attempt.orderId }, include: { items: true } });
+          if (failedOrder) await releaseOrderInventory(tx, failedOrder, null, "Payment provider confirmed payment failure");
           await tx.orderVoucherReservation.deleteMany({ where: { orderId: attempt.orderId } });
           return { code: "00", message: "Confirm Success" };
         }

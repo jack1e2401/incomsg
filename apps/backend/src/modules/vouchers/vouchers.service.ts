@@ -8,7 +8,7 @@ export const vouchersService = {
   async createDefinition(ownerId: number, input: DefinitionInput) {
     const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
     if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
-    return vouchersRepository.createDefinition(merchant.id, input);
+    return vouchersRepository.createDefinition(merchant.id, ownerId, input);
   },
   async listMerchantDefinitions(ownerId: number) {
     const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
@@ -69,6 +69,7 @@ export const vouchersService = {
     if (result === "already_fulfilled") throw new HttpError(409, "REWARD_ALREADY_FULFILLED");
     if (result === "already_cancelled") throw new HttpError(409, "REWARD_ALREADY_CANCELLED");
     if (result === "invalid_status") throw new HttpError(409, "REWARD_NOT_FULFILLABLE");
+    if (result === "out_of_stock") throw new HttpError(409, "REWARD_OUT_OF_STOCK");
     return result;
   },
   async cancelReward(ownerId: number, memberVoucherId: number, reason: string) {

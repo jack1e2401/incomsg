@@ -110,6 +110,33 @@ before(async () => {
     },
   });
   productAId = product.id;
+  await prisma.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.create({
+      data: {
+        merchantId: merchantA.id,
+        ownerType: "SALE_PRODUCT",
+        productId: product.id,
+        onHandQuantity: 100,
+      },
+    });
+    await tx.inventoryMovement.create({
+      data: {
+        balanceId: balance.id,
+        merchantId: merchantA.id,
+        ownerType: "SALE_PRODUCT",
+        movementType: "INITIAL_STOCK",
+        quantityDelta: 100,
+        onHandBefore: 0,
+        onHandAfter: 100,
+        reservedBefore: 0,
+        reservedAfter: 0,
+        productId: product.id,
+        actorId: ownerA.id,
+        reason: "Integration fixture opening stock",
+        eventRef: `m34-initial-stock-${product.id}-${suffix}`,
+      },
+    });
+  });
 
   merchantAToken = await signAccessToken(ownerA.id);
   merchantBToken = await signAccessToken(ownerB.id);
@@ -130,6 +157,7 @@ after(async () => {
   const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: userIds } }, select: { id: true } });
   const merchantIds = merchants.map((m) => m.id);
 
+  await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.orderRefund.deleteMany({ where: { requestedById: { in: userIds } } });
   await prisma.orderVoucherReservation.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.pointTransaction.deleteMany({ where: { wallet: { membership: { merchantId: { in: merchantIds } } } } });
@@ -139,10 +167,12 @@ after(async () => {
   await prisma.paymentAttempt.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.order.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchantMembership.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.$disconnect();
@@ -418,6 +448,7 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
     title: "20k off",
     pointsCost: 10,
     discountAmount: "20000",
+    initialQuantity: 1,
   });
   const membership = await prisma.merchantMembership.upsert({
     where: { memberId_merchantId: { memberId: memberAId, merchantId: merchantAId } },
@@ -437,9 +468,14 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
   });
 
   // Create product with price 35,000 so total = 15,000 VND -> earns exactly 1.5 points (vndPerPoint=10000, 1.00x)
-  const product15 = await prisma.product.create({
-    data: { merchantId: merchantAId, name: "Juice", price: "35000", kind: "SALE", status: "ACTIVE" },
+  const product15Result = await request("/api/merchant/products", "POST", merchantAToken, {
+    name: "Juice",
+    price: "35000",
+    kind: "SALE",
+    initialQuantity: 1,
   });
+  assert.equal(product15Result.response.status, 201);
+  const product15 = product15Result.json.product;
 
   const orderRes = await request("/api/orders", "POST", memberAToken, {
     items: [{ productId: product15.id, quantity: 1 }],

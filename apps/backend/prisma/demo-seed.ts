@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "../src/lib/prisma.js";
 import { hashPassword } from "../src/lib/password.js";
+import { createInventoryBalance } from "../src/modules/inventory/inventory.persistence.js";
 
 async function main(): Promise<void> {
   const database = new URL(process.env.DATABASE_URL ?? "");
@@ -36,6 +37,10 @@ async function main(): Promise<void> {
     const reward = await tx.product.create({ data: { merchantId: merchant.id, name: "Demo reward gift", price: "0", kind: "REWARD" } });
     const discount = await tx.voucherDefinition.create({ data: { merchantId: merchant.id, title: "Demo discount 1,000 VND", type: "DISCOUNT", pointsCost: 1, discountAmount: "1000" } });
     const rewardDefinition = await tx.voucherDefinition.create({ data: { merchantId: merchant.id, title: "Demo reward gift", type: "REWARD", pointsCost: 1, rewardProductId: reward.id, rewardDescription: "Collect at the demo store" } });
+    await createInventoryBalance(tx, { merchantId: merchant.id, ownerType: "SALE_PRODUCT", productId: small.id }, 100, owner.id);
+    await createInventoryBalance(tx, { merchantId: merchant.id, ownerType: "SALE_PRODUCT", productId: recovery.id }, 100, owner.id);
+    await createInventoryBalance(tx, { merchantId: merchant.id, ownerType: "REWARD_PRODUCT", productId: reward.id }, 2, owner.id);
+    await createInventoryBalance(tx, { merchantId: merchant.id, ownerType: "DISCOUNT_VOUCHER", voucherDefinitionId: discount.id }, 10, owner.id);
     return {
       runId,
       accounts: { admin: { id: admin.id, email: admin.email }, merchant: { id: owner.id, email: owner.email }, member: { id: member.id, email: member.email }, rewardMember: { id: rewardMember.id, email: rewardMember.email } },

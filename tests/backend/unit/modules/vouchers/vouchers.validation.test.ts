@@ -5,7 +5,7 @@ import { readDefinitionInput } from "../../../../../apps/backend/src/modules/vou
 
 test("accepts valid discount and reward definitions with distinct fields", () => {
   assert.deepEqual(readDefinitionInput({ type: "DISCOUNT", title: " Giảm 20k ", pointsCost: 200, discountAmount: "20000" }), {
-    type: "DISCOUNT", title: "Giảm 20k", pointsCost: 200, discountAmount: "20000", rewardDescription: null, rewardProductId: null,
+    type: "DISCOUNT", title: "Giảm 20k", pointsCost: 200, discountAmount: "20000", initialQuantity: 0, rewardDescription: null, rewardProductId: null,
   });
   assert.deepEqual(readDefinitionInput({ type: "REWARD", title: "Ly sứ", pointsCost: 500, rewardProductId: 12 }), {
     type: "REWARD", title: "Ly sứ", pointsCost: 500, discountAmount: null, rewardDescription: null, rewardProductId: 12,

@@ -7,8 +7,8 @@ type ProductDetails = {
 };
 
 export type ProductInput = ProductDetails & (
-  | { kind: "SALE"; price: string }
-  | { kind: "REWARD" }
+  | { kind: "SALE"; price: string; initialQuantity?: number }
+  | { kind: "REWARD"; initialQuantity?: number }
 );
 
 export type ProductPatch = Partial<ProductDetails> & { price?: string; status?: ProductStatus };
@@ -22,4 +22,5 @@ export type ProductDto = {
   price: string;
   kind: ProductKind;
   status: ProductStatus;
+  inventory: { availableQuantity: number; onHandQuantity?: number; reservedQuantity?: number };
 };

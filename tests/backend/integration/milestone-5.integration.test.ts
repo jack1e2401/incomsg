@@ -39,6 +39,8 @@ before(async () => {
   merchantBId = b.id;
   productAId = (await prisma.product.create({ data: { merchantId: a.id, name: "M5 Product", price: "200000" } })).id;
   productBId = (await prisma.product.create({ data: { merchantId: b.id, name: "M5 B Product", price: "100000" } })).id;
+  await seedSaleProductStock(a.id, productAId, ownerA.id);
+  await seedSaleProductStock(b.id, productBId, ownerB.id);
   merchantAToken = await signAccessToken(ownerA.id);
   merchantBToken = await signAccessToken(ownerB.id);
   memberToken = await signAccessToken(member.id);
@@ -53,6 +55,9 @@ before(async () => {
 after(async () => {
   if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
   if (fixtureIds.length === 0) return;
+  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureIds } }, select: { id: true } });
+  const merchantIds = merchants.map((item) => item.id);
+  await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
   const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: fixtureIds } }, select: { id: true } });
   const membershipIds = memberships.map((item) => item.id);
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
@@ -65,28 +70,57 @@ after(async () => {
   await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
-  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureIds } }, select: { id: true } });
-  const merchantIds = merchants.map((item) => item.id);
+  await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
   await prisma.user.deleteMany({ where: { id: { in: fixtureIds } } });
   await prisma.$disconnect();
 });
 
 async function request(path: string, method = "GET", token?: string, body?: unknown, options: { headers?: Record<string, string> } = {}) {
+  const input = body && typeof body === "object" ? body as Record<string, unknown> : undefined;
+  const payload = method === "POST" && path === "/api/merchant/vouchers" && input?.type === "DISCOUNT" && input.initialQuantity === undefined
+    ? { ...input, initialQuantity: 100 }
+    : body;
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...options.headers },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(payload !== undefined ? { "content-type": "application/json" } : {}), ...options.headers },
+    ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
   });
   return { response, json: await response.json() as Record<string, any> };
 }
 
+async function seedSaleProductStock(merchantId: number, productId: number, actorId: number, quantity = 100) {
+  await prisma.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.create({
+      data: { merchantId, ownerType: "SALE_PRODUCT", productId, onHandQuantity: quantity },
+    });
+    await tx.inventoryMovement.create({
+      data: {
+        balanceId: balance.id,
+        merchantId,
+        ownerType: "SALE_PRODUCT",
+        movementType: "INITIAL_STOCK",
+        quantityDelta: quantity,
+        onHandBefore: 0,
+        onHandAfter: quantity,
+        reservedBefore: 0,
+        reservedAfter: 0,
+        productId,
+        actorId,
+        reason: "M5 integration fixture opening stock",
+        eventRef: `m5-initial-stock-${productId}-${randomUUID()}`,
+      },
+    });
+  });
+}
+
 async function createRewardProduct(name: string, token: string): Promise<number> {
-  const result = await request("/api/merchant/products", "POST", token, { kind: "REWARD", name });
+  const result = await request("/api/merchant/products", "POST", token, { kind: "REWARD", name, initialQuantity: 100 });
   assert.equal(result.response.status, 201);
   return result.json.product.id as number;
 }

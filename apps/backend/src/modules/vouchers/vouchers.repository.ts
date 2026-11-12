@@ -7,8 +7,9 @@ import type { CancelRewardResponseDto, DefinitionDto, DefinitionInput, Definitio
 import { snapshotVoucherTerms } from "./vouchers.snapshot.js";
 import { describeWallet } from "../loyalty/loyalty.balance.js";
 import { points } from "../loyalty/loyalty.calculation.js";
+import { createInventoryBalance, moveInventory, readInventoryBalance, toInventorySummary } from "../inventory/inventory.persistence.js";
 
-type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{}>;
+type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{ include: { inventoryBalance: true; rewardProduct: { include: { inventoryBalance: true } } } }>;
 type OwnedVoucherRecord = Prisma.MemberVoucherGetPayload<{ include: { membership: true; definition: true; activeReservation: true } }>;
 type RewardRecord = Prisma.MemberVoucherGetPayload<{
   include: {
@@ -20,8 +21,21 @@ type RewardRecord = Prisma.MemberVoucherGetPayload<{
   };
 }>;
 
-function toDefinitionDto(item: DefinitionRecord): DefinitionDto {
-  return { id: item.id, merchantId: item.merchantId, type: item.type, title: item.title, pointsCost: item.pointsCost, discountAmount: item.discountAmount?.toFixed(0) ?? null, rewardDescription: item.rewardDescription, rewardProductId: item.rewardProductId, isActive: item.isActive };
+function toDefinitionDto(item: DefinitionRecord, issuedQuantity = 0): DefinitionDto {
+  const stock = item.type === "DISCOUNT" ? item.inventoryBalance : item.rewardProduct?.inventoryBalance;
+  return {
+    id: item.id,
+    merchantId: item.merchantId,
+    type: item.type,
+    title: item.title,
+    pointsCost: item.pointsCost,
+    discountAmount: item.discountAmount?.toFixed(0) ?? null,
+    rewardDescription: item.rewardDescription,
+    rewardProductId: item.rewardProductId,
+    isActive: item.isActive,
+    availableQuantity: stock ? stock.onHandQuantity - stock.reservedQuantity : 0,
+    issuedQuantity: item.type === "DISCOUNT" ? issuedQuantity : null,
+  };
 }
 
 function toMemberVoucherDto(item: OwnedVoucherRecord): MemberVoucherDto {
@@ -56,11 +70,33 @@ function toRewardItemDto(item: RewardRecord): RewardItemDto {
 }
 
 const availableRewardProduct = {
-  OR: [{ rewardProductId: null }, { rewardProduct: { is: { kind: "REWARD", status: "ACTIVE" } } }],
+  OR: [
+    { type: "DISCOUNT" },
+    { rewardProductId: null },
+    { rewardProduct: { is: { kind: "REWARD", status: "ACTIVE" } } },
+  ],
 } satisfies Prisma.VoucherDefinitionWhereInput;
 
+const definitionInclude = { inventoryBalance: true, rewardProduct: { include: { inventoryBalance: true } } } as const;
+
+async function definitionDtos(merchantId: number, activeOnly: boolean): Promise<DefinitionDto[]> {
+  const records = await prisma.voucherDefinition.findMany({
+    where: { merchantId, ...(activeOnly ? { isActive: true, ...availableRewardProduct } : {}) },
+    include: definitionInclude,
+    orderBy: { id: "asc" },
+  });
+  const ids = records.filter((item) => item.type === "DISCOUNT").map((item) => item.id);
+  const issued = ids.length ? await prisma.inventoryMovement.groupBy({
+    by: ["voucherDefinitionId"],
+    where: { voucherDefinitionId: { in: ids }, movementType: "VOUCHER_REDEMPTION_OUT" },
+    _sum: { quantityDelta: true },
+  }) : [];
+  const countById = new Map(issued.map((item) => [item.voucherDefinitionId, Math.abs(item._sum.quantityDelta ?? 0)]));
+  return records.map((item) => toDefinitionDto(item, countById.get(item.id) ?? 0));
+}
+
 export const vouchersRepository = {
-  async createDefinition(merchantId: number, input: DefinitionInput): Promise<DefinitionDto> {
+  async createDefinition(merchantId: number, actorId: number, input: DefinitionInput): Promise<DefinitionDto> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const product = input.rewardProductId === null ? null : await tx.product.findFirst({
         where: { id: input.rewardProductId, merchantId, kind: "REWARD", status: "ACTIVE" },
@@ -70,17 +106,27 @@ export const vouchersRepository = {
       const definition = await tx.voucherDefinition.create({
         data: {
           merchantId,
-          ...input,
+          type: input.type,
+          title: input.title,
+          pointsCost: input.pointsCost,
           rewardDescription: product?.name ?? input.rewardDescription,
           discountAmount: input.discountAmount === null ? null : new Prisma.Decimal(input.discountAmount),
+          rewardProductId: input.rewardProductId,
         },
       });
-      return toDefinitionDto(definition);
+      if (input.type === "DISCOUNT") {
+        await createInventoryBalance(tx, {
+          merchantId,
+          ownerType: "DISCOUNT_VOUCHER",
+          voucherDefinitionId: definition.id,
+        }, input.initialQuantity ?? 0, actorId);
+      }
+      const full = await tx.voucherDefinition.findUniqueOrThrow({ where: { id: definition.id }, include: definitionInclude });
+      return toDefinitionDto(full);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
   async listDefinitions(merchantId: number, activeOnly: boolean): Promise<DefinitionDto[]> {
-    const records = await prisma.voucherDefinition.findMany({ where: { merchantId, ...(activeOnly ? { isActive: true, ...availableRewardProduct } : {}) }, orderBy: { id: "asc" } });
-    return records.map(toDefinitionDto);
+    return definitionDtos(merchantId, activeOnly);
   },
   async updateDefinition(merchantId: number, id: number, patch: DefinitionPatch): Promise<DefinitionDto | null> {
     const updated = await prisma.voucherDefinition.updateMany({
@@ -88,7 +134,7 @@ export const vouchersRepository = {
       data: { ...patch, ...(patch.discountAmount !== undefined ? { discountAmount: patch.discountAmount === null ? null : new Prisma.Decimal(patch.discountAmount) } : {}) },
     });
     if (!updated.count) return null;
-    const item = await prisma.voucherDefinition.findUnique({ where: { id } });
+    const item = await prisma.voucherDefinition.findUnique({ where: { id }, include: definitionInclude });
     return item ? toDefinitionDto(item) : null;
   },
   async getDefinition(id: number) {
@@ -145,13 +191,13 @@ export const vouchersRepository = {
         data: { exactBalance: { decrement: definition.pointsCost } },
       });
       if (!debit.count) throw new HttpError(409, "INSUFFICIENT_POINTS");
-      const [updatedWallet, voucher] = await Promise.all([
-        tx.loyaltyWallet.findUniqueOrThrow({ where: { id: wallet.id } }),
-        tx.memberVoucher.create({
+      const voucher = await tx.memberVoucher.create({
           data: {
             membershipId: membership.id,
             definitionId: definition.id,
             status: definition.type === "REWARD" ? "PENDING_FULFILLMENT" : "AVAILABLE",
+            rewardProductIdSnapshot: definition.type === "REWARD" ? definition.rewardProductId : null,
+            rewardInventoryReserved: definition.type === "REWARD",
             ...snapshotVoucherTerms({
               type: definition.type,
               title: definition.title,
@@ -161,8 +207,40 @@ export const vouchersRepository = {
             }),
             snapshotDiscountAmount: definition.discountAmount,
           },
-        }),
-      ]);
+        });
+      try {
+        if (definition.type === "DISCOUNT") {
+          await moveInventory(tx, {
+            merchantId: definition.merchantId,
+            ownerType: "DISCOUNT_VOUCHER",
+            voucherDefinitionId: definition.id,
+            movementType: "VOUCHER_REDEMPTION_OUT",
+            quantity: 1,
+            reason: `Issued discount voucher to member #${memberId}`,
+            eventRef: `voucher-redemption-${voucher.id}`,
+            memberVoucherId: voucher.id,
+            actorId: memberId,
+          });
+        } else if (definition.rewardProductId !== null) {
+          await moveInventory(tx, {
+            merchantId: definition.merchantId,
+            ownerType: "REWARD_PRODUCT",
+            productId: definition.rewardProductId,
+            movementType: "REWARD_RESERVE",
+            quantity: 1,
+            reason: `Reserved for reward claim #${voucher.id}`,
+            eventRef: `reward-reserve-${voucher.id}`,
+            memberVoucherId: voucher.id,
+            actorId: memberId,
+          });
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === "Insufficient available inventory") {
+          throw new HttpError(409, "VOUCHER_OUT_OF_STOCK");
+        }
+        throw error;
+      }
+      const updatedWallet = await tx.loyaltyWallet.findUniqueOrThrow({ where: { id: wallet.id } });
       await tx.pointTransaction.create({
         data: {
           walletId: wallet.id,
@@ -211,7 +289,7 @@ export const vouchersRepository = {
     });
     return records.map(toRewardItemDto);
   },
-  async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<RewardItemDto | "missing" | "already_fulfilled" | "already_cancelled" | "invalid_status"> {
+  async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<RewardItemDto | "missing" | "already_fulfilled" | "already_cancelled" | "invalid_status" | "out_of_stock"> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const voucher = await tx.memberVoucher.findFirst({
         where: { id: memberVoucherId, membership: { merchantId }, snapshotType: "REWARD" },
@@ -227,11 +305,25 @@ export const vouchersRepository = {
       if (voucher.status === "FULFILLED") return "already_fulfilled";
       if (voucher.status === "CANCELLED") return "already_cancelled";
       if (voucher.status !== "PENDING_FULFILLMENT" && voucher.status !== "AVAILABLE") return "invalid_status";
+      if (voucher.rewardProductIdSnapshot !== null && !voucher.rewardInventoryReserved) return "out_of_stock";
       const changed = await tx.memberVoucher.updateMany({
         where: { id: voucher.id, status: { in: ["PENDING_FULFILLMENT", "AVAILABLE"] } },
-        data: { status: "FULFILLED" },
+        data: { status: "FULFILLED", rewardInventoryReserved: false },
       });
       if (changed.count !== 1) return "already_fulfilled";
+      if (voucher.rewardInventoryReserved && voucher.rewardProductIdSnapshot !== null) {
+        await moveInventory(tx, {
+          merchantId,
+          ownerType: "REWARD_PRODUCT",
+          productId: voucher.rewardProductIdSnapshot,
+          movementType: "REWARD_FULFILL_OUT",
+          quantity: 1,
+          reason: `Fulfilled reward claim #${voucher.id}`,
+          eventRef: `reward-fulfill-${voucher.id}`,
+          memberVoucherId: voucher.id,
+          actorId: ownerId,
+        });
+      }
       await tx.rewardFulfillment.create({ data: { voucherId: voucher.id, fulfilledById: ownerId, note: note ?? null } });
       const updated = await tx.memberVoucher.findUniqueOrThrow({
         where: { id: voucher.id },
@@ -270,9 +362,23 @@ export const vouchersRepository = {
 
       const changed = await tx.memberVoucher.updateMany({
         where: { id: voucher.id, status: { in: ["PENDING_FULFILLMENT", "AVAILABLE"] } },
-        data: { status: "CANCELLED" },
+        data: { status: "CANCELLED", rewardInventoryReserved: false },
       });
       if (changed.count !== 1) return "already_cancelled";
+
+      if (voucher.rewardInventoryReserved && voucher.rewardProductIdSnapshot !== null) {
+        await moveInventory(tx, {
+          merchantId,
+          ownerType: "REWARD_PRODUCT",
+          productId: voucher.rewardProductIdSnapshot,
+          movementType: "REWARD_CANCEL_RELEASE",
+          quantity: 1,
+          reason: `Released for cancelled reward claim #${voucher.id}`,
+          eventRef: `reward-cancel-release-${voucher.id}`,
+          memberVoucherId: voucher.id,
+          actorId: ownerId,
+        });
+      }
 
       await tx.rewardCancellation.create({
         data: {

@@ -70,3 +70,69 @@ Cancel chỉ dành cho pending an toàn và giải phóng reservation. VNPay CRE
 chưa đối soát sẽ chặn cancel; VNPay refund giữ pending cho tới provider xác nhận.
 Demo mock refund hoàn thành ngay là mô phỏng thanh toán được backend kiểm soát.
 Không có tích hợp xác nhận VNPay refund thật hoặc partial refund.
+
+## Kịch bản UI: tồn kho, Excel và chính sách đơn
+
+Thời lượng khoảng 8–10 phút. Dùng dữ liệu mới để có tồn kho và ví điểm sạch; không
+chạy `demo:verify` trước khi trình bày vì lệnh đó tạo giao dịch demo qua API.
+
+### Chuẩn bị
+
+Từ npm workspace root, tạo bộ tài khoản mới. Seed chỉ ghi vào MySQL local
+`incomsg-test`, không xóa bộ demo cũ:
+
+```powershell
+npm run demo:seed
+Get-Content "$env:TEMP/incomsg-loyalty-demo.json"
+```
+
+Giữ lại `merchant.id`, `products.small`, `products.recovery`, email các tài khoản
+và password trong JSON. Không gửi hoặc commit file credentials. Mở hai terminal:
+
+```text
+Terminal 1: npm run demo:backend
+Terminal 2: npm run demo:frontend
+```
+
+Mở `http://localhost:5173`. Mọi thanh toán trong demo đều là mock; không dùng
+VNPay. Nếu cổng 3000 hoặc 5173 đang bận, dừng phiên demo cũ trước khi chạy.
+
+### Luồng chính
+
+1. Đăng nhập bằng email `merchant` trong file credentials, mở **Sản phẩm**.
+   Bảng đọc tồn kho thật từ backend; mở dấu ba chấm ở `products.small` →
+   **Điều chỉnh tồn kho** → **Tăng**, nhập `5`, ghi chú `Chuẩn bị demo với sếp`,
+   rồi lưu. Tồn thay đổi từ 100 lên 105.
+2. Tạo file Excel `.xlsx` với hai cột `Mã sản phẩm` và `Số lượng nhập`; thêm một
+   dòng dùng `products.small` làm mã sản phẩm và số lượng `3`. Trên trang Sản phẩm,
+   chọn **Nhập Excel**, kiểm tra preview một dòng rồi xác nhận. Tồn thành 108.
+   Mở dấu ba chấm → **Lịch sử tồn kho** để xem hai lần nhập, người thực hiện và
+   ghi chú. Ghi chú nằm trong chi tiết lịch sử, không phải cột của bảng.
+3. Đăng xuất Merchant, đăng nhập bằng email `member`, mở gian hàng
+   `/member/<merchant.id>`. Thêm `products.recovery` (14.000 VND) vào giỏ và
+   checkout. Trang đơn cho thấy tồn được giữ trong 5 phút. Chọn **Thanh toán
+   (mô phỏng)**: tồn sản phẩm giảm đúng một món và đơn chuyển sang đã thanh toán.
+4. Mở chi tiết đơn ở Member và **Đơn hàng** ở Merchant. Cả hai bên xem cùng
+   snapshot chính sách đã áp dụng: 10.000 VND/điểm và hạng Bronze ×1.00. Tải lại
+   trang vẫn thấy trạng thái đơn và snapshot được lưu từ backend.
+
+### Phần mở rộng nếu còn thời gian
+
+- Member vừa nhận 1,4 điểm từ đơn 14.000 VND. Đổi voucher `Demo discount
+  1,000 VND` giá 1 điểm; tồn lượt phát hành giảm từ 10 xuống 9. Trang Voucher của
+  Merchant cho thấy số lượng backend.
+- Để demo quà vật lý, mua thêm sản phẩm 6.000 VND để đủ 1 điểm, đổi `Demo reward
+  gift`, rồi dùng hàng chờ **Quà đổi thưởng** của Merchant để xác nhận đã trao.
+  Tồn quà giảm từ 2 xuống 1 đúng một lần.
+- Để demo cancel, tạo một đơn mua khác, hủy khi còn chờ thanh toán và kiểm tra
+  số lượng đã giữ được giải phóng.
+
+### Kết quả cần thấy
+
+- Sản phẩm `small`: 108 sau hai lần nhập; nếu làm phần mở rộng mua một món thì
+  còn 107. Sản phẩm `recovery`: 99 sau thanh toán. Quà vật lý còn 1 sau khi trao.
+- Lịch sử ghi mỗi thay đổi, số lượng trước/sau, actor và ghi chú. Payment chỉ
+  hoàn tất sau phản hồi mock từ backend; policy snapshot giống nhau ở Member và
+  Merchant.
+- Sau demo, dừng hai server bằng `Ctrl+C`. Không cần xóa dữ liệu. Lần seed kế
+  tiếp tạo bộ mới và giữ nguyên audit của lần này.

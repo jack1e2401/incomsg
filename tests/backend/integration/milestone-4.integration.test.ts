@@ -60,14 +60,17 @@ after(async () => {
   const membershipIds = memberships.map((membership) => membership.id);
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
   await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((wallet) => wallet.id) } } });
+  await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
   const orders = await prisma.order.findMany({ where: { memberId: { in: memberIds } }, select: { id: true } });
   await prisma.orderItem.deleteMany({ where: { orderId: { in: orders.map((order) => order.id) } } });
   await prisma.order.deleteMany({ where: { id: { in: orders.map((order) => order.id) } } });
+  await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
+  await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: [merchantAId, merchantBId] } } });
   await prisma.merchant.deleteMany({ where: { id: { in: [merchantAId, merchantBId] } } });
   await prisma.user.deleteMany({ where: { email: { in: [merchantAEmail, merchantBEmail, memberEmail, secondMemberEmail] } } });
   await prisma.$disconnect();
@@ -135,7 +138,7 @@ test("member becomes Bronze and earns points only after a paid order at that mer
   assert.equal(beforeB.json.wallet.tier, "UNRANKED");
   assert.equal(beforeB.json.wallet.policy.merchantId, merchantBId);
   assert.equal(beforeB.json.wallet.policy.vndPerPoint, 5000);
-  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "M4 Coffee", price: "200000" });
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "M4 Coffee", price: "200000", initialQuantity: 10 });
   assert.equal(product.response.status, 201);
   const created = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
   assert.equal(created.response.status, 201);
@@ -163,7 +166,7 @@ test("member becomes Bronze and earns points only after a paid order at that mer
 
 test("only one concurrent payment of the same order earns points once", async () => {
   const walletBefore = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken);
-  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Concurrent Same", price: "200000" });
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Concurrent Same", price: "200000", initialQuantity: 10 });
   const order = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
   const responses = await Promise.all([
     request(`/api/orders/${order.json.order.id}/pay`, "POST", memberToken),
@@ -176,8 +179,8 @@ test("only one concurrent payment of the same order earns points once", async ()
 });
 
 test("paid orders keep the tier reached by that order, even after another promotion", async () => {
-  const large = await request("/api/merchant/products", "POST", merchantBToken, { name: "Tier jump", price: "25000000" });
-  const small = await request("/api/merchant/products", "POST", merchantBToken, { name: "Same tier", price: "10000" });
+  const large = await request("/api/merchant/products", "POST", merchantBToken, { name: "Tier jump", price: "25000000", initialQuantity: 10 });
+  const small = await request("/api/merchant/products", "POST", merchantBToken, { name: "Same tier", price: "10000", initialQuantity: 10 });
   assert.equal(large.response.status, 201);
   assert.equal(small.response.status, 201);
 
@@ -202,7 +205,7 @@ test("paid orders keep the tier reached by that order, even after another promot
 
 test("concurrent paid orders serialize the wallet balance and preserve member isolation", async () => {
   const walletBefore = await request(`/api/member/merchants/${merchantAId}/wallet`, "GET", memberToken);
-  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Concurrent Different", price: "200000" });
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Concurrent Different", price: "200000", initialQuantity: 10 });
   const [first, second] = await Promise.all([
     request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 }),
     request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 }),
@@ -228,7 +231,7 @@ test("concurrent paid orders serialize the wallet balance and preserve member is
 });
 
 test("a sub-threshold first paid order creates Bronze and preserves fractional points", async () => {
-  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Under Threshold", price: "9999" });
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Under Threshold", price: "9999", initialQuantity: 10 });
   const order = await request("/api/orders", "POST", secondMemberToken, { productId: product.json.product.id, quantity: 1 });
   const paid = await request(`/api/orders/${order.json.order.id}/pay`, "POST", secondMemberToken);
   assert.equal(paid.response.status, 200);
@@ -241,7 +244,7 @@ test("a sub-threshold first paid order creates Bronze and preserves fractional p
 });
 
 test("rejects a paid order that would overflow the stored points balance", async () => {
-  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Overflow", price: "200000" });
+  const product = await request("/api/merchant/products", "POST", merchantAToken, { name: "Overflow", price: "200000", initialQuantity: 10 });
   const order = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
   const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: (await prisma.user.findUniqueOrThrow({ where: { email: memberEmail } })).id, merchantId: merchantAId } } });
   const wallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
@@ -256,6 +259,7 @@ test("rejects an order whose earned points exceed the stored Int range", async (
   const product = await request("/api/merchant/products", "POST", merchantAToken, {
     name: "Too Many Points",
     price: "999999999999999",
+    initialQuantity: 10,
   });
   const order = await request("/api/orders", "POST", memberToken, { productId: product.json.product.id, quantity: 1 });
   const paid = await request(`/api/orders/${order.json.order.id}/pay`, "POST", memberToken);

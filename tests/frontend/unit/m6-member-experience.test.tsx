@@ -83,6 +83,7 @@ describe("M6 Member Experience", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("renders order cancellation flow when backend allows canCancel", async () => {
@@ -114,9 +115,6 @@ describe("M6 Member Experience", () => {
       const url = String(input);
       if (url.includes("/api/member/orders/42") && (!init || init.method === "GET")) {
         return Response.json({ order: pendingOrder });
-      }
-      if (url.includes("/api/orders/42/payment-status")) {
-        return Response.json({ orderStatus: "PENDING", paymentStatus: null });
       }
       if (url.includes("/api/orders/42/cancel") && init?.method === "POST") {
         return Response.json({ order: cancelledOrder, voucherReleased: false, capacityReleasedExact: "0" });
@@ -168,9 +166,6 @@ describe("M6 Member Experience", () => {
       const url = String(input);
       if (url.includes("/api/member/orders/43")) {
         return Response.json({ order: pendingOrderNoActions });
-      }
-      if (url.includes("/api/orders/43/payment-status")) {
-        return Response.json({ orderStatus: "PENDING", paymentStatus: null });
       }
       return Response.json({ error: "Not found" }, { status: 404 });
     });
@@ -513,7 +508,8 @@ describe("M6 Member Experience", () => {
     });
   });
 
-  it("provides actionable retry for payment status polling error on MemberOrderResult", async () => {
+  it("uses mock payment despite VNPay configuration and confirms from the backend order response", async () => {
+    vi.stubEnv("VITE_PAYMENT_MODE", "vnpay");
     const pendingOrder: OrderDto = {
       id: 88,
       merchantId: 7,
@@ -530,18 +526,22 @@ describe("M6 Member Experience", () => {
       actions: { canCancel: false, canRefund: false, requiresReconciliation: false },
     };
 
-    let pollAttempts = 0;
-    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+    const paidOrder: OrderDto = {
+      ...pendingOrder,
+      status: "PAID",
+      paidAt: "2026-11-10T10:00:00.000Z",
+      earnedPointsExact: "3.5",
+    };
+    const requests: Array<{ url: string; method: string }> = [];
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/api/member/orders/88")) {
+      const method = init?.method ?? "GET";
+      requests.push({ url, method });
+      if (url.includes("/api/member/orders/88") && method === "GET") {
         return Response.json({ order: pendingOrder });
       }
-      if (url.includes("/api/orders/88/payment-status")) {
-        pollAttempts++;
-        if (pollAttempts === 1) {
-          return Response.json({ error: "Mất kết nối cổng thanh toán" }, { status: 503 });
-        }
-        return Response.json({ orderStatus: "PENDING", paymentStatus: "CREATED" });
+      if (url.includes("/api/orders/88/pay") && method === "POST") {
+        return Response.json({ order: paidOrder });
       }
       return Response.json({ error: "Not found" }, { status: 404 });
     });
@@ -549,17 +549,21 @@ describe("M6 Member Experience", () => {
     renderMemberPage("/member/7/orders/88", <MemberOrderResult />);
 
     await waitFor(() => {
-      expect(screen.getByText(/không kiểm tra được trạng thái thanh toán/i)).toBeInTheDocument();
+      expect(screen.getByText("Đơn #88")).toBeInTheDocument();
     });
 
-    const retryButton = screen.getByRole("button", { name: /thử lại trạng thái/i });
-    expect(retryButton).toBeInTheDocument();
+    const mockPayButton = screen.getByRole("button", { name: /thanh toán \(mô phỏng\)/i });
+    expect(mockPayButton).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /vnpay/i })).not.toBeInTheDocument();
 
-    fireEvent.click(retryButton);
+    fireEvent.click(mockPayButton);
 
     await waitFor(() => {
-      expect(pollAttempts).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText("Thanh toán đã được máy chủ xác nhận.")).toBeInTheDocument();
+      expect(screen.getByText("Bạn vừa nhận +3.5 điểm")).toBeInTheDocument();
     });
+    expect(requests.some(({ url }) => url.includes("/payment-status") || url.includes("/payments/vnpay"))).toBe(false);
+    expect(requests).toContainEqual(expect.objectContaining({ url: expect.stringContaining("/api/orders/88/pay"), method: "POST" }));
   });
 
   it("renders actionable empty state linking to storefront when MemberWallet has no transactions", async () => {
@@ -642,42 +646,6 @@ describe("M6 Member Experience", () => {
       const actionLink = screen.getByRole("link", { name: /xem voucher có thể đổi/i });
       expect(actionLink).toBeInTheDocument();
       expect(actionLink).toHaveAttribute("href", "#store-vouchers");
-    });
-  });
-
-  it("renders accessible status announcement and busy label during active VNPay payment polling", async () => {
-    const pendingOrder: OrderDto = {
-      id: 77,
-      merchantId: 7,
-      memberId: 9,
-      status: "PENDING",
-      subtotal: "25000",
-      discountAmount: "0",
-      total: "25000",
-      paidAt: null,
-      items: [{ productId: 1, productName: "Trà tắc", unitPrice: "25000", quantity: 1, lineTotal: "25000" }],
-      earnedPointsExact: null,
-      paymentStatus: null,
-      refundStatus: null,
-      actions: { canCancel: false, canRefund: false, requiresReconciliation: false },
-    };
-
-    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/api/member/orders/77")) {
-        return Response.json({ order: pendingOrder });
-      }
-      if (url.includes("/api/orders/77/payment-status")) {
-        return Response.json({ orderStatus: "PENDING", paymentStatus: "CREATED" });
-      }
-      return Response.json({ error: "Not found" }, { status: 404 });
-    });
-
-    renderMemberPage("/member/7/orders/77", <MemberOrderResult />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Đơn #77")).toBeInTheDocument();
-      expect(screen.getByText(/đang kiểm tra kết quả thanh toán/i)).toBeInTheDocument();
     });
   });
 

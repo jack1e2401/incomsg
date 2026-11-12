@@ -8,12 +8,15 @@ export interface DefinitionInput {
   discountAmount: string | null;
   rewardDescription: string | null;
   rewardProductId: number | null;
+  initialQuantity?: number;
 }
 export type DefinitionPatch = Partial<Pick<DefinitionInput, "title" | "pointsCost" | "discountAmount" | "rewardDescription">> & { isActive?: boolean };
 export interface DefinitionDto extends DefinitionInput {
   id: number;
   merchantId: number;
   isActive: boolean;
+  availableQuantity: number | null;
+  issuedQuantity: number | null;
 }
 export interface MemberVoucherDto {
   id: number;

@@ -4,6 +4,7 @@ import {
   cancelOrder,
   createOrder,
   getMemberOrder,
+  getMerchantOrder,
   getRefundPreview,
   listMemberOrders,
   listMerchantOrders,
@@ -25,5 +26,6 @@ memberOrderReadRoutes.get("/:orderId", getMemberOrder);
 export const merchantOrderReadRoutes = Router();
 merchantOrderReadRoutes.use(authenticate, requireRole("MERCHANT"));
 merchantOrderReadRoutes.get("/", listMerchantOrders);
+merchantOrderReadRoutes.get("/:orderId", getMerchantOrder);
 merchantOrderReadRoutes.get("/:orderId/refund-preview", getRefundPreview);
 merchantOrderReadRoutes.post("/:orderId/refund", refundOrder);

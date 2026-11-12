@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useParams, useOutletContext } from "react-router-dom";
 import { ArrowLeft, Sparkle } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
@@ -17,21 +17,13 @@ import {
 } from "../../components/ui";
 import { ConfirmActionDialog } from "../../components/ui/ConfirmActionDialog";
 import { memberTierLabel } from "./MemberLoyaltyPolicyDialog";
+import { OrderLoyaltyPolicySnapshot } from "../orders/OrderLoyaltyPolicySnapshot";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 const money = (value: string | bigint) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(
     typeof value === "bigint" ? value : Number(value),
   );
-
-type PaymentPollPhase = "initial" | "polling" | "stopped" | "error" | "failed";
-type PaymentPollState = {
-  key: string;
-  count: number;
-  failed: boolean;
-  phase: PaymentPollPhase;
-  error: string;
-};
 
 interface MemberContext {
   merchantId: number;
@@ -126,11 +118,7 @@ function Unavailable({
 export function MemberOrderResult() {
   const { merchantId } = useMerchantContext();
   const { accessToken } = useAuthSession();
-  const paymentMode = import.meta.env.VITE_PAYMENT_MODE === "mock" ? "mock" : "vnpay";
   const orderId = Number(useParams().orderId);
-  const pollKey = `${merchantId}:${orderId}`;
-  const pollKeyRef = useRef(pollKey);
-  pollKeyRef.current = pollKey;
   const orderResource = useResource(
     () => commerce.getMemberOrder(orderId, accessToken!).then(({ order }) => order),
     [orderId, merchantId, accessToken],
@@ -141,117 +129,18 @@ export function MemberOrderResult() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState("");
-  const [pollState, setPollState] = useState<PaymentPollState>(() => ({
-    key: pollKey,
-    count: 0,
-    failed: false,
-    phase: "initial",
-    error: "",
-  }));
-  const currentPollState =
-    pollState.key === pollKey
-      ? pollState
-      : { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" };
-  const pollCount = currentPollState.count;
-  const paymentFailed = currentPollState.failed;
-  const paymentError = currentPollState.error;
-
-  const pollPaymentStatus = useCallback(
-    async (reset = false) => {
-      if (!accessToken) return;
-      const previous =
-        reset || pollState.key !== pollKey
-          ? { key: pollKey, count: 0, failed: false, phase: "initial" as const, error: "" }
-          : pollState;
-      try {
-        const status = await commerce.getPaymentStatus(orderId, accessToken);
-        if (pollKeyRef.current !== pollKey) return;
-        if (status.orderStatus === "PAID") {
-          setPollState({ ...previous, phase: "stopped", error: "" });
-          orderResource.reload();
-        } else if (status.paymentStatus === "FAILED") {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: true,
-            phase: "failed",
-            error: "",
-          });
-        } else if (status.paymentStatus === "CREATED") {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "polling",
-            error: "",
-          });
-        } else {
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "stopped",
-            error: "",
-          });
-        }
-      } catch (reason) {
-        if (pollKeyRef.current === pollKey)
-          setPollState({
-            key: pollKey,
-            count: previous.count + 1,
-            failed: false,
-            phase: "error",
-            error: reason instanceof Error ? reason.message : "Không thể kết nối máy chủ.",
-          });
-      }
-    },
-    [accessToken, orderId, orderResource.reload, pollKey, pollState],
-  );
-
-  useEffect(() => {
-    if (
-      !order ||
-      order.status !== "PENDING" ||
-      paymentMode !== "vnpay" ||
-      (currentPollState.phase !== "initial" && currentPollState.phase !== "polling") ||
-      paymentFailed ||
-      pollCount >= 30
-    )
-      return;
-    const timer = window.setTimeout(
-      () => void pollPaymentStatus(),
-      currentPollState.phase === "initial" ? 0 : 2000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [currentPollState.phase, order, paymentFailed, paymentMode, pollCount, pollPaymentStatus]);
-
   async function pay() {
     if (!order || !accessToken || busy || order.status !== "PENDING") return;
     setBusy(true);
     setActionError("");
     try {
-      if (paymentMode === "mock") {
-        const response = await commerce.payMockOrder(order.id, accessToken);
-        orderResource.setData(response.order);
-      } else {
-        setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
-        const response = await commerce.createVnpayPayment(order.id, accessToken);
-        if ("paymentUrl" in response) {
-          window.location.assign(response.paymentUrl);
-        } else {
-          orderResource.reload();
-        }
-      }
+      const response = await commerce.payMockOrder(order.id, accessToken);
+      orderResource.setData(response.order);
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : "Không thể bắt đầu thanh toán");
     } finally {
       setBusy(false);
     }
-  }
-
-  function checkAgain() {
-    setPollState({ key: pollKey, count: 0, failed: false, phase: "initial", error: "" });
-    void pollPaymentStatus(true);
   }
 
   async function handleCancelOrder() {
@@ -329,53 +218,16 @@ export function MemberOrderResult() {
             <p className="break-words">{actionError}</p>
           </div>
         )}
-        {paymentMode === "vnpay" && paymentError && (
-          <div role="alert" className="mt-4 rounded-xl bg-[#fee2e2] p-3 text-sm text-[#a4473a]">
-            <p className="break-words">Không kiểm tra được trạng thái thanh toán. {paymentError}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 w-full sm:w-auto"
-              onClick={checkAgain}
-            >
-              Thử lại trạng thái
-            </Button>
-          </div>
-        )}
         {order.status === "PENDING" ? (
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a] break-words">
-              {paymentFailed
-                ? "Giao dịch VNPay không thành công. Hãy tạo đơn mới để thử lại."
-                : "Đơn đang chờ thanh toán. Điểm được cập nhật sau khi giao dịch hoàn tất."}
+              Đơn đang chờ thanh toán. Điểm được cập nhật sau khi máy chủ xác nhận thanh toán.
             </p>
-            {paymentMode === "vnpay" && currentPollState.phase === "polling" && !paymentFailed && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="mt-3 flex items-center gap-2 text-xs text-[#97682a]"
-              >
-                <BusyLabel>Đang kiểm tra kết quả thanh toán…</BusyLabel>
-              </div>
-            )}
-            {paymentMode === "vnpay" && pollCount >= 30 && !paymentFailed && (
-              <p role="status" className="mt-2 text-xs text-[#97682a] break-words">
-                Chưa nhận được kết quả sau 30 lần kiểm tra. Bạn có thể kiểm tra lại trạng thái.
-              </p>
-            )}
+            {order.stockReservedUntil && <p className="mt-1 text-xs text-[#97682a]">Sản phẩm được giữ đến {new Date(order.stockReservedUntil).toLocaleTimeString("vi-VN")}.</p>}
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {!paymentFailed && (
-                <Button type="button" className="w-full sm:w-auto" disabled={busy} onClick={pay}>
-                  {busy ? (
-                    <BusyLabel>Đang chuyển thanh toán</BusyLabel>
-                  ) : paymentMode === "vnpay" ? (
-                    "Thanh toán qua VNPay"
-                  ) : (
-                    "Thanh toán thử"
-                  )}
-                </Button>
-              )}
+              <Button type="button" className="w-full sm:w-auto" disabled={busy} onClick={pay}>
+                {busy ? <BusyLabel>Đang xác nhận thanh toán</BusyLabel> : "Thanh toán (mô phỏng)"}
+              </Button>
               {canCancel && (
                 <Button
                   type="button"
@@ -385,16 +237,6 @@ export function MemberOrderResult() {
                   onClick={() => setCancelDialogOpen(true)}
                 >
                   Hủy đơn
-                </Button>
-              )}
-              {paymentFailed && (
-                <Button asChild className="w-full sm:w-auto">
-                  <Link to={`/member/${merchantId}`}>Tạo đơn mới</Link>
-                </Button>
-              )}
-              {paymentMode === "vnpay" && !paymentFailed && !paymentError && (
-                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={checkAgain}>
-                  Kiểm tra lại
                 </Button>
               )}
             </div>
@@ -496,6 +338,11 @@ export function MemberOrderResult() {
                 );
               })}
             </div>
+          </div>
+        )}
+        {order.status !== "PENDING" && order.status !== "CANCELLED" && (
+          <div className="mt-6 border-t border-[#e5ece3] pt-5">
+            <OrderLoyaltyPolicySnapshot policy={order.appliedLoyaltyPolicy ?? null} />
           </div>
         )}
       </Card>

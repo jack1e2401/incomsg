@@ -58,16 +58,21 @@ export async function cleanup() {
     const merchantIds = merchants.map(({ id }) => id);
     await prisma.paymentAttempt.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
     await prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
+    await prisma.rewardCancellation.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
     await prisma.pointTransaction.deleteMany({ where: { wallet: { membershipId: { in: membershipIds } } } });
     await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
+    await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
+    await prisma.redemptionIdempotency.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
     await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
     await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
     await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
+    await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
     await prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } });
   } finally {
@@ -96,11 +101,16 @@ async function createUser(role: "MEMBER" | "MERCHANT") {
 
 export const createMember = () => createUser("MEMBER");
 
-export async function createShop(price = "6000", multiplier = "1.00"): Promise<Shop> {
+export async function createShop(price = "6000", multiplier = "1.00", initialQuantity = 100): Promise<Shop> {
   const owner = await createUser("MERCHANT");
   const shop = await prisma.merchant.create({ data: { ownerId: owner.id, name: "Exact points shop", slug: `exact-${randomUUID()}` } });
-  const product = await prisma.product.create({ data: { merchantId: shop.id, name: "Exact points product", price } });
-  const result = { id: shop.id, token: owner.token, productId: product.id };
+  const createdProduct = await request<{ product: { id: number } }>("/api/merchant/products", "POST", owner.token, {
+    name: "Exact points product",
+    price,
+    initialQuantity,
+  });
+  assert.equal(createdProduct.status, 201);
+  const result = { id: shop.id, token: owner.token, productId: createdProduct.json.product.id };
   await savePolicy(result, { bronzeMultiplier: multiplier });
   return result;
 }

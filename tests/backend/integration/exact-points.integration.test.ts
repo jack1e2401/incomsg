@@ -9,6 +9,18 @@ import {
 before(start);
 after(cleanup);
 
+async function createDiscountDefinition(shop: { token: string }, title: string, discountAmount: string) {
+  const created = await request<{ definition: { id: number } }>("/api/merchant/vouchers", "POST", shop.token, {
+    type: "DISCOUNT",
+    title,
+    pointsCost: 1,
+    discountAmount,
+    initialQuantity: 10,
+  });
+  assert.equal(created.status, 201);
+  return created.json.definition;
+}
+
 test("two 0.6 payments persist 1.2 exact points and expose one spendable point", async () => {
   const shop = await createShop();
   const member = await createMember();
@@ -132,7 +144,7 @@ test("integer redemption keeps carry and lifetime while concurrent redemption ca
   const member = await createMember();
   await pay(shop, member);
   await pay(shop, member);
-  const definition = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "One point", pointsCost: 1, discountAmount: "1000" } });
+  const definition = await createDiscountDefinition(shop, "One point", "1000");
   const redemptions = await Promise.all([0, 1].map((i) => request<{ wallet: Wallet }>(
     `/api/member/vouchers/${definition.id}/redeem`,
     "POST",
@@ -159,7 +171,7 @@ test("redemption requires valid non-empty Idempotency-Key <= 128 chars", async (
   const member = await createMember();
   await pay(shop, member);
   await pay(shop, member);
-  const definition = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "One point", pointsCost: 1, discountAmount: "1000" } });
+  const definition = await createDiscountDefinition(shop, "One point", "1000");
 
   // Missing header
   const missing = await request(`/api/member/vouchers/${definition.id}/redeem`, "POST", member.token);
@@ -184,8 +196,8 @@ test("same-key retry issues one voucher and one ledger debit, while different-de
   await pay(shop, member);
   await pay(shop, member);
   await pay(shop, member); // 1.8 points
-  const def1 = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "Voucher 1", pointsCost: 1, discountAmount: "1000" } });
-  const def2 = await prisma.voucherDefinition.create({ data: { merchantId: shop.id, type: "DISCOUNT", title: "Voucher 2", pointsCost: 1, discountAmount: "2000" } });
+  const def1 = await createDiscountDefinition(shop, "Voucher 1", "1000");
+  const def2 = await createDiscountDefinition(shop, "Voucher 2", "2000");
 
   const stableKey = `idem-key-${randomUUID()}`;
   const first = await request<{ voucher: { id: number; title: string }; wallet: Wallet }>(

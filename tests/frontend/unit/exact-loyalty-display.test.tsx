@@ -327,6 +327,6 @@ describe("MemberWallet and MemberOrderResult exact points display", () => {
     });
 
     expect(screen.queryByText(/Bạn vừa nhận/)).toBeNull();
-    expect(screen.getByText(/Điểm được cập nhật sau khi giao dịch hoàn tất/)).toBeDefined();
+    expect(screen.getByText(/Điểm được cập nhật sau khi máy chủ xác nhận thanh toán/)).toBeDefined();
   });
 });

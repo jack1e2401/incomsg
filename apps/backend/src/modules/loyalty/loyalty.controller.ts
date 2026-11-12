@@ -16,6 +16,11 @@ export const putLoyaltyConfig: RequestHandler = async (request, response) => {
   response.json({ config: await loyaltyService.saveConfig(response.locals.user.id, input) });
 };
 
+export const listLoyaltyPolicyHistory: RequestHandler = async (_request, response) => {
+  const versions = await loyaltyService.listPolicyHistory(response.locals.user.id);
+  response.json({ versions });
+};
+
 export const getMemberWallet: RequestHandler = async (request, response) => {
   const merchantId = readRouteId(request.params.merchantId);
   const wallet = await loyaltyRepository.getWallet(response.locals.user.id, merchantId);

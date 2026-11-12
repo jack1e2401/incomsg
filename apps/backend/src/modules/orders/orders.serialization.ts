@@ -7,7 +7,7 @@ import type {
   RefundStatus,
 } from "../../generated/prisma/enums.js";
 import { describeTransaction, exactPoints } from "../loyalty/loyalty.balance.js";
-import type { OrderActionsDto, OrderDto, OrderLoyaltyEventDto } from "./orders.types.js";
+import type { AppliedLoyaltyPolicyDto, OrderActionsDto, OrderDto, OrderLoyaltyEventDto } from "./orders.types.js";
 
 type OrderRecord = {
   id: number;
@@ -18,6 +18,8 @@ type OrderRecord = {
   discountAmount: Prisma.Decimal;
   total: Prisma.Decimal;
   paidAt: Date | null;
+  stockReservedUntil?: Date | null;
+  loyaltySnapshot?: Prisma.JsonValue | null;
   items: {
     productId: number;
     productName: string;
@@ -39,6 +41,39 @@ type OrderRecord = {
     createdAt: Date;
   }[];
 };
+
+function appliedPolicy(value: Prisma.JsonValue | null | undefined): AppliedLoyaltyPolicyDto | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, Prisma.JsonValue>;
+  const tiers = snapshot.tiers;
+  if (!Array.isArray(tiers) || typeof snapshot.policyVersionId !== "number" || typeof snapshot.policyVersion !== "number" ||
+      typeof snapshot.vndPerPoint !== "number" || typeof snapshot.ruleActive !== "boolean" ||
+      typeof snapshot.tierLevel !== "string" || typeof snapshot.multiplier !== "string" ||
+      typeof snapshot.capturedAt !== "string" || typeof snapshot.policyPublishedAt !== "string") return null;
+  const validLevels = ["BRONZE", "SILVER", "GOLD", "PLATINUM"] as const;
+  const tierLevel = validLevels.find((level) => level === snapshot.tierLevel);
+  if (!tierLevel) return null;
+  const parsedTiers: AppliedLoyaltyPolicyDto["tiers"] = [];
+  for (const tier of tiers) {
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) continue;
+    const item = tier as Record<string, Prisma.JsonValue>;
+    const level = validLevels.find((candidate) => candidate === item.level);
+    if (level && typeof item.minLifetimePoints === "number" && typeof item.multiplier === "string") {
+      parsedTiers.push({ level, minLifetimePoints: item.minLifetimePoints, multiplier: item.multiplier });
+    }
+  }
+  return {
+    policyVersionId: snapshot.policyVersionId,
+    version: snapshot.policyVersion,
+    publishedAt: snapshot.policyPublishedAt,
+    capturedAt: snapshot.capturedAt,
+    vndPerPoint: snapshot.vndPerPoint,
+    isActive: snapshot.ruleActive,
+    tierLevel,
+    multiplier: snapshot.multiplier,
+    tiers: parsedTiers,
+  };
+}
 
 export function isStalePaymentAttempt(attempt: { status: PaymentAttemptStatus; createdAt: Date } | null | undefined): boolean {
   if (!attempt || attempt.status !== "CREATED") return false;
@@ -88,6 +123,8 @@ export function toOrderDto(order: OrderRecord): OrderDto {
     discountAmount: order.discountAmount.toFixed(0),
     total: order.total.toFixed(0),
     paidAt: order.paidAt?.toISOString() ?? null,
+    stockReservedUntil: order.stockReservedUntil?.toISOString() ?? null,
+    appliedLoyaltyPolicy: appliedPolicy(order.loyaltySnapshot),
     earnedPoints: earned?.floor().toNumber() ?? (isPaidOrRefunded ? 0 : null),
     earnedPointsExact: earned === null || earned === undefined ? null : exactPoints(earned),
     items: order.items.map((item) => ({

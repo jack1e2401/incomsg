@@ -36,6 +36,7 @@ before(async () => {
   const merchant = await prisma.merchant.create({ data: { ownerId: owner.id, name: "M6 Shop", slug: `m6-${suffix}` } });
   merchantId = merchant.id;
   productId = (await prisma.product.create({ data: { merchantId, name: "M6 Product", price: "120000" } })).id;
+  await seedInventory({ merchantId, productId, ownerType: "SALE_PRODUCT", actorId: owner.id });
   memberToken = await signAccessToken(member.id);
   otherToken = await signAccessToken(other.id);
   server = app.listen(0, "127.0.0.1");
@@ -48,6 +49,9 @@ before(async () => {
 after(async () => {
   if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
   if (!fixtureUserIds.length) return;
+  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureUserIds } }, select: { id: true } });
+  const merchantIds = merchants.map((item) => item.id);
+  await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.paymentAttempt.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
   const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: fixtureUserIds } }, select: { id: true } });
   const membershipIds = memberships.map((item) => item.id);
@@ -57,14 +61,14 @@ after(async () => {
   await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
   await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
   await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
-  const merchants = await prisma.merchant.findMany({ where: { ownerId: { in: fixtureUserIds } }, select: { id: true } });
-  const merchantIds = merchants.map((item) => item.id);
+  await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.voucherDefinition.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.merchantMembership.deleteMany({ where: { id: { in: membershipIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyTier.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.loyaltyRule.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchant.deleteMany({ where: { id: { in: merchantIds } } });
   await prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } });
   await prisma.$disconnect();
@@ -93,6 +97,46 @@ async function createOrderFor(token: string) {
   const created = await request("/api/orders", "POST", token, { productId, quantity: 1 });
   assert.equal(created.response.status, 201);
   return created.json.order;
+}
+
+async function seedInventory(input: {
+  merchantId: number;
+  ownerType: "SALE_PRODUCT" | "REWARD_PRODUCT" | "DISCOUNT_VOUCHER";
+  productId?: number;
+  voucherDefinitionId?: number;
+  actorId?: number;
+  quantity?: number;
+}) {
+  const quantity = input.quantity ?? 100;
+  await prisma.$transaction(async (tx) => {
+    const balance = await tx.inventoryBalance.create({
+      data: {
+        merchantId: input.merchantId,
+        ownerType: input.ownerType,
+        ...(input.productId === undefined ? {} : { productId: input.productId }),
+        ...(input.voucherDefinitionId === undefined ? {} : { voucherDefinitionId: input.voucherDefinitionId }),
+        onHandQuantity: quantity,
+      },
+    });
+    await tx.inventoryMovement.create({
+      data: {
+        balanceId: balance.id,
+        merchantId: input.merchantId,
+        ownerType: input.ownerType,
+        movementType: "INITIAL_STOCK",
+        quantityDelta: quantity,
+        onHandBefore: 0,
+        onHandAfter: quantity,
+        reservedBefore: 0,
+        reservedAfter: 0,
+        ...(input.productId === undefined ? {} : { productId: input.productId }),
+        ...(input.voucherDefinitionId === undefined ? {} : { voucherDefinitionId: input.voucherDefinitionId }),
+        actorId: input.actorId,
+        reason: "M6 integration fixture opening stock",
+        eventRef: `m6-initial-stock-${randomUUID()}`,
+      },
+    });
+  });
 }
 
 function signedIpn(txnRef: string, amount: string, extra: Record<string, string> = {}) {
@@ -135,11 +179,11 @@ test("creates a server-priced sandbox URL and keeps status scoped to the member"
   assert.equal((await request(`/api/orders/${order.id}/payment-status`, "GET", otherToken)).response.status, 404);
   assert.equal((await request(`/api/orders/${order.id}/pay`, "POST", memberToken)).json.error, "USE_VNPAY_PAYMENT");
   const unsignedReturn = await request(`/api/payments/vnpay/return?vnp_TxnRef=${created.json.txnRef}`);
-  assert.equal(unsignedReturn.response.headers.get("location"), "http://localhost:5173/");
+  assert.equal(unsignedReturn.response.headers.get("location"), `${env.frontendOrigin}/`);
   const signedReturnQuery = signedIpn(created.json.txnRef, "12000000");
   const beforeIpn = await request(`/api/payments/vnpay/return?${signedReturnQuery}`);
   assert.equal(beforeIpn.response.status, 302);
-  assert.equal(beforeIpn.response.headers.get("location"), `http://localhost:5173/member/${merchantId}/orders/${order.id}`);
+  assert.equal(beforeIpn.response.headers.get("location"), `${env.frontendOrigin}/member/${merchantId}/orders/${order.id}`);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
 });
 
@@ -236,6 +280,7 @@ test("successful IPN consumes the discount and awards points on the net total", 
   const definition = await prisma.voucherDefinition.create({ data: {
     merchantId, type: "DISCOUNT", title: "Giảm 20.000", pointsCost: 200, discountAmount: "20000",
   } });
+  await seedInventory({ merchantId, voucherDefinitionId: definition.id, ownerType: "DISCOUNT_VOUCHER" });
   const voucher = await prisma.memberVoucher.create({ data: {
     membershipId: membership.id, definitionId: definition.id, snapshotType: "DISCOUNT",
     snapshotTitle: "Giảm 20.000", snapshotPointsCost: 200, snapshotDiscountAmount: "20000",
@@ -258,6 +303,7 @@ test("zero-total orders finalize internally without a payment attempt", async ()
   const definition = await prisma.voucherDefinition.create({ data: {
     merchantId, type: "DISCOUNT", title: "Giảm 250.000", pointsCost: 1, discountAmount: "250000",
   } });
+  await seedInventory({ merchantId, voucherDefinitionId: definition.id, ownerType: "DISCOUNT_VOUCHER" });
   const voucher = await prisma.memberVoucher.create({ data: {
     membershipId: membership.id, definitionId: definition.id, snapshotType: "DISCOUNT",
     snapshotTitle: "Giảm 250.000", snapshotPointsCost: 1, snapshotDiscountAmount: "250000",
@@ -285,6 +331,7 @@ test("blocks a payment redirect when the configured loyalty award exceeds the da
     update: { vndPerPoint: 1, isActive: true },
   });
   const expensiveProductId = (await prisma.product.create({ data: { merchantId, name: "High point total", price: "3000000000" } })).id;
+  await seedInventory({ merchantId, productId: expensiveProductId, ownerType: "SALE_PRODUCT" });
   const orderResponse = await request("/api/orders", "POST", memberToken, { productId: expensiveProductId, quantity: 1 });
   assert.equal(orderResponse.response.status, 201);
   const result = await request(`/api/orders/${orderResponse.json.order.id}/payments/vnpay`, "POST", memberToken);
@@ -418,6 +465,7 @@ test("legacy fallback settlement awards the exact positive reservation despite r
   fixtureUserIds.push(user.id);
   const token = await signAccessToken(user.id);
   const threePointProductId = (await prisma.product.create({ data: { merchantId, name: "Legacy fallback 3 base points", price: "30000" } })).id;
+  await seedInventory({ merchantId, productId: threePointProductId, ownerType: "SALE_PRODUCT" });
   await prisma.loyaltyRule.upsert({
     where: { merchantId },
     create: { merchantId, vndPerPoint: 10000, isActive: true },
@@ -465,6 +513,7 @@ test("inactive zero-reserve legacy fallback completes without awarding reserved 
   fixtureUserIds.push(user.id);
   const token = await signAccessToken(user.id);
   const product = await prisma.product.create({ data: { merchantId, name: "Inactive legacy points", price: "30000" } });
+  await seedInventory({ merchantId, productId: product.id, ownerType: "SALE_PRODUCT" });
   const orderResponse = await request("/api/orders", "POST", token, { productId: product.id, quantity: 1 });
   assert.equal(orderResponse.response.status, 201);
   const orderId = orderResponse.json.order.id as number;
