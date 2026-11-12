@@ -7,6 +7,7 @@
     "apps/backend"
   ],
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "dev:frontend": "npm run dev --workspace apps/frontend",
     "dev:backend": "npm run dev --workspace apps/backend",
     "build": "npm run build --workspaces",

@@ -10,6 +10,11 @@ npm run demo:backend
 npm run demo:frontend
 ```
 
+Với demo này, chỉ khởi động API bằng `npm run demo:backend`. Không dùng
+`npm run dev:backend`: lệnh đó nạp trực tiếp `apps/backend/.env` và có thể kết nối
+sang database khác. `demo:backend` khóa đích về MySQL local `incomsg-test` và mock
+payment.
+
 Mở frontend tại `http://localhost:5173`. Hai lệnh server chạy ở hai terminal.
 `demo:frontend` đặt HTTP mode và mock payment qua backend; kết quả điểm và đơn
 được ghi trong MySQL. `demo:seed` tạo namespace tài khoản/cửa hàng mới, không xóa
