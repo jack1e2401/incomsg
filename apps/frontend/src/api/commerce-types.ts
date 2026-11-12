@@ -437,3 +437,63 @@ export interface AdminAuditLogsQuery {
   cursor?: string | number;
   limit?: number;
 }
+
+export interface CreateAbuseReportInput {
+  memberId: number;
+  orderId?: number;
+  reason: string;
+}
+
+export interface MerchantAbuseReportDto {
+  id: number;
+  merchantId: number;
+  reporterId: number;
+  memberId: number;
+  orderId: number | null;
+  reason: string;
+  createdAt: string;
+}
+
+export interface CreateAbuseReportResponse {
+  report: MerchantAbuseReportDto;
+}
+
+export interface AdminAbuseReportDto {
+  id: number;
+  merchantId: number;
+  reporterId: number;
+  memberId: number;
+  orderId: number | null;
+  reason: string;
+  createdAt: string;
+  merchant: {
+    id: number;
+    name: string;
+  };
+  reporter: {
+    id: number;
+    email: string;
+  };
+  member: {
+    id: number;
+    email: string;
+  };
+  order: {
+    id: number;
+    status: string;
+    total: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface AdminAbuseReportsResponse {
+  items: AdminAbuseReportDto[];
+  nextCursor: string | null;
+}
+
+export interface AdminAbuseReportsQuery {
+  merchantId?: number;
+  memberId?: number;
+  cursor?: string | number;
+  limit?: number;
+}

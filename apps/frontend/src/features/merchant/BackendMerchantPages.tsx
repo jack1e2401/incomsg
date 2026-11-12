@@ -36,10 +36,12 @@ import { MerchantRevenueChart } from "./MerchantRevenueChart";
 import { MerchantStoreDetails } from "./MerchantStoreDetails";
 import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
+import { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "./MerchantRewardQueue";
 
 export { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 export { MerchantRefundDialog } from "./MerchantRefundDialog";
+export { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 export { MerchantRewardQueue } from "./MerchantRewardQueue";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
@@ -459,6 +461,7 @@ function MerchantPurchaseOrders() {
   const token = useToken();
   const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<OrderDto | null>(null);
+  const [selectedOrderForReport, setSelectedOrderForReport] = useState<(OrderDto & { memberEmail?: string }) | null>(null);
   const [notice, setNotice] = useState("");
 
   return (
@@ -534,17 +537,26 @@ function MerchantPurchaseOrders() {
                         +{order.earnedPointsExact ?? order.earnedPoints?.toLocaleString("vi-VN")} điểm
                       </p>
                     )}
-                  {canRefund && (
+                  <div className="mt-3 flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+                    {canRefund && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedOrderForRefund(order)}
+                      >
+                        Hoàn tiền
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="mt-3"
-                      onClick={() => setSelectedOrderForRefund(order)}
+                      onClick={() => setSelectedOrderForReport(order)}
                     >
-                      Hoàn tiền
+                      Báo cáo vi phạm
                     </Button>
-                  )}
+                  </div>
                 </div>
               </Card>
             );
@@ -559,6 +571,14 @@ function MerchantPurchaseOrders() {
           resource.setData((current) =>
             (current ?? []).map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o)),
           );
+          setNotice(msg);
+        }}
+      />
+
+      <MerchantAbuseReportDialog
+        order={selectedOrderForReport}
+        onClose={() => setSelectedOrderForReport(null)}
+        onReportSubmitted={(_report, msg) => {
           setNotice(msg);
         }}
       />

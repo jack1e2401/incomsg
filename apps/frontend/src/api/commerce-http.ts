@@ -46,6 +46,10 @@ import type {
   AdminBlacklistEntryResponse,
   AdminAuditLogsQuery,
   AdminAuditLogsResponse,
+  CreateAbuseReportInput,
+  CreateAbuseReportResponse,
+  AdminAbuseReportsQuery,
+  AdminAbuseReportsResponse,
 } from "./commerce-types";
 
 export function translateApiError(code: string): string {
@@ -56,6 +60,8 @@ export function translateApiError(code: string): string {
     MERCHANT_NOT_ACTIVE: "Cửa hàng đã bị tạm ngưng hoạt động.",
     UNAUTHORIZED: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
     FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
+    MEMBER_NOT_FOUND: "Không tìm thấy thành viên trong cửa hàng.",
+    ORDER_NOT_FOUND: "Không tìm thấy đơn hàng tương ứng.",
   };
   return translations[code] ?? code;
 }
@@ -380,6 +386,23 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
       const queryString = searchParams.toString();
       const path = `/api/admin/audit-logs${queryString ? `?${queryString}` : ""}`;
       return requestJson<AdminAuditLogsResponse>(fetcher, baseUrl, path, { token });
+    },
+    createMerchantAbuseReport(body: CreateAbuseReportInput, token: string) {
+      return requestJson<CreateAbuseReportResponse>(fetcher, baseUrl, "/api/merchant/abuse-reports", {
+        method: "POST",
+        token,
+        body,
+      });
+    },
+    listAdminAbuseReports(params: AdminAbuseReportsQuery, token: string) {
+      const searchParams = new URLSearchParams();
+      if (params.merchantId !== undefined && params.merchantId !== null) searchParams.set("merchantId", String(params.merchantId));
+      if (params.memberId !== undefined && params.memberId !== null) searchParams.set("memberId", String(params.memberId));
+      if (params.cursor !== undefined && params.cursor !== null) searchParams.set("cursor", String(params.cursor));
+      if (params.limit !== undefined && params.limit !== null) searchParams.set("limit", String(params.limit));
+      const queryString = searchParams.toString();
+      const path = `/api/admin/abuse-reports${queryString ? `?${queryString}` : ""}`;
+      return requestJson<AdminAbuseReportsResponse>(fetcher, baseUrl, path, { token });
     },
   };
 }
