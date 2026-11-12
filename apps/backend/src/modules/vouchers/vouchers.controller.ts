@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { HttpError } from "../../lib/http-error.js";
 import { vouchersService } from "./vouchers.service.js";
-import { readDefinitionInput, readDefinitionPatch, readFulfillmentNote, readIdempotencyKey } from "./vouchers.validation.js";
+import { readDefinitionInput, readDefinitionPatch, readFulfillmentNote, readIdempotencyKey, readCancellationReason } from "./vouchers.validation.js";
 
 function readId(value: string): number {
   if (!/^[1-9][0-9]*$/.test(value)) throw new HttpError(400, "INVALID_INPUT");
@@ -46,4 +46,13 @@ export const listRewardFulfillments: RequestHandler = async (_request, response)
 export const fulfillReward: RequestHandler = async (request, response) => {
   const reward = await vouchersService.fulfillReward(response.locals.user.id, readId(param(request.params.memberVoucherId)), readFulfillmentNote(request.body));
   response.json({ reward });
+};
+export const cancelReward: RequestHandler = async (request, response) => {
+  const reason = readCancellationReason(request.body);
+  const result = await vouchersService.cancelReward(
+    response.locals.user.id,
+    readId(param(request.params.memberVoucherId)),
+    reason,
+  );
+  response.json(result);
 };

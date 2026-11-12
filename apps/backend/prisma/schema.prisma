@@ -85,8 +85,10 @@ enum VoucherType {
 
 enum MemberVoucherStatus {
   AVAILABLE
+  PENDING_FULFILLMENT
   USED
   FULFILLED
+  CANCELLED
 }
 
 model User {
@@ -103,6 +105,7 @@ model User {
   memberships          MerchantMembership[]  @relation("MemberMemberships")
   orders               Order[]               @relation("MemberOrders")
   fulfilledRewards     RewardFulfillment[]   @relation("RewardFulfiller")
+  cancelledRewards     RewardCancellation[]  @relation("RewardCanceller")
   refundsRequested     OrderRefund[]         @relation("RefundRequester")
 }
 
@@ -354,6 +357,7 @@ model MemberVoucher {
   activeReservation         OrderVoucherReservation?
   pointTransactions         PointTransaction[]
   fulfillment               RewardFulfillment?
+  cancellation              RewardCancellation?
 
   @@index([membershipId, status])
   @@index([definitionId])
@@ -392,4 +396,16 @@ model RewardFulfillment {
   note          String?       @db.VarChar(255)
   voucher       MemberVoucher @relation(fields: [voucherId], references: [id])
   fulfilledBy   User          @relation("RewardFulfiller", fields: [fulfilledById], references: [id])
+}
+
+model RewardCancellation {
+  id            Int           @id @default(autoincrement())
+  voucherId     Int           @unique
+  cancelledById Int
+  cancelledAt   DateTime      @default(now())
+  reason        String        @db.VarChar(255)
+  voucher       MemberVoucher @relation(fields: [voucherId], references: [id])
+  cancelledBy   User          @relation("RewardCanceller", fields: [cancelledById], references: [id])
+
+  @@index([cancelledById])
 }

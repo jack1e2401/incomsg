@@ -73,3 +73,12 @@ export function readFulfillmentNote(value: unknown): string | undefined {
   if (typeof input.note !== "string" || input.note.length > 255) invalid();
   return input.note.trim() || undefined;
 }
+
+export function readCancellationReason(value: unknown): string {
+  if (value === undefined || value === null) return "Merchant cancelled reward";
+  const input = record(value);
+  if (Object.keys(input).some((key) => key !== "reason")) invalid();
+  if (input.reason === undefined || input.reason === null) return "Merchant cancelled reward";
+  if (typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 255) invalid();
+  return input.reason.trim();
+}
