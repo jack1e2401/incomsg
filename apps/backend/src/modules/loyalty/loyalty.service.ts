@@ -2,6 +2,13 @@ import { HttpError } from "../../lib/http-error.js";
 import { merchantRepository } from "../merchant/merchant.repository.js";
 import { loyaltyRepository } from "./loyalty.repository.js";
 import type { LoyaltyConfigInput } from "./loyalty.types.js";
+import {
+  previewMemberEarning,
+  previewMerchantPolicy,
+  listMerchantTransactions,
+  type MerchantTransactionFilters,
+} from "./loyalty.read.js";
+import type { TierLevel } from "./loyalty.calculation.js";
 
 export const loyaltyService = {
   async getConfig(ownerId: number) {
@@ -14,5 +21,21 @@ export const loyaltyService = {
     const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
     if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
     return loyaltyRepository.saveConfig(merchant.id, input);
+  },
+
+  async previewMemberEarning(memberId: number, merchantId: number, netOrderAmountVnd: string) {
+    return previewMemberEarning(memberId, merchantId, netOrderAmountVnd);
+  },
+
+  async previewMerchantPolicy(ownerId: number, input: { netOrderAmountVnd: string; tierLevel?: TierLevel }) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return previewMerchantPolicy(merchant.id, input);
+  },
+
+  async listMerchantTransactions(ownerId: number, filters: MerchantTransactionFilters) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return listMerchantTransactions(merchant.id, filters);
   },
 };

@@ -34,6 +34,16 @@ enum ProductKind {
 enum OrderStatus {
   PENDING
   PAID
+  FAILED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum RefundStatus {
+  PENDING_PROVIDER
+  COMPLETED
+  FAILED
 }
 
 enum PaymentAttemptStatus {
@@ -93,6 +103,7 @@ model User {
   memberships          MerchantMembership[]  @relation("MemberMemberships")
   orders               Order[]               @relation("MemberOrders")
   fulfilledRewards     RewardFulfillment[]   @relation("RewardFulfiller")
+  refundsRequested     OrderRefund[]         @relation("RefundRequester")
 }
 
 model MerchantApplication {
@@ -153,7 +164,7 @@ model Order {
   subtotal         Decimal           @db.Decimal(15, 0)
   discountAmount   Decimal           @default(0) @db.Decimal(15, 0)
   total            Decimal           @db.Decimal(15, 0)
-  voucherId        Int?              @unique
+  voucherId        Int?
   earnedPointsExact Decimal?         @db.Decimal(38, 12)
   loyaltySnapshot  Json?
   paidAt           DateTime?
@@ -165,9 +176,12 @@ model Order {
   items            OrderItem[]
   pointTransactions PointTransaction[]
   paymentAttempt   PaymentAttempt?
+  voucherReservation OrderVoucherReservation?
+  refund           OrderRefund?
 
   @@index([merchantId, status])
   @@index([memberId, createdAt])
+  @@index([voucherId])
 }
 
 model PaymentAttempt {
@@ -336,12 +350,38 @@ model MemberVoucher {
   usedAt                    DateTime?
   membership                MerchantMembership  @relation(fields: [membershipId], references: [id])
   definition                VoucherDefinition   @relation(fields: [definitionId], references: [id])
-  appliedOrder              Order?              @relation("AppliedVoucher")
+  appliedOrders             Order[]             @relation("AppliedVoucher")
+  activeReservation         OrderVoucherReservation?
   pointTransactions         PointTransaction[]
   fulfillment               RewardFulfillment?
 
   @@index([membershipId, status])
   @@index([definitionId])
+}
+
+model OrderVoucherReservation {
+  id        Int           @id @default(autoincrement())
+  voucherId Int           @unique
+  orderId   Int           @unique
+  createdAt DateTime      @default(now())
+  voucher   MemberVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model OrderRefund {
+  id                Int          @id @default(autoincrement())
+  orderId           Int          @unique
+  status            RefundStatus @default(PENDING_PROVIDER)
+  amountVnd         Decimal      @db.Decimal(15, 0)
+  reason            String       @db.VarChar(255)
+  requestedById     Int
+  requestedAt       DateTime     @default(now())
+  completedAt       DateTime?
+  providerReference String?      @db.VarChar(191)
+  order             Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedBy       User         @relation("RefundRequester", fields: [requestedById], references: [id])
+
+  @@index([requestedById])
 }
 
 model RewardFulfillment {

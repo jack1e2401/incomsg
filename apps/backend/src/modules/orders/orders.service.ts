@@ -66,4 +66,23 @@ export const ordersService = {
     if (result === "vnpay_attempt_exists") throw new HttpError(409, "VNPAY_ATTEMPT_EXISTS");
     return result;
   },
+
+  async cancelOrder(memberId: number, orderId: number) {
+    return ordersRepository.cancelOrder(memberId, orderId);
+  },
+
+  async getRefundPreview(ownerId: number, orderId: number) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return ordersRepository.getRefundPreview(merchant.id, orderId);
+  },
+
+  async refundOrder(ownerId: number, orderId: number, reason: unknown) {
+    if (!reason || typeof reason !== "string" || !reason.trim() || reason.trim().length > 255) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    return ordersRepository.refundOrder(merchant.id, ownerId, orderId, reason.trim());
+  },
 };

@@ -109,6 +109,7 @@ export const paymentsRepository = {
         });
         if (released.count !== 1) throw new Error("Loyalty reservation is missing");
         if (input.responseCode !== "00" || input.transactionStatus !== "00") {
+          await tx.orderVoucherReservation.deleteMany({ where: { orderId: attempt.orderId } });
           return { code: "00", message: "Confirm Success" };
         }
         const paid = await loyaltyRepository.completePaidOrder(tx, attempt.orderId, attempt.order.memberId, {
