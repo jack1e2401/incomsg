@@ -13,6 +13,9 @@ const adminLinks = [
   ["/admin", "Tổng quan"],
   ["/admin/applications", "Duyệt cửa hàng"],
   ["/admin/merchants", "Cửa hàng"],
+  ["/admin/users", "Người dùng"],
+  ["/admin/blacklist", "Danh sách đen"],
+  ["/admin/audit-logs", "Nhật ký kiểm toán"],
 ];
 const merchantLinks = [
   ["/merchant", "Tổng quan"],
