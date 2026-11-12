@@ -3,17 +3,56 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
-import type { DefinitionDto, DefinitionInput, DefinitionPatch, MemberVoucherDto } from "./vouchers.types.js";
+import type { CancelRewardResponseDto, DefinitionDto, DefinitionInput, DefinitionPatch, MemberVoucherDto, RewardItemDto } from "./vouchers.types.js";
 import { snapshotVoucherTerms } from "./vouchers.snapshot.js";
 import { describeWallet } from "../loyalty/loyalty.balance.js";
+import { points } from "../loyalty/loyalty.calculation.js";
 
 type DefinitionRecord = Prisma.VoucherDefinitionGetPayload<{}>;
 type OwnedVoucherRecord = Prisma.MemberVoucherGetPayload<{ include: { membership: true; definition: true; activeReservation: true } }>;
+type RewardRecord = Prisma.MemberVoucherGetPayload<{
+  include: {
+    membership: { include: { member: { select: { email: true } } } };
+    definition: true;
+    activeReservation: true;
+    fulfillment: true;
+    cancellation: true;
+  };
+}>;
+
 function toDefinitionDto(item: DefinitionRecord): DefinitionDto {
   return { id: item.id, merchantId: item.merchantId, type: item.type, title: item.title, pointsCost: item.pointsCost, discountAmount: item.discountAmount?.toFixed(0) ?? null, rewardDescription: item.rewardDescription, rewardProductId: item.rewardProductId, isActive: item.isActive };
 }
+
 function toMemberVoucherDto(item: OwnedVoucherRecord): MemberVoucherDto {
   return { id: item.id, definitionId: item.definitionId, merchantId: item.membership.merchantId, memberId: item.membership.memberId, title: item.snapshotTitle, type: item.snapshotType, status: item.status, reserved: item.status === "AVAILABLE" && Boolean(item.activeReservation), pointsCost: item.snapshotPointsCost, discountAmount: item.snapshotDiscountAmount?.toFixed(0) ?? null, rewardDescription: item.snapshotRewardDescription, redeemedAt: item.redeemedAt.toISOString(), usedAt: item.usedAt?.toISOString() ?? null };
+}
+
+function toRewardItemDto(item: RewardRecord): RewardItemDto {
+  return {
+    id: item.id,
+    memberVoucherId: item.id,
+    definitionId: item.definitionId,
+    merchantId: item.membership.merchantId,
+    memberId: item.membership.memberId,
+    memberEmail: item.membership.member.email,
+    title: item.snapshotTitle,
+    type: item.snapshotType,
+    status: item.status,
+    reserved: item.status === "AVAILABLE" && Boolean(item.activeReservation),
+    pointsCost: item.snapshotPointsCost,
+    discountAmount: item.snapshotDiscountAmount?.toFixed(0) ?? null,
+    rewardDescription: item.snapshotRewardDescription,
+    redeemedAt: item.redeemedAt.toISOString(),
+    requestedAt: item.redeemedAt.toISOString(),
+    usedAt: item.usedAt?.toISOString() ?? null,
+    fulfilledAt: item.fulfillment?.fulfilledAt?.toISOString() ?? null,
+    fulfilledById: item.fulfillment?.fulfilledById ?? null,
+    note: item.fulfillment?.note ?? null,
+    cancelledAt: item.cancellation?.cancelledAt?.toISOString() ?? null,
+    cancelledById: item.cancellation?.cancelledById ?? null,
+    cancellationReason: item.cancellation?.reason ?? null,
+  };
 }
 
 const availableRewardProduct = {
@@ -112,6 +151,7 @@ export const vouchersRepository = {
           data: {
             membershipId: membership.id,
             definitionId: definition.id,
+            status: definition.type === "REWARD" ? "PENDING_FULFILLMENT" : "AVAILABLE",
             ...snapshotVoucherTerms({
               type: definition.type,
               title: definition.title,
@@ -153,27 +193,146 @@ export const vouchersRepository = {
       return { voucher: toMemberVoucherDto(fullVoucher), wallet: describeWallet(updatedWallet) };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   },
-  async listRewardFulfillments(merchantId: number): Promise<MemberVoucherDto[]> {
+  async listRewardFulfillments(merchantId: number): Promise<RewardItemDto[]> {
     const records = await prisma.memberVoucher.findMany({
-      where: { membership: { merchantId }, snapshotType: "REWARD", status: { in: ["AVAILABLE", "FULFILLED"] } },
-      include: { membership: true, definition: true, activeReservation: true },
+      where: {
+        membership: { merchantId },
+        snapshotType: "REWARD",
+        status: { in: ["PENDING_FULFILLMENT", "AVAILABLE", "FULFILLED", "CANCELLED"] },
+      },
+      include: {
+        membership: { include: { member: { select: { email: true } } } },
+        definition: true,
+        activeReservation: true,
+        fulfillment: true,
+        cancellation: true,
+      },
       orderBy: [{ redeemedAt: "asc" }, { id: "asc" }],
     });
-    return records.map(toMemberVoucherDto);
+    return records.map(toRewardItemDto);
   },
-  async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<MemberVoucherDto | "missing" | "already_fulfilled"> {
+  async fulfillReward(merchantId: number, ownerId: number, memberVoucherId: number, note?: string): Promise<RewardItemDto | "missing" | "already_fulfilled" | "already_cancelled" | "invalid_status"> {
     return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const voucher = await tx.memberVoucher.findFirst({
         where: { id: memberVoucherId, membership: { merchantId }, snapshotType: "REWARD" },
-        include: { membership: true, definition: true, activeReservation: true },
+        include: {
+          membership: { include: { member: { select: { email: true } } } },
+          definition: true,
+          activeReservation: true,
+          fulfillment: true,
+          cancellation: true,
+        },
       });
       if (!voucher) return "missing";
-      if (voucher.status !== "AVAILABLE") return "already_fulfilled";
-      const changed = await tx.memberVoucher.updateMany({ where: { id: voucher.id, status: "AVAILABLE" }, data: { status: "FULFILLED" } });
+      if (voucher.status === "FULFILLED") return "already_fulfilled";
+      if (voucher.status === "CANCELLED") return "already_cancelled";
+      if (voucher.status !== "PENDING_FULFILLMENT" && voucher.status !== "AVAILABLE") return "invalid_status";
+      const changed = await tx.memberVoucher.updateMany({
+        where: { id: voucher.id, status: { in: ["PENDING_FULFILLMENT", "AVAILABLE"] } },
+        data: { status: "FULFILLED" },
+      });
       if (changed.count !== 1) return "already_fulfilled";
       await tx.rewardFulfillment.create({ data: { voucherId: voucher.id, fulfilledById: ownerId, note: note ?? null } });
-      const updated = await tx.memberVoucher.findUniqueOrThrow({ where: { id: voucher.id }, include: { membership: true, definition: true, activeReservation: true } });
-      return toMemberVoucherDto(updated);
+      const updated = await tx.memberVoucher.findUniqueOrThrow({
+        where: { id: voucher.id },
+        include: {
+          membership: { include: { member: { select: { email: true } } } },
+          definition: true,
+          activeReservation: true,
+          fulfillment: true,
+          cancellation: true,
+        },
+      });
+      return toRewardItemDto(updated);
+    }, { isolationLevel: "Serializable" }));
+  },
+  async cancelReward(
+    merchantId: number,
+    ownerId: number,
+    memberVoucherId: number,
+    reason: string,
+  ): Promise<CancelRewardResponseDto | "missing" | "already_fulfilled" | "already_cancelled" | "invalid_status"> {
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const voucher = await tx.memberVoucher.findFirst({
+        where: { id: memberVoucherId, membership: { merchantId }, snapshotType: "REWARD" },
+        include: {
+          membership: { include: { member: { select: { email: true } } } },
+          definition: true,
+          activeReservation: true,
+          fulfillment: true,
+          cancellation: true,
+        },
+      });
+      if (!voucher) return "missing";
+      if (voucher.status === "FULFILLED") return "already_fulfilled";
+      if (voucher.status === "CANCELLED") return "already_cancelled";
+      if (voucher.status !== "PENDING_FULFILLMENT" && voucher.status !== "AVAILABLE") return "invalid_status";
+
+      const changed = await tx.memberVoucher.updateMany({
+        where: { id: voucher.id, status: { in: ["PENDING_FULFILLMENT", "AVAILABLE"] } },
+        data: { status: "CANCELLED" },
+      });
+      if (changed.count !== 1) return "already_cancelled";
+
+      await tx.rewardCancellation.create({
+        data: {
+          voucherId: voucher.id,
+          cancelledById: ownerId,
+          reason,
+        },
+      });
+
+      const wallet = await tx.loyaltyWallet.findUniqueOrThrow({
+        where: { membershipId: voucher.membershipId },
+      });
+
+      const pointsRefund = points(voucher.snapshotPointsCost);
+      const balanceAfter = points(wallet.exactBalance).plus(pointsRefund);
+
+      const updateWallet = await tx.loyaltyWallet.updateMany({
+        where: { id: wallet.id, exactBalance: wallet.exactBalance },
+        data: {
+          exactBalance: { increment: pointsRefund },
+        },
+      });
+      if (updateWallet.count !== 1) {
+        throw Object.assign(new Error("Concurrent wallet update"), { code: "P2034" });
+      }
+
+      await tx.pointTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "REDEMPTION_REVERSAL",
+          delta: pointsRefund,
+          balanceAfter,
+          reason,
+          eventRef: `reward-cancellation-${voucher.id}`,
+          source: "MERCHANT_REWARD_CANCELLATION",
+          actorId: ownerId,
+          memberVoucherId: voucher.id,
+        },
+      });
+
+      const [updatedVoucher, updatedWallet] = await Promise.all([
+        tx.memberVoucher.findUniqueOrThrow({
+          where: { id: voucher.id },
+          include: {
+            membership: { include: { member: { select: { email: true } } } },
+            definition: true,
+            activeReservation: true,
+            fulfillment: true,
+            cancellation: true,
+          },
+        }),
+        tx.loyaltyWallet.findUniqueOrThrow({ where: { id: wallet.id } }),
+      ]);
+
+      const walletDto = describeWallet(updatedWallet);
+      return {
+        reward: toRewardItemDto(updatedVoucher),
+        wallet: walletDto,
+        walletImpact: walletDto,
+      };
     }, { isolationLevel: "Serializable" }));
   },
 };

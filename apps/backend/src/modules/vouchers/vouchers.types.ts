@@ -1,4 +1,5 @@
 import type { MemberVoucherStatus, VoucherType } from "../../generated/prisma/client.js";
+import type { describeWallet } from "../loyalty/loyalty.balance.js";
 
 export interface DefinitionInput {
   type: VoucherType;
@@ -28,4 +29,22 @@ export interface MemberVoucherDto {
   rewardDescription: string | null;
   redeemedAt: string;
   usedAt: string | null;
+}
+
+export interface RewardItemDto extends MemberVoucherDto {
+  memberVoucherId: number;
+  memberEmail: string;
+  requestedAt: string;
+  fulfilledAt: string | null;
+  fulfilledById: number | null;
+  note: string | null;
+  cancelledAt: string | null;
+  cancelledById: number | null;
+  cancellationReason: string | null;
+}
+
+export interface CancelRewardResponseDto {
+  reward: RewardItemDto;
+  wallet: ReturnType<typeof describeWallet>;
+  walletImpact: ReturnType<typeof describeWallet>;
 }

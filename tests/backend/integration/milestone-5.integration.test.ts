@@ -58,6 +58,7 @@ after(async () => {
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
   const walletIds = wallets.map((item) => item.id);
   await prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
+  await prisma.rewardCancellation.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
   await prisma.pointTransaction.deleteMany({ where: { walletId: { in: walletIds } } });
   await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureIds } } } });
   await prisma.order.deleteMany({ where: { memberId: { in: fixtureIds } } });
@@ -271,7 +272,7 @@ test("hiding a reward product blocks new redemptions and preserves issued reward
 
   const fulfillmentList = await request("/api/merchant/rewards", "GET", merchantBToken);
   assert.equal(fulfillmentList.response.status, 200);
-  assert.equal((fulfillmentList.json.rewards as any[]).find((voucher) => voucher.id === voucherId)?.status, "AVAILABLE");
+  assert.equal((fulfillmentList.json.rewards as any[]).find((voucher) => voucher.id === voucherId)?.status, "PENDING_FULFILLMENT");
   const fulfillPath = `/api/merchant/rewards/${voucherId}/fulfill`;
   const foreignFulfillment = await request(fulfillPath, "POST", merchantAToken, {});
   assert.equal(foreignFulfillment.response.status, 404);
@@ -338,5 +339,431 @@ test("first paid order stays Bronze when its discount reduces total to zero", as
   assert.equal(wallet.json.wallet.availablePoints, 0);
   assert.equal(wallet.json.wallet.lifetimeEarnedPoints, 0);
   assert.equal(wallet.json.wallet.tier, "BRONZE");
+});
+
+test("m5 reward fulfillment cancellation: success refunds exact integer points and records audit", async () => {
+  const rewardProductId = await createRewardProduct("Quà tặng M5", merchantAToken);
+  const rewardDef = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Đổi quà tặng M5", pointsCost: 150, discountAmount: null, rewardProductId,
+  });
+  assert.equal(rewardDef.response.status, 201);
+  const definitionId = rewardDef.json.definition.id as number;
+
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+    include: { wallet: true },
+  });
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: 300, netLifetimeEarned: 300 },
+  });
+
+  const redeemed = await request(`/api/member/vouchers/${definitionId}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  assert.equal(redeemed.response.status, 201);
+  assert.equal(redeemed.json.voucher.status, "PENDING_FULFILLMENT");
+  assert.equal(redeemed.json.wallet.availablePoints, 150);
+  const voucherId = redeemed.json.voucher.id as number;
+
+  // Merchant cancels the unfulfilled reward
+  const cancelRes = await request(`/api/merchant/rewards/${voucherId}/cancel`, "POST", merchantAToken, {
+    reason: "Item damaged during preparation",
+  });
+  assert.equal(cancelRes.response.status, 200);
+
+  // Check response DTO
+  const { reward, wallet } = cancelRes.json;
+  assert.equal(reward.status, "CANCELLED");
+  assert.equal(reward.memberVoucherId, voucherId);
+  assert.equal(reward.memberId, memberId);
+  assert.equal(reward.memberEmail, emails[2]);
+  assert.equal(reward.title, "Đổi quà tặng M5");
+  assert.equal(reward.pointsCost, 150);
+  assert.ok(reward.cancelledAt);
+  assert.equal(reward.cancelledById, fixtureIds[0]);
+  assert.equal(reward.cancellationReason, "Item damaged during preparation");
+  assert.equal(reward.fulfilledAt, null);
+  assert.equal(reward.fulfilledById, null);
+
+  // Check wallet refund
+  assert.equal(wallet.exactBalance, "300");
+  assert.equal(wallet.availablePoints, 300);
+  assert.equal(wallet.pointDebt, "0");
+  assert.equal(wallet.netLifetimeEarned, "300");
+
+  // Check DB state
+  const dbVoucher = await prisma.memberVoucher.findUniqueOrThrow({
+    where: { id: voucherId },
+    include: { cancellation: true },
+  });
+  assert.equal(dbVoucher.status, "CANCELLED");
+  assert.ok(dbVoucher.cancellation);
+  assert.equal(dbVoucher.cancellation.cancelledById, fixtureIds[0]);
+  assert.equal(dbVoucher.cancellation.reason, "Item damaged during preparation");
+
+  const ledger = await prisma.pointTransaction.findFirstOrThrow({
+    where: { memberVoucherId: voucherId, type: "REDEMPTION_REVERSAL" },
+  });
+  assert.equal(ledger.delta.toString(), "150");
+  assert.equal(ledger.balanceAfter.toString(), "300");
+  assert.equal(ledger.source, "MERCHANT_REWARD_CANCELLATION");
+  assert.equal(ledger.actorId, fixtureIds[0]);
+  assert.equal(ledger.eventRef, `reward-cancellation-${voucherId}`);
+
+  // Check GET /api/merchant/rewards queue exposes cancelled status and audit
+  const queue = await request("/api/merchant/rewards", "GET", merchantAToken);
+  assert.equal(queue.response.status, 200);
+  const queueItem = (queue.json.rewards as any[]).find((r) => r.memberVoucherId === voucherId);
+  assert.ok(queueItem);
+  assert.equal(queueItem.status, "CANCELLED");
+  assert.equal(queueItem.cancelledById, fixtureIds[0]);
+  assert.equal(queueItem.cancellationReason, "Item damaged during preparation");
+  assert.ok(queueItem.cancelledAt);
+});
+
+test("m5 reward cancellation: debt recovery pays down pointDebt before available points without changing tier or lifetime", async () => {
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+    include: { wallet: true },
+  });
+  // Simulate member having debt (negative exact balance) from a prior refund/reversal
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: "-40.5", netLifetimeEarned: "500" },
+  });
+
+  const rewardDef = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà nợ", pointsCost: 100, discountAmount: null, rewardProductId: productAId,
+  });
+  // Use productAId or a reward product
+  const rewardProductId = await createRewardProduct("Quà nợ sp", merchantAToken);
+  const def = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà nợ sp", pointsCost: 100, discountAmount: null, rewardProductId,
+  });
+  assert.equal(def.response.status, 201);
+
+  // Directly create an unfulfilled member voucher to test cancellation against existing debt
+  const voucher = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: def.json.definition.id,
+      snapshotType: "REWARD",
+      snapshotTitle: "Quà nợ sp",
+      snapshotPointsCost: 100,
+      snapshotDiscountAmount: null,
+      snapshotRewardDescription: "Quà nợ sp",
+      status: "PENDING_FULFILLMENT",
+    },
+  });
+
+  // Cancel the 100 point reward: -40.5 + 100 = 59.5
+  const cancelRes = await request(`/api/merchant/rewards/${voucher.id}/cancel`, "POST", merchantAToken, {
+    reason: "Debt recovery test",
+  });
+  assert.equal(cancelRes.response.status, 200);
+
+  const wallet = cancelRes.json.wallet;
+  // Debt of 40.5 should be completely paid down to 0
+  assert.equal(wallet.pointDebt, "0");
+  assert.equal(wallet.availablePoints, 59);
+  assert.equal(wallet.fractionalCarry, "0.5");
+  assert.equal(wallet.exactBalance, "59.5");
+  assert.equal(wallet.netLifetimeEarned, "500");
+
+  // Test partial debt recovery where debt exceeds refund: -150.25 + 50 = -100.25
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: "-150.25", netLifetimeEarned: "500" },
+  });
+  const voucher2 = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: def.json.definition.id,
+      snapshotType: "REWARD",
+      snapshotTitle: "Quà nợ 50",
+      snapshotPointsCost: 50,
+      snapshotDiscountAmount: null,
+      snapshotRewardDescription: "Quà nợ 50",
+      status: "PENDING_FULFILLMENT",
+    },
+  });
+
+  const cancelRes2 = await request(`/api/merchant/rewards/${voucher2.id}/cancel`, "POST", merchantAToken, {
+    reason: "Partial debt recovery",
+  });
+  assert.equal(cancelRes2.response.status, 200);
+  const wallet2 = cancelRes2.json.wallet;
+  assert.equal(wallet2.exactBalance, "-100.25");
+  assert.equal(wallet2.pointDebt, "100.25");
+  assert.equal(wallet2.availablePoints, 0);
+  assert.equal(wallet2.fractionalCarry, "0");
+  assert.equal(wallet2.netLifetimeEarned, "500");
+});
+
+test("m5 reward cancellation: duplicate cancellation does not credit twice and rejects with 409", async () => {
+  const rewardProductId = await createRewardProduct("Quà trùng lặp", merchantAToken);
+  const def = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà trùng lặp", pointsCost: 100, discountAmount: null, rewardProductId,
+  });
+  assert.equal(def.response.status, 201);
+
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+    include: { wallet: true },
+  });
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: 200, netLifetimeEarned: 200 },
+  });
+
+  const redeemed = await request(`/api/member/vouchers/${def.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  assert.equal(redeemed.response.status, 201);
+  const voucherId = redeemed.json.voucher.id as number;
+
+  // First cancellation: succeeds
+  const res1 = await request(`/api/merchant/rewards/${voucherId}/cancel`, "POST", merchantAToken, { reason: "Lần 1" });
+  assert.equal(res1.response.status, 200);
+  assert.equal(res1.json.reward.status, "CANCELLED");
+
+  // Second sequential cancellation: clearly rejects with 409
+  const res2 = await request(`/api/merchant/rewards/${voucherId}/cancel`, "POST", merchantAToken, { reason: "Lần 2" });
+  assert.equal(res2.response.status, 409);
+  assert.equal(res2.json.error, "REWARD_ALREADY_CANCELLED");
+
+  // Verify only 1 REDEMPTION_REVERSAL was written
+  const txCount = await prisma.pointTransaction.count({
+    where: { memberVoucherId: voucherId, type: "REDEMPTION_REVERSAL" },
+  });
+  assert.equal(txCount, 1);
+
+  // Concurrent duplicate cancellation test
+  const def2 = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà race", pointsCost: 80, discountAmount: null, rewardProductId,
+  });
+  const redeemed2 = await request(`/api/member/vouchers/${def2.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  assert.equal(redeemed2.response.status, 201);
+  const voucherId2 = redeemed2.json.voucher.id as number;
+
+  const [race1, race2] = await Promise.all([
+    request(`/api/merchant/rewards/${voucherId2}/cancel`, "POST", merchantAToken, { reason: "Race 1" }),
+    request(`/api/merchant/rewards/${voucherId2}/cancel`, "POST", merchantAToken, { reason: "Race 2" }),
+  ]);
+  const statuses = [race1.response.status, race2.response.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+
+  const raceTxCount = await prisma.pointTransaction.count({
+    where: { memberVoucherId: voucherId2, type: "REDEMPTION_REVERSAL" },
+  });
+  assert.equal(raceTxCount, 1);
+});
+
+test("m5 reward cancellation: wrong merchant and discount vouchers reject clearly", async () => {
+  const rewardProductId = await createRewardProduct("Quà riêng A", merchantAToken);
+  const defA = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà riêng A", pointsCost: 50, discountAmount: null, rewardProductId,
+  });
+  assert.equal(defA.response.status, 201);
+
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+    include: { wallet: true },
+  });
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: 100, netLifetimeEarned: 100 },
+  });
+
+  const redeemed = await request(`/api/member/vouchers/${defA.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  assert.equal(redeemed.response.status, 201);
+  const voucherId = redeemed.json.voucher.id as number;
+
+  // Merchant B tries to cancel Merchant A's reward -> 404
+  const foreignCancel = await request(`/api/merchant/rewards/${voucherId}/cancel`, "POST", merchantBToken, {
+    reason: "Steal",
+  });
+  assert.equal(foreignCancel.response.status, 404);
+  assert.equal(foreignCancel.json.error, "REWARD_NOT_FOUND");
+
+  // Member voucher is unchanged
+  const voucher = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: voucherId } });
+  assert.equal(voucher.status, "PENDING_FULFILLMENT");
+
+  // Merchant A tries to cancel a DISCOUNT voucher via rewards route -> 404
+  const discountDef = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "DISCOUNT", title: "Giảm 10k", pointsCost: 10, discountAmount: "10000",
+  });
+  const discountRedeemed = await request(`/api/member/vouchers/${discountDef.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  assert.equal(discountRedeemed.response.status, 201);
+  const discountVoucherId = discountRedeemed.json.voucher.id as number;
+
+  const discountCancel = await request(`/api/merchant/rewards/${discountVoucherId}/cancel`, "POST", merchantAToken, {
+    reason: "Cancel discount as reward",
+  });
+  assert.equal(discountCancel.response.status, 404);
+  assert.equal(discountCancel.json.error, "REWARD_NOT_FOUND");
+});
+
+test("m5 reward cancellation: fulfill-then-cancel and cancel-then-fulfill rejections", async () => {
+  const rewardProductId = await createRewardProduct("Quà fulfill race", merchantAToken);
+  const def = await request("/api/merchant/vouchers", "POST", merchantAToken, {
+    type: "REWARD", title: "Quà fulfill race", pointsCost: 50, discountAmount: null, rewardProductId,
+  });
+  assert.equal(def.response.status, 201);
+
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+    include: { wallet: true },
+  });
+  await prisma.loyaltyWallet.update({
+    where: { id: membership.wallet!.id },
+    data: { exactBalance: 200, netLifetimeEarned: 200 },
+  });
+
+  // Reward 1: fulfill then cancel
+  const redeemed1 = await request(`/api/member/vouchers/${def.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  const v1Id = redeemed1.json.voucher.id as number;
+
+  const fulfilled = await request(`/api/merchant/rewards/${v1Id}/fulfill`, "POST", merchantAToken, { note: "Đã trao quà" });
+  assert.equal(fulfilled.response.status, 200);
+  assert.equal(fulfilled.json.reward.status, "FULFILLED");
+  assert.equal(fulfilled.json.reward.memberVoucherId, v1Id);
+  assert.ok(fulfilled.json.reward.fulfilledAt);
+  assert.equal(fulfilled.json.reward.fulfilledById, fixtureIds[0]);
+
+  // Attempt to cancel fulfilled reward -> 409
+  const cancelFulfilled = await request(`/api/merchant/rewards/${v1Id}/cancel`, "POST", merchantAToken, { reason: "Cancel after fulfill" });
+  assert.equal(cancelFulfilled.response.status, 409);
+  assert.equal(cancelFulfilled.json.error, "REWARD_ALREADY_FULFILLED");
+
+  // Reward 2: cancel then fulfill
+  const redeemed2 = await request(`/api/member/vouchers/${def.json.definition.id}/redeem`, "POST", memberToken, undefined, {
+    headers: { "Idempotency-Key": randomUUID() },
+  });
+  const v2Id = redeemed2.json.voucher.id as number;
+
+  const cancelled = await request(`/api/merchant/rewards/${v2Id}/cancel`, "POST", merchantAToken, { reason: "Cancel first" });
+  assert.equal(cancelled.response.status, 200);
+  assert.equal(cancelled.json.reward.status, "CANCELLED");
+
+  // Attempt to fulfill cancelled reward -> 409
+  const fulfillCancelled = await request(`/api/merchant/rewards/${v2Id}/fulfill`, "POST", merchantAToken, { note: "Fulfill after cancel" });
+  assert.equal(fulfillCancelled.response.status, 409);
+  assert.equal(fulfillCancelled.json.error, "REWARD_ALREADY_CANCELLED");
+});
+
+test("m5 reward cancellation: migration data preservation backfills REWARD vouchers and preserves DISCOUNT vouchers", async () => {
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({
+    where: { memberId_merchantId: { memberId, merchantId: merchantAId } },
+  });
+
+  const discountDef = await prisma.voucherDefinition.create({
+    data: {
+      merchantId: merchantAId,
+      type: "DISCOUNT",
+      title: "M5 Test Discount Def",
+      pointsCost: 10,
+      discountAmount: "10000",
+      rewardDescription: null,
+    },
+  });
+  const rewardDef = await prisma.voucherDefinition.create({
+    data: {
+      merchantId: merchantAId,
+      type: "REWARD",
+      title: "M5 Test Reward Def",
+      pointsCost: 50,
+      discountAmount: null,
+      rewardDescription: "Quà test backfill",
+    },
+  });
+
+  // Create pre-migration vouchers directly
+  const discountAvailable = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: discountDef.id,
+      snapshotType: "DISCOUNT",
+      snapshotTitle: "Discount Avail",
+      snapshotPointsCost: 10,
+      snapshotDiscountAmount: "10000",
+      snapshotRewardDescription: null,
+      status: "AVAILABLE",
+    },
+  });
+  const discountUsed = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: discountDef.id,
+      snapshotType: "DISCOUNT",
+      snapshotTitle: "Discount Used",
+      snapshotPointsCost: 10,
+      snapshotDiscountAmount: "10000",
+      snapshotRewardDescription: null,
+      status: "USED",
+    },
+  });
+  // Simulate legacy unfulfilled reward voucher that had status AVAILABLE
+  const rewardLegacy = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: rewardDef.id,
+      snapshotType: "REWARD",
+      snapshotTitle: "Reward Legacy",
+      snapshotPointsCost: 50,
+      snapshotDiscountAmount: null,
+      snapshotRewardDescription: "Quà test backfill",
+      status: "AVAILABLE",
+    },
+  });
+  const rewardFulfilled = await prisma.memberVoucher.create({
+    data: {
+      membershipId: membership.id,
+      definitionId: rewardDef.id,
+      snapshotType: "REWARD",
+      snapshotTitle: "Reward Fulfilled",
+      snapshotPointsCost: 50,
+      snapshotDiscountAmount: null,
+      snapshotRewardDescription: "Quà test backfill",
+      status: "FULFILLED",
+    },
+  });
+
+  // Execute the exact migration backfill SQL
+  await prisma.$executeRawUnsafe(
+    "UPDATE `MemberVoucher` SET `status` = 'PENDING_FULFILLMENT' WHERE `snapshotType` = 'REWARD' AND `status` = 'AVAILABLE';"
+  );
+
+  // Verify discount vouchers are preserved
+  const checkDiscountAvail = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountAvailable.id } });
+  assert.equal(checkDiscountAvail.status, "AVAILABLE");
+
+  const checkDiscountUsed = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: discountUsed.id } });
+  assert.equal(checkDiscountUsed.status, "USED");
+
+  // Verify reward voucher was backfilled
+  const checkRewardLegacy = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: rewardLegacy.id } });
+  assert.equal(checkRewardLegacy.status, "PENDING_FULFILLMENT");
+
+  // Verify fulfilled reward was untouched
+  const checkRewardFulfilled = await prisma.memberVoucher.findUniqueOrThrow({ where: { id: rewardFulfilled.id } });
+  assert.equal(checkRewardFulfilled.status, "FULFILLED");
+
+  // Backfilled reward is cancelable
+  const cancelBackfilled = await request(`/api/merchant/rewards/${rewardLegacy.id}/cancel`, "POST", merchantAToken, {
+    reason: "Cancelled after backfill",
+  });
+  assert.equal(cancelBackfilled.response.status, 200);
+  assert.equal(cancelBackfilled.json.reward.status, "CANCELLED");
 });
 

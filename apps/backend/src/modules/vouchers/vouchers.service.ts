@@ -67,6 +67,18 @@ export const vouchersService = {
     const result = await vouchersRepository.fulfillReward(merchant.id, ownerId, memberVoucherId, note);
     if (result === "missing") throw new HttpError(404, "REWARD_NOT_FOUND");
     if (result === "already_fulfilled") throw new HttpError(409, "REWARD_ALREADY_FULFILLED");
+    if (result === "already_cancelled") throw new HttpError(409, "REWARD_ALREADY_CANCELLED");
+    if (result === "invalid_status") throw new HttpError(409, "REWARD_NOT_FULFILLABLE");
+    return result;
+  },
+  async cancelReward(ownerId: number, memberVoucherId: number, reason: string) {
+    const merchant = await merchantRepository.findActiveStoreByOwner(ownerId);
+    if (!merchant) throw new HttpError(403, "MERCHANT_NOT_ACTIVE");
+    const result = await vouchersRepository.cancelReward(merchant.id, ownerId, memberVoucherId, reason);
+    if (result === "missing") throw new HttpError(404, "REWARD_NOT_FOUND");
+    if (result === "already_fulfilled") throw new HttpError(409, "REWARD_ALREADY_FULFILLED");
+    if (result === "already_cancelled") throw new HttpError(409, "REWARD_ALREADY_CANCELLED");
+    if (result === "invalid_status") throw new HttpError(409, "REWARD_NOT_CANCELLABLE");
     return result;
   },
 };
