@@ -131,7 +131,7 @@ after(async () => {
   const merchantIds = merchants.map((m) => m.id);
 
   await prisma.orderRefund.deleteMany({ where: { requestedById: { in: userIds } } });
-  await prisma.orderVoucherReservation.deleteMany({});
+  await prisma.orderVoucherReservation.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.pointTransaction.deleteMany({ where: { wallet: { membership: { merchantId: { in: merchantIds } } } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membership: { merchantId: { in: merchantIds } } } });
   await prisma.memberVoucher.deleteMany({ where: { membership: { merchantId: { in: merchantIds } } } });
@@ -613,6 +613,30 @@ test("11. preview auth: enforces authentication and role boundaries", async () =
   assert.equal(validMerch.json.estimatedPointsExact, "6"); // 50000/10000 * 1.20 = 6
   assert.equal(validMerch.json.integerProjection, 6);
   assert.equal(validMerch.json.fractionalProjection, "0");
+});
+
+test("pending orders cannot be refunded, including an unresolved CREATED provider attempt", async () => {
+  const created = await request("/api/orders", "POST", memberAToken, {
+    items: [{ productId: productAId, quantity: 1 }],
+  });
+  assert.equal(created.response.status, 201);
+  const orderId = created.json.order.id;
+  for (const withAttempt of [false, true]) {
+    if (withAttempt) {
+      env.paymentMode = "vnpay";
+      const attempt = await request(`/api/orders/${orderId}/payments/vnpay`, "POST", memberAToken);
+      assert.equal(attempt.response.status, 201);
+    }
+    const preview = await request(`/api/merchant/orders/${orderId}/refund-preview`, "GET", merchantAToken);
+    const refund = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, { reason: "Cannot refund unpaid money" });
+    assert.equal(preview.response.status, 409);
+    assert.equal(refund.response.status, 409);
+    assert.equal(refund.json.error, "ORDER_NOT_REFUNDABLE");
+    assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PENDING");
+    assert.equal(await prisma.orderRefund.count({ where: { orderId } }), 0);
+    assert.equal(await prisma.pointTransaction.count({ where: { orderId } }), 0);
+  }
+  assert.equal((await prisma.paymentAttempt.findUniqueOrThrow({ where: { orderId } })).status, "CREATED");
 });
 
 test("12. ledger reconciliation: merchant loyalty transactions list and reconciliation flag", async () => {
