@@ -39,6 +39,7 @@ export async function completePaidOrder(
       where: { id: voucher.id, status: "AVAILABLE" }, data: { status: "USED", usedAt: new Date() },
     });
     if (used.count !== 1) throw new HttpError(409, "VOUCHER_NOT_AVAILABLE");
+    await tx.orderVoucherReservation.deleteMany({ where: { orderId: order.id } });
   }
   const policy = await loadEarningPolicy(tx, order.merchantId);
   const membership = await tx.merchantMembership.upsert({
@@ -95,7 +96,11 @@ export async function completePaidOrder(
     tiers: policy.tiers.map((tier) => ({ level: tier.level, minLifetimePoints: tier.minLifetimePoints, multiplier: tier.multiplier.toFixed(2) })),
     ...(snapshot?.policy ? { frozenPolicy: snapshot.policy as Prisma.InputJsonValue } : {}),
   };
-  const paid = await tx.order.update({ where: { id: order.id }, data: { earnedPointsExact: earned, loyaltySnapshot: audit }, include: { items: true } });
+  const paid = await tx.order.update({
+    where: { id: order.id },
+    data: { earnedPointsExact: earned, loyaltySnapshot: audit },
+    include: { items: true, paymentAttempt: true, refund: true, pointTransactions: true },
+  });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
   return { ...toOrderDto(paid), promotedToTier };
 }
