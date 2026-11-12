@@ -12,7 +12,7 @@ function explainAuthError(message: string) {
     MERCHANT_REJECTED: "Hồ sơ đăng ký chưa được chấp thuận. Liên hệ đội hỗ trợ nếu cần biết thêm.",
     ACCOUNT_INACTIVE: "Tài khoản đang bị vô hiệu hóa.",
     ACCOUNT_SUSPENDED: "Tài khoản đang bị tạm khóa. Vui lòng liên hệ quản trị viên.",
-    ACCOUNT_BANNED: "Tài khoản đã bị cấm vĩnh viễn khỏi hệ thống.",
+    ACCOUNT_BANNED: "Tài khoản đã bị cấm khỏi hệ thống.",
     EMAIL_BLACKLISTED: "Địa chỉ email đã bị chặn trong danh sách đen.",
     MERCHANT_NOT_ACTIVE: "Cửa hàng đã bị tạm ngưng hoạt động.",
   };

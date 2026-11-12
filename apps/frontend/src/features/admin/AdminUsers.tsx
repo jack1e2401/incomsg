@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
-import { MagnifyingGlass, ShieldWarning, Prohibit, CheckCircle, ArrowCounterClockwise } from "@phosphor-icons/react";
+import { CheckCircle } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
@@ -9,17 +9,14 @@ import type {
 } from "../../api/commerce-types";
 import {
   Button,
-  Card,
   EmptyState,
   ErrorState,
-  Input,
   LoadingState,
   PageHeader,
-  Select,
-  StatusText,
 } from "../../components/ui";
 import { AdminReasonDialog } from "./AdminReasonDialog";
-import { shortDate } from "../../lib/utils";
+import { AdminUsersFilter } from "./AdminUsersFilter";
+import { AdminUsersTable } from "./AdminUsersTable";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -37,29 +34,6 @@ function explainUserError(errorMsg: string) {
     return "Dữ liệu nhập vào không hợp lệ. Vui lòng kiểm tra lý do (1–255 ký tự).";
   }
   return errorMsg || "Đã xảy ra lỗi khi cập nhật trạng thái.";
-}
-
-function AccountStatusBadge({ status }: { status: AccountStatus }) {
-  switch (status) {
-    case "ACTIVE":
-      return <StatusText tone="green">Hoạt động</StatusText>;
-    case "SUSPENDED":
-      return <StatusText tone="amber">Tạm khóa</StatusText>;
-    case "BANNED":
-      return <StatusText tone="red">Bị cấm</StatusText>;
-    case "PENDING_APPROVAL":
-      return <StatusText tone="purple">Chờ duyệt</StatusText>;
-    case "REJECTED":
-      return <StatusText tone="red">Từ chối</StatusText>;
-    default:
-      return <StatusText tone="neutral">{status}</StatusText>;
-  }
-}
-
-function RoleBadge({ role }: { role: AdminUserRole }) {
-  const label = role === "ADMIN" ? "Admin" : role === "MERCHANT" ? "Merchant" : "Member";
-  const tone = role === "ADMIN" ? "purple" : role === "MERCHANT" ? "green" : "neutral";
-  return <StatusText tone={tone}>{label}</StatusText>;
 }
 
 export function AdminUsers() {
@@ -155,7 +129,6 @@ export function AdminUsers() {
         accessToken,
       );
 
-      // Update in local list
       setUsers((prev) =>
         prev.map((u) => (u.id === actionTarget.user.id ? response.user : u)),
       );
@@ -227,82 +200,17 @@ export function AdminUsers() {
         </div>
       )}
 
-      {/* Filter toolbar */}
-      <Card className="mb-6 p-4 sm:p-5">
-        <form onSubmit={handleSearchSubmit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label htmlFor="user-search" className="mb-1.5 block text-xs font-bold text-[#506154]">
-              Tìm theo email
-            </label>
-            <div className="relative">
-              <Input
-                id="user-search"
-                type="text"
-                maxLength={191}
-                placeholder="Nhập email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pr-9"
-              />
-              <MagnifyingGlass
-                size={17}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#7d8f82]"
-              />
-            </div>
-          </div>
+      <AdminUsersFilter
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        roleFilter={roleFilter}
+        onRoleFilterChange={setRoleFilter}
+        onSubmit={handleSearchSubmit}
+        onReset={handleResetFilters}
+      />
 
-          <div>
-            <label htmlFor="status-filter" className="mb-1.5 block text-xs font-bold text-[#506154]">
-              Trạng thái
-            </label>
-            <Select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as AccountStatus | "ALL")}
-            >
-              <option value="ALL">Tất cả trạng thái</option>
-              <option value="ACTIVE">Hoạt động (ACTIVE)</option>
-              <option value="SUSPENDED">Tạm khóa (SUSPENDED)</option>
-              <option value="BANNED">Bị cấm (BANNED)</option>
-              <option value="PENDING_APPROVAL">Chờ duyệt (PENDING_APPROVAL)</option>
-              <option value="REJECTED">Từ chối (REJECTED)</option>
-            </Select>
-          </div>
-
-          <div>
-            <label htmlFor="role-filter" className="mb-1.5 block text-xs font-bold text-[#506154]">
-              Vai trò
-            </label>
-            <Select
-              id="role-filter"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as AdminUserRole | "ALL")}
-            >
-              <option value="ALL">Tất cả vai trò</option>
-              <option value="MEMBER">Member</option>
-              <option value="MERCHANT">Merchant</option>
-              <option value="ADMIN">Admin</option>
-            </Select>
-          </div>
-
-          <div className="flex items-end gap-2">
-            <Button type="submit" size="default" className="flex-1">
-              Tìm kiếm
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              onClick={handleResetFilters}
-              title="Đặt lại bộ lọc"
-            >
-              <ArrowCounterClockwise size={16} />
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      {/* Main content */}
       {loading ? (
         <LoadingState cards={3} />
       ) : fetchError ? (
@@ -318,114 +226,15 @@ export function AdminUsers() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
-          {/* Desktop table header */}
-          <div className="hidden grid-cols-[3rem_minmax(0,1.5fr)_7rem_7rem_9rem_14rem] items-center gap-4 border-b border-[#edf1ea] bg-[#f7f9f5] px-6 py-4 text-xs font-bold text-[#5b6e60] md:grid">
-            <span>ID</span>
-            <span>Email</span>
-            <span>Vai trò</span>
-            <span>Trạng thái</span>
-            <span>Ngày tạo</span>
-            <span className="text-right">Thao tác</span>
-          </div>
-
-          {/* List items */}
-          <div className="divide-y divide-[#edf1ea]">
-            {users.map((user) => {
-              const canSuspend = user.accountStatus !== "SUSPENDED" && user.accountStatus !== "BANNED";
-              const canBan = user.accountStatus !== "BANNED";
-              const canUnban = user.accountStatus === "SUSPENDED" || user.accountStatus === "BANNED";
-
-              return (
-                <article
-                  key={user.id}
-                  className="grid gap-3 p-5 transition-colors hover:bg-[#fafbf8] sm:px-6 md:grid-cols-[3rem_minmax(0,1.5fr)_7rem_7rem_9rem_14rem] md:items-center md:gap-4"
-                >
-                  <span className="text-xs font-semibold muted">#{user.id}</span>
-
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-[#233829]">{user.email}</p>
-                    <p className="mt-1 text-xs muted md:hidden">
-                      {shortDate(user.createdAt)} · <RoleBadge role={user.role} />
-                    </p>
-                  </div>
-
-                  <div className="hidden md:block">
-                    <RoleBadge role={user.role} />
-                  </div>
-
-                  <div className="flex items-center justify-between md:justify-start">
-                    <span className="text-xs muted md:hidden">Trạng thái:</span>
-                    <AccountStatusBadge status={user.accountStatus} />
-                  </div>
-
-                  <div className="hidden text-xs muted md:block">{shortDate(user.createdAt)}</div>
-
-                  <div className="flex flex-wrap items-center justify-end gap-1.5 pt-2 md:pt-0">
-                    {/* Unban / Unsuspend button */}
-                    {canUnban && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() =>
-                          setActionTarget({ user, targetStatus: "ACTIVE" })
-                        }
-                        title={`Mở khóa tài khoản ${user.email}`}
-                      >
-                        <CheckCircle size={15} /> Mở khóa
-                      </Button>
-                    )}
-
-                    {/* Suspend button */}
-                    {canSuspend && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setActionTarget({ user, targetStatus: "SUSPENDED" })
-                        }
-                        title={`Tạm khóa tài khoản ${user.email}`}
-                      >
-                        <ShieldWarning size={15} /> Tạm khóa
-                      </Button>
-                    )}
-
-                    {/* Ban button */}
-                    {canBan && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() =>
-                          setActionTarget({ user, targetStatus: "BANNED" })
-                        }
-                        title={`Cấm tài khoản ${user.email}`}
-                      >
-                        <Prohibit size={15} /> Cấm
-                      </Button>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          {/* Load more / Pagination */}
-          {nextCursor && (
-            <div className="border-t border-[#edf1ea] p-4 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={loadingMore}
-                onClick={() => fetchUsers(nextCursor)}
-              >
-                {loadingMore ? "Đang tải thêm..." : "Tải thêm"}
-              </Button>
-            </div>
-          )}
-        </Card>
+        <AdminUsersTable
+          users={users}
+          nextCursor={nextCursor}
+          loadingMore={loadingMore}
+          onLoadMore={() => nextCursor && fetchUsers(nextCursor)}
+          onSelectAction={(user, targetStatus) => setActionTarget({ user, targetStatus })}
+        />
       )}
 
-      {/* Confirmation & Reason Dialog */}
       {actionTarget && dialogDetails && (
         <AdminReasonDialog
           open={actionTarget !== null}
