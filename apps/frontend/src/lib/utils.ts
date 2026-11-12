@@ -6,7 +6,9 @@ export const money = (amount: number) =>
     amount,
   );
 export const number = (amount: number) => new Intl.NumberFormat("vi-VN").format(amount);
-export const shortDate = (value: string) =>
-  new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(
-    new Date(`${value}T00:00:00`),
-  );
+export const shortDate = (value: string) => {
+  const date = value.includes("T") ? new Date(value) : new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+};

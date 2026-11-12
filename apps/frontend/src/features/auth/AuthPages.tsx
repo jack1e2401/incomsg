@@ -11,6 +11,10 @@ function explainAuthError(message: string) {
     MERCHANT_PENDING: "Hồ sơ cửa hàng đang chờ Admin duyệt. Bạn sẽ đăng nhập được sau khi được duyệt.",
     MERCHANT_REJECTED: "Hồ sơ đăng ký chưa được chấp thuận. Liên hệ đội hỗ trợ nếu cần biết thêm.",
     ACCOUNT_INACTIVE: "Tài khoản đang bị vô hiệu hóa.",
+    ACCOUNT_SUSPENDED: "Tài khoản đang bị tạm khóa. Vui lòng liên hệ quản trị viên.",
+    ACCOUNT_BANNED: "Tài khoản đã bị cấm vĩnh viễn khỏi hệ thống.",
+    EMAIL_BLACKLISTED: "Địa chỉ email đã bị chặn trong danh sách đen.",
+    MERCHANT_NOT_ACTIVE: "Cửa hàng đã bị tạm ngưng hoạt động.",
   };
   return explanations[message] ?? message;
 }
@@ -183,7 +187,13 @@ export function RegisterPage() {
       });
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Không thể tạo tài khoản.";
-      setError(message === "EMAIL_TAKEN" ? "Email này đã được đăng ký." : message);
+      if (message === "EMAIL_TAKEN") {
+        setError("Email này đã được đăng ký.");
+      } else if (message === "EMAIL_BLACKLISTED") {
+        setError("Địa chỉ email đã bị chặn trong danh sách đen.");
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }

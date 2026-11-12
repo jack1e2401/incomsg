@@ -1,7 +1,6 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
-import { ArrowRight } from "@phosphor-icons/react";
 import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
-import { Button, Card, PageHeader, ErrorState, LoadingState, EmptyState } from "../components/ui";
+import { Button } from "../components/ui";
 import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
 import { EditorialArtPanel } from "../components/EditorialArtPanel";
 import { AdminApplicationsM2, RequireRole } from "../features/auth/Milestone2Pages";
@@ -36,8 +35,13 @@ import {
   MemberVouchers as DemoMemberVouchers,
   MemberWallet as DemoMemberWallet,
 } from "../features/member/MemberLoyalty";
-import { createCommerceClient } from "../api/commerce-http";
-import { useResource } from "../api/useResource";
+import {
+  AdminOverview,
+  AdminMerchants,
+  AdminUsers,
+  AdminBlacklist,
+  AdminAuditLogs,
+} from "../features/admin/BackendAdminPages";
 import {
   MerchantLoyalty,
   MerchantOrders,
@@ -79,6 +83,10 @@ function BackendRoutes() {
           <Route index element={<AdminOverview />} />
           <Route path="applications" element={<AdminApplicationsM2 />} />
           <Route path="merchants" element={<AdminMerchants />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="blacklist" element={<AdminBlacklist />} />
+          <Route path="email-blacklist" element={<AdminBlacklist />} />
+          <Route path="audit-logs" element={<AdminAuditLogs />} />
         </Route>
       </Route>
       <Route element={<RequireRole role="MERCHANT" />}>
@@ -246,97 +254,5 @@ function LandingBody({ children }: { children: React.ReactNode }) {
         <EditorialArtPanel className="rounded-[2rem] shadow-[0_28px_70px_rgba(38,63,43,.18)] sm:rounded-[2.6rem]" />
       </div>
     </section>
-  );
-}
-
-function AdminOverview() {
-  const { accessToken } = useAuthSession();
-  const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
-  const resource = useResource(
-    () => api.getAdminDashboard(accessToken!).then(({ stats }) => stats),
-    [accessToken],
-  );
-  return (
-    <>
-      <PageHeader
-        title="Tổng quan"
-        action={
-          <Button asChild>
-            <Link to="/admin/applications">
-              Hồ sơ cần duyệt <ArrowRight size={16} />
-            </Link>
-          </Button>
-        }
-      />
-      {resource.loading ? (
-        <LoadingState cards={2} />
-      ) : resource.error ? (
-        <ErrorState message={resource.error} retry={resource.reload} />
-      ) : resource.data ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-5">
-            <p className="text-sm muted">Cửa hàng</p>
-            <p className="mt-2 text-2xl font-extrabold">{resource.data.merchants}</p>
-          </Card>
-          <Card className="p-5">
-            <p className="text-sm muted">Hồ sơ chờ duyệt</p>
-            <p className="mt-2 text-2xl font-extrabold">{resource.data.pendingApplications}</p>
-          </Card>
-          <Card className="p-5">
-            <p className="text-sm muted">Đơn đã thanh toán</p>
-            <p className="mt-2 text-2xl font-extrabold">{resource.data.paidOrders}</p>
-          </Card>
-          <Card className="p-5">
-            <p className="text-sm muted">Tổng doanh thu</p>
-            <p className="mt-2 text-2xl font-extrabold">
-              {new Intl.NumberFormat("vi-VN", {
-                style: "currency",
-                currency: "VND",
-                maximumFractionDigits: 0,
-              }).format(Number(resource.data.totalVolume))}
-            </p>
-          </Card>
-        </div>
-      ) : (
-        <Card className="p-6 text-sm muted">Chưa có số liệu.</Card>
-      )}
-    </>
-  );
-}
-
-function AdminMerchants() {
-  const { accessToken } = useAuthSession();
-  const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
-  const resource = useResource(
-    () => api.listAdminMerchants(accessToken!).then(({ merchants }) => merchants),
-    [accessToken],
-  );
-  return (
-    <>
-      <PageHeader title="Danh sách cửa hàng" />
-      {resource.loading ? (
-        <LoadingState cards={3} />
-      ) : resource.error ? (
-        <ErrorState message={resource.error} retry={resource.reload} />
-      ) : !resource.data?.length ? (
-        <EmptyState title="Chưa có cửa hàng" description="Danh sách cửa hàng sẽ xuất hiện tại đây." />
-      ) : (
-        <div className="space-y-3">
-          {resource.data.map((merchant) => (
-            <Card key={merchant.id} className="flex items-center justify-between gap-4 p-5">
-              <div>
-                <h2 className="font-extrabold">{merchant.name}</h2>
-                <p className="mt-1 text-xs muted">
-                  {merchant.slug} · #{merchant.id}
-                </p>
-              </div>
-              <span className="text-xs font-bold">
-                {merchant.isActive === false ? "Tạm ngưng" : "Hoạt động"}
-              </span>
-            </Card>
-          ))}
-        </div>
-      )}
-    </>
   );
 }
