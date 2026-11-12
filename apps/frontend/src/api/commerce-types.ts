@@ -3,10 +3,13 @@ import type { BackendMerchantDto } from "./contracts/milestone2";
 /** Exact JSON DTOs returned by the implemented backend commerce routes. */
 export type ProductKind = "SALE" | "REWARD";
 export type ProductStatus = "ACTIVE" | "HIDDEN";
-export type OrderStatus = "PENDING" | "PAID";
+export type OrderStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "REFUND_PENDING" | "REFUNDED";
+export type PaymentAttemptStatus = "CREATED" | "SUCCEEDED" | "FAILED";
+export type RefundStatus = "PENDING_PROVIDER" | "COMPLETED" | "FAILED";
 export type TierLevel = "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 export type VoucherType = "DISCOUNT" | "REWARD";
-export type MemberVoucherStatus = "AVAILABLE" | "USED" | "FULFILLED";
+export type MemberVoucherStatus =
+  "AVAILABLE" | "RESERVED" | "USED" | "PENDING_FULFILLMENT" | "FULFILLED" | "CANCELLED";
 export type MemberTier = TierLevel | "UNRANKED";
 
 export interface ProductDto {
@@ -39,6 +42,12 @@ export interface OrderItemDto {
   lineTotal: string;
 }
 
+export interface OrderActionsDto {
+  canCancel: boolean;
+  canRefund: boolean;
+  requiresReconciliation: boolean;
+}
+
 export interface OrderDto {
   id: number;
   merchantId: number;
@@ -52,6 +61,10 @@ export interface OrderDto {
   earnedPoints?: number | null;
   earnedPointsExact: string | null;
   promotedToTier?: TierLevel | null;
+  paymentStatus?: PaymentAttemptStatus | null;
+  refundStatus?: RefundStatus | string | null;
+  loyaltyEvents?: WalletTransactionDto[];
+  actions?: OrderActionsDto;
 }
 
 export type PaymentStatusDto = {
@@ -133,12 +146,27 @@ export interface MemberVoucherDto {
   redeemedAt: string;
   usedAt: string | null;
   reserved?: boolean;
+  memberEmail?: string | null;
+  fulfilledAt?: string | null;
+  fulfilledById?: number | null;
+  note?: string | null;
+  cancelledAt?: string | null;
+  cancelledById?: number | null;
+  cancellationReason?: string | null;
 }
 
-export type PointTransactionType = "EARN" | "REDEEM_DISCOUNT" | "REDEEM_REWARD";
+export type PointTransactionType =
+  | "EARN"
+  | "REDEEM_DISCOUNT"
+  | "REDEEM_REWARD"
+  | "EARN_REVERSAL"
+  | "REDEMPTION_REVERSAL"
+  | "ADMIN_ADJUSTMENT"
+  | "LEGACY_BACKFILL";
 
 export interface WalletTransactionDto {
   id: number;
+  eventRef?: string;
   type: PointTransactionType;
   delta: string;
   balanceAfter: string;
@@ -146,6 +174,8 @@ export interface WalletTransactionDto {
   fractionalCarryAfter: string;
   pointDebtAfter: string;
   reason: string;
+  source?: string;
+  actorId?: number | null;
   orderId: number | null;
   memberVoucherId: number | null;
   createdAt: string;
@@ -180,3 +210,111 @@ export type MerchantRewardsResponse = { rewards: MemberVoucherDto[] };
 export type MerchantRewardResponse = { reward: MemberVoucherDto };
 export type FulfillRewardInput = { note?: string };
 export type WalletResponse = { wallet: WalletDto };
+
+export interface CancelOrderResponse {
+  order: OrderDto;
+  voucherReleased?: boolean;
+  capacityReleasedExact?: string;
+}
+
+export interface MemberEarningPreviewResponse {
+  merchantId: number;
+  active: boolean;
+  netOrderAmountVnd: string;
+  tierLevel: MemberTier;
+  multiplier: string;
+  vndPerPoint: number;
+  estimatedPointsExact: string;
+  policyUpdatedAt?: string;
+}
+
+export interface MerchantLoyaltyPreviewInput {
+  netOrderAmountVnd: string;
+  tierLevel?: TierLevel;
+}
+
+export interface MerchantLoyaltyPreviewResponse {
+  netOrderAmountVnd: string;
+  tierLevel: MemberTier;
+  multiplier: string;
+  vndPerPoint: number;
+  active: boolean;
+  estimatedPointsExact: string;
+  integerProjection: number;
+  fractionalProjection: string;
+  rounding: "HALF_UP" | string;
+  scale: number;
+}
+
+export interface MerchantLedgerItemDto extends WalletTransactionDto {
+  memberId: number;
+  memberEmail?: string | null;
+  orderSummary?: { id: number; total: string; status: string } | null;
+  voucherSummary?: { id: number; title: string; type: string } | null;
+}
+
+export interface MerchantTransactionsResponse {
+  items: MerchantLedgerItemDto[];
+  nextCursor: string | null;
+}
+
+export interface MerchantTransactionsQuery {
+  memberId?: number;
+  orderId?: number;
+  type?: PointTransactionType;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface RefundPreviewDto {
+  orderId: number;
+  refundAmountVnd: string;
+  refundStatus: string | null;
+  earningReversalExact: string;
+  walletBefore: Partial<WalletDto>;
+  walletAfter: Partial<WalletDto>;
+  tierBefore: MemberTier;
+  tierAfter: MemberTier;
+  discountVoucherRestorable: boolean;
+  providerConfirmationRequired: boolean;
+}
+
+export interface RefundDto {
+  id: number;
+  status: string;
+  amountVnd: string;
+  reason: string;
+  requestedById: number;
+  requestedAt: string;
+  completedAt: string | null;
+  providerReference: string | null;
+}
+
+export interface RefundResponseDto {
+  refund: RefundDto;
+  order: OrderDto;
+  walletImpact: unknown;
+}
+
+export interface RewardQueueItemDto {
+  memberVoucherId: number;
+  status: MemberVoucherStatus;
+  memberId: number;
+  memberEmail?: string | null;
+  title: string;
+  pointsCost: number;
+  requestedAt: string;
+  fulfilledAt: string | null;
+  cancelledAt: string | null;
+  fulfilledById: number | null;
+  cancelledById: number | null;
+  note: string | null;
+  cancellationReason: string | null;
+}
+
+export interface RewardCancelResponseDto {
+  reward: RewardQueueItemDto | MemberVoucherDto;
+  wallet?: WalletDto;
+}

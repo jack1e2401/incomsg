@@ -24,6 +24,15 @@ import type {
   VoucherDefinitionResponse,
   VoucherDefinitionsResponse,
   WalletResponse,
+  CancelOrderResponse,
+  MemberEarningPreviewResponse,
+  MerchantLoyaltyPreviewInput,
+  MerchantLoyaltyPreviewResponse,
+  MerchantTransactionsResponse,
+  MerchantTransactionsQuery,
+  RefundPreviewDto,
+  RefundResponseDto,
+  RewardCancelResponseDto,
 } from "./commerce-types";
 
 type FetchLike = typeof fetch;
@@ -32,11 +41,21 @@ async function requestJson<T>(
   fetcher: FetchLike,
   baseUrl: string,
   path: string,
-  options: { method?: "GET" | "POST" | "PATCH" | "PUT"; token?: string; body?: unknown } = {},
+  options: {
+    method?: "GET" | "POST" | "PATCH" | "PUT";
+    token?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<T> {
   const headers = new Headers({ Accept: "application/json" });
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
+  if (options.headers) {
+    for (const [key, value] of Object.entries(options.headers)) {
+      headers.set(key, value);
+    }
+  }
   const response = await fetcher(`${baseUrl.replace(/\/$/, "")}${path}`, {
     method: options.method ?? "GET",
     headers,
@@ -170,13 +189,76 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         { token },
       );
     },
-    redeemVoucher(definitionId: number, token: string) {
+    cancelOrder(orderId: number, token: string) {
+      return requestJson<CancelOrderResponse>(fetcher, baseUrl, `/api/orders/${orderId}/cancel`, {
+        method: "POST",
+        token,
+      });
+    },
+    previewMemberEarning(merchantId: number, netOrderAmountVnd: string, token: string) {
+      return requestJson<MemberEarningPreviewResponse>(
+        fetcher,
+        baseUrl,
+        `/api/member/merchants/${merchantId}/loyalty/preview`,
+        {
+          method: "POST",
+          token,
+          body: { netOrderAmountVnd },
+        },
+      );
+    },
+    async redeemVoucher(definitionId: number, token: string, idempotencyKey: string) {
+      const trimmedKey = idempotencyKey?.trim();
+      if (!trimmedKey) {
+        throw new Error("Idempotency key is required to redeem a voucher");
+      }
       return requestJson<MemberVoucherResponse>(
         fetcher,
         baseUrl,
         `/api/member/vouchers/${definitionId}/redeem`,
-        { method: "POST", token },
+        {
+          method: "POST",
+          token,
+          headers: {
+            "Idempotency-Key": trimmedKey,
+          },
+        },
       );
+    },
+    previewMerchantLoyalty(input: MerchantLoyaltyPreviewInput, token: string) {
+      return requestJson<MerchantLoyaltyPreviewResponse>(fetcher, baseUrl, "/api/merchant/loyalty/preview", {
+        method: "POST",
+        token,
+        body: input,
+      });
+    },
+    listMerchantTransactions(params: MerchantTransactionsQuery, token: string) {
+      const searchParams = new URLSearchParams();
+      if (params.memberId !== undefined) searchParams.set("memberId", String(params.memberId));
+      if (params.orderId !== undefined) searchParams.set("orderId", String(params.orderId));
+      if (params.type !== undefined) searchParams.set("type", params.type);
+      if (params.from !== undefined) searchParams.set("from", params.from);
+      if (params.to !== undefined) searchParams.set("to", params.to);
+      if (params.cursor !== undefined) searchParams.set("cursor", params.cursor);
+      if (params.limit !== undefined) searchParams.set("limit", String(params.limit));
+      const queryString = searchParams.toString();
+      const path = `/api/merchant/loyalty/transactions${queryString ? `?${queryString}` : ""}`;
+      return requestJson<MerchantTransactionsResponse>(fetcher, baseUrl, path, { token });
+    },
+    getRefundPreview(orderId: number, token: string) {
+      return requestJson<RefundPreviewDto>(
+        fetcher,
+        baseUrl,
+        `/api/merchant/orders/${orderId}/refund-preview`,
+        { token },
+      );
+    },
+    refundOrder(orderId: number, body: { reason: string }, token: string) {
+      return requestJson<RefundResponseDto>(fetcher, baseUrl, `/api/merchant/orders/${orderId}/refund`, {
+        method: "POST",
+        token,
+        body,
+      });
     },
     listMerchantRewards(token: string) {
       return requestJson<MerchantRewardsResponse>(fetcher, baseUrl, "/api/merchant/rewards", { token });
@@ -187,6 +269,18 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         baseUrl,
         `/api/merchant/rewards/${memberVoucherId}/fulfill`,
         { method: "POST", token, body: input },
+      );
+    },
+    cancelReward(memberVoucherId: number, body: { reason: string }, token: string) {
+      return requestJson<RewardCancelResponseDto>(
+        fetcher,
+        baseUrl,
+        `/api/merchant/rewards/${memberVoucherId}/cancel`,
+        {
+          method: "POST",
+          token,
+          body,
+        },
       );
     },
   };

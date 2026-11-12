@@ -5,9 +5,12 @@ import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
   LoyaltyConfigInput,
-  MemberVoucherDto,
+  MerchantLoyaltyPreviewResponse,
+  OrderDto,
+  OrderStatus,
   ProductDto,
   ProductPatch,
+  TierLevel,
   VoucherDefinitionDto,
   VoucherDefinitionInput,
 } from "../../api/commerce-types";
@@ -31,6 +34,13 @@ import {
 import { money } from "../../lib/utils";
 import { MerchantRevenueChart } from "./MerchantRevenueChart";
 import { MerchantStoreDetails } from "./MerchantStoreDetails";
+import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
+import { MerchantRefundDialog } from "./MerchantRefundDialog";
+import { MerchantRewardQueue } from "./MerchantRewardQueue";
+
+export { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
+export { MerchantRefundDialog } from "./MerchantRefundDialog";
+export { MerchantRewardQueue } from "./MerchantRewardQueue";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -48,11 +58,50 @@ function formatPrice(value: string) {
   return money(Number(value));
 }
 
+function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
+  switch (status) {
+    case "PAID":
+      return "green";
+    case "PENDING":
+    case "REFUND_PENDING":
+      return "amber";
+    case "REFUNDED":
+      return "purple";
+    case "FAILED":
+      return "red";
+    case "CANCELLED":
+    default:
+      return "neutral";
+  }
+}
+
+function orderStatusLabel(status: OrderStatus): string {
+  switch (status) {
+    case "PAID":
+      return "Đã thanh toán";
+    case "PENDING":
+      return "Chờ thanh toán";
+    case "REFUND_PENDING":
+      return "Đang hoàn tiền";
+    case "REFUNDED":
+      return "Đã hoàn tiền";
+    case "FAILED":
+      return "Thất bại";
+    case "CANCELLED":
+      return "Đã hủy";
+    default:
+      return status;
+  }
+}
+
 export function MerchantOverview() {
   const token = useToken();
   const store = useResource(() => api.getOwnMerchant(token), [token]);
   const products = useResource(() => api.listOwnProducts(token), [token]);
-  const orders = useResource(() => api.listMerchantOrders(token).then((response) => response.orders), [token]);
+  const orders = useResource(
+    () => api.listMerchantOrders(token).then((response) => response.orders),
+    [token],
+  );
   if (store.loading || products.loading) return <LoadingState cards={3} />;
   if (store.error || products.error)
     return (
@@ -409,8 +458,16 @@ export function MerchantOrders() {
 function MerchantPurchaseOrders() {
   const token = useToken();
   const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
+  const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<OrderDto | null>(null);
+  const [notice, setNotice] = useState("");
+
   return (
     <>
+      {notice && (
+        <p role="status" className="mb-4 text-sm text-[#357044]">
+          {notice}
+        </p>
+      )}
       {resource.loading ? (
         <LoadingState cards={2} />
       ) : resource.error ? (
@@ -422,60 +479,92 @@ function MerchantPurchaseOrders() {
         />
       ) : (
         <div className="space-y-3">
-          {resource.data.map((order) => (
-            <Card key={order.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="font-extrabold">Đơn #{order.id}</h3>
-                  <StatusText tone={order.status === "PAID" ? "green" : "amber"}>
-                    {order.status === "PAID" ? "Đã thanh toán" : "Chờ thanh toán"}
-                  </StatusText>
+          {resource.data.map((order) => {
+            const canRefund = order.actions?.canRefund === true;
+            return (
+              <Card key={order.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="font-extrabold">Đơn #{order.id}</h3>
+                    <StatusText tone={orderStatusTone(order.status)}>
+                      {orderStatusLabel(order.status)}
+                    </StatusText>
+                    {order.refundStatus === "PENDING_PROVIDER" && (
+                      <StatusText tone="amber">Chờ cổng xác nhận hoàn tiền</StatusText>
+                    )}
+                    {order.refundStatus === "COMPLETED" && order.status !== "REFUNDED" && (
+                      <StatusText tone="purple">Đã hoàn tiền</StatusText>
+                    )}
+                  </div>
+                  <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[#53685a]">
+                    <span className="font-semibold text-[#294833]">Thành viên #{order.memberId}</span>
+                    {order.memberEmail && <span className="min-w-0 wrap-anywhere">{order.memberEmail}</span>}
+                  </p>
+                  <p className="mt-2 text-xs muted">
+                    {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
+                  </p>
+                  {order.paidAt && (
+                    <p className="mt-1 text-xs muted">
+                      Thanh toán {new Date(order.paidAt).toLocaleString("vi-VN")}
+                    </p>
+                  )}
                 </div>
-                <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[#53685a]">
-                  <span className="font-semibold text-[#294833]">Thành viên #{order.memberId}</span>
-                  {order.memberEmail && <span className="min-w-0 wrap-anywhere">{order.memberEmail}</span>}
-                </p>
-                <p className="mt-2 text-xs muted">
-                  {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
-                </p>
-                {order.paidAt && (
-                  <p className="mt-1 text-xs muted">
-                    Thanh toán {new Date(order.paidAt).toLocaleString("vi-VN")}
-                  </p>
-                )}
-              </div>
-              <div className="text-left sm:text-right">
-                {Number(order.discountAmount) > 0 ? (
-                  <dl className="space-y-1 tabular-nums sm:min-w-52">
-                    <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
-                      <dt>Tạm tính</dt>
-                      <dd>{formatPrice(order.subtotal)}</dd>
-                    </div>
-                    <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
-                      <dt>Voucher giảm giá</dt>
-                      <dd>−{formatPrice(order.discountAmount)}</dd>
-                    </div>
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                      <dt className="text-xs muted">Tổng cộng</dt>
-                      <dd className="text-lg font-extrabold">{formatPrice(order.total)}</dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
-                )}
-                {order.status === "PAID" && order.earnedPoints != null && (
-                  <p className="mt-1 text-xs font-semibold text-[#357044]">
-                    +{order.earnedPoints.toLocaleString("vi-VN")} điểm
-                  </p>
-                )}
-              </div>
-            </Card>
-          ))}
+                <div className="text-left sm:text-right">
+                  {Number(order.discountAmount) > 0 ? (
+                    <dl className="space-y-1 tabular-nums sm:min-w-52">
+                      <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
+                        <dt>Tạm tính</dt>
+                        <dd>{formatPrice(order.subtotal)}</dd>
+                      </div>
+                      <div className="flex flex-wrap justify-between gap-x-4 text-xs muted">
+                        <dt>Voucher giảm giá</dt>
+                        <dd>−{formatPrice(order.discountAmount)}</dd>
+                      </div>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                        <dt className="text-xs muted">Tổng cộng</dt>
+                        <dd className="text-lg font-extrabold">{formatPrice(order.total)}</dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="text-lg font-extrabold">{formatPrice(order.total)}</p>
+                  )}
+                  {order.status === "PAID" && order.earnedPoints != null && (
+                    <p className="mt-1 text-xs font-semibold text-[#357044]">
+                      +{order.earnedPoints.toLocaleString("vi-VN")} điểm
+                    </p>
+                  )}
+                  {canRefund && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => setSelectedOrderForRefund(order)}
+                    >
+                      Hoàn tiền
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
+
+      <MerchantRefundDialog
+        order={selectedOrderForRefund}
+        onClose={() => setSelectedOrderForRefund(null)}
+        onRefundCompleted={(updatedOrder, msg) => {
+          resource.setData((current) =>
+            (current ?? []).map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o)),
+          );
+          setNotice(msg);
+        }}
+      />
     </>
   );
 }
+
 export function MerchantVouchers() {
   const token = useToken();
   const resource = useResource(
@@ -730,133 +819,23 @@ export function MerchantVouchers() {
     </>
   );
 }
-function MerchantRewardQueue() {
-  const token = useToken();
-  const resource = useResource(
-    () => api.listMerchantRewards(token).then((response) => response.rewards),
-    [token],
-  );
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [notes, setNotes] = useState<Record<number, string>>({});
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  async function fulfill(voucher: MemberVoucherDto) {
-    if (busyId !== null) return;
-    setBusyId(voucher.id);
-    setError("");
-    setNotice("");
-    try {
-      const response = await api.fulfillReward(
-        voucher.id,
-        notes[voucher.id]?.trim() ? { note: notes[voucher.id].trim() } : {},
-        token,
-      );
-      resource.setData((current) =>
-        (current ?? []).map((item) => (item.id === response.reward.id ? response.reward : item)),
-      );
-      setNotice(`Đã xác nhận trao “${response.reward.title}” cho thành viên #${response.reward.memberId}.`);
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "Không thể xác nhận trao quà";
-      setError(message);
-      if (message.includes("REWARD_ALREADY_FULFILLED") || message.includes("REWARD_NOT_FOUND"))
-        resource.reload();
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  if (resource.loading) return <LoadingState cards={1} />;
-  if (resource.error) return <ErrorState message={resource.error} retry={resource.reload} />;
-  const open = (resource.data ?? []).filter((voucher) => voucher.status === "AVAILABLE");
-  const fulfilled = (resource.data ?? []).filter((voucher) => voucher.status === "FULFILLED");
-  return (
-    <>
-      {error && (
-        <p role="alert" className="mb-4 text-sm text-[#a4473a]">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="mb-4 text-sm text-[#357044]">
-          {notice}
-        </p>
-      )}
-      <div>
-        <h3 className="mb-3 font-extrabold">Quà chờ trao</h3>
-        {!open.length ? (
-          <p className="surface rounded-2xl px-5 py-4 text-sm muted">Không có quà đang chờ trao.</p>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {open.map((voucher) => (
-              <Card key={voucher.id} className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-extrabold">{voucher.title}</h4>
-                    <p className="mt-1 text-sm muted">
-                      Voucher #{voucher.id} · Thành viên #{voucher.memberId} · Đổi bằng{" "}
-                      {voucher.pointsCost.toLocaleString("vi-VN")} điểm
-                    </p>
-                  </div>
-                  <StatusText tone="amber">Chờ trao</StatusText>
-                </div>
-                <p className="mt-3 text-sm muted">{voucher.rewardDescription}</p>
-                <p className="mt-3 text-xs muted">
-                  Đổi ngày {new Date(voucher.redeemedAt).toLocaleDateString("vi-VN")}
-                </p>
-                <Field label="Ghi chú trao quà (không bắt buộc)">
-                  <Textarea
-                    maxLength={255}
-                    value={notes[voucher.id] ?? ""}
-                    onChange={(event) =>
-                      setNotes((current) => ({ ...current, [voucher.id]: event.target.value }))
-                    }
-                  />
-                </Field>
-                <Button
-                  className="mt-4 w-full sm:w-auto"
-                  disabled={busyId !== null}
-                  onClick={() => void fulfill(voucher)}
-                >
-                  {busyId === voucher.id ? <BusyLabel>Đang xác nhận</BusyLabel> : "Xác nhận đã trao"}
-                </Button>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-      {fulfilled.length > 0 && (
-        <section className="mt-5">
-          <h3 className="mb-3 font-extrabold">Đã trao</h3>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {fulfilled.map((voucher) => (
-              <Card key={voucher.id} className="flex items-center justify-between gap-3 p-5">
-                <div>
-                  <h4 className="font-extrabold">{voucher.title}</h4>
-                  <p className="mt-1 text-sm muted">
-                    Voucher #{voucher.id} · Thành viên #{voucher.memberId}
-                  </p>
-                  {voucher.rewardDescription && (
-                    <p className="mt-1 text-sm muted">{voucher.rewardDescription}</p>
-                  )}
-                </div>
-                <StatusText tone="green">Đã trao</StatusText>
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
-    </>
-  );
-}
 
 export function MerchantLoyalty() {
   const token = useToken();
   const resource = useResource(() => api.getLoyaltyConfig(token), [token]);
+  const [activeTab, setActiveTab] = useState<"CONFIG" | "LEDGER">("CONFIG");
   const [draft, setDraft] = useState<LoyaltyConfigInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  // Formula preview state
+  const [previewAmount, setPreviewAmount] = useState("");
+  const [previewTier, setPreviewTier] = useState<TierLevel | "">("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [previewResult, setPreviewResult] = useState<MerchantLoyaltyPreviewResponse | null>(null);
+
   const config = resource.data?.config;
   const form =
     draft ??
@@ -886,102 +865,231 @@ export function MerchantLoyalty() {
     }
   }
 
+  async function runFormulaPreview() {
+    if (!previewAmount || previewBusy) return;
+    setPreviewBusy(true);
+    setPreviewError("");
+    try {
+      const result = await api.previewMerchantLoyalty(
+        {
+          netOrderAmountVnd: previewAmount,
+          ...(previewTier ? { tierLevel: previewTier } : {}),
+        },
+        token,
+      );
+      setPreviewResult(result);
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : "Không thể tính thử điểm");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   return (
     <>
       <PageHeader title="Cấu hình Loyalty" />
-      {resource.loading ? (
-        <LoadingState cards={2} />
-      ) : resource.error ? (
-        <ErrorState message={resource.error} retry={resource.reload} />
-      ) : !config || !form ? (
-        <EmptyState title="Chưa có cấu hình" description="Cấu hình chưa khả dụng." />
-      ) : (
-        <Card className="max-w-4xl p-6 sm:p-8">
-          <LoyaltyFormula config={config} />
-          <form onSubmit={save} className="mt-6 space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="VND cho mỗi điểm">
-                <Input
-                  required
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={form.vndPerPoint}
-                  onChange={(event) => setDraft({ ...form, vndPerPoint: Number(event.target.value) })}
-                />
-              </Field>
-              <Field label="Quy tắc tích điểm">
-                <Select
-                  value={form.isActive ? "true" : "false"}
-                  onChange={(event) => setDraft({ ...form, isActive: event.target.value === "true" })}
-                >
-                  <option value="true">Hoạt động</option>
-                  <option value="false">Tạm dừng</option>
-                </Select>
-              </Field>
-            </div>
-            <div>
-              <h2 className="font-extrabold">Các hạng</h2>
-              <p className="mt-1 text-xs muted">
-                Ngưỡng Bronze cố định ở 0. Nhập ngưỡng tăng dần và hệ số ở dạng 1.00.
+      <div className="mb-6 flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={activeTab === "CONFIG" ? "default" : "outline"}
+          onClick={() => setActiveTab("CONFIG")}
+        >
+          Cấu hình quy tắc
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeTab === "LEDGER" ? "default" : "outline"}
+          onClick={() => setActiveTab("LEDGER")}
+        >
+          Lịch sử giao dịch điểm
+        </Button>
+      </div>
+
+      {activeTab === "CONFIG" ? (
+        resource.loading ? (
+          <LoadingState cards={2} />
+        ) : resource.error ? (
+          <ErrorState message={resource.error} retry={resource.reload} />
+        ) : !config || !form ? (
+          <EmptyState title="Chưa có cấu hình" description="Cấu hình chưa khả dụng." />
+        ) : (
+          <div className="space-y-6 max-w-4xl">
+            <div className="rounded-2xl bg-[#fff8eb] p-4 text-xs leading-5 text-[#97682a]">
+              <p className="font-bold">
+                Lưu ý: Thay đổi tỷ lệ hoặc hạng tích điểm chỉ áp dụng cho các đơn hàng phát sinh sau này.
               </p>
-              <div className="mt-4 space-y-3">
-                {form.tiers.map((tier, index) => (
-                  <div
-                    key={tier.level}
-                    className="grid items-end gap-3 rounded-xl bg-[#f7f9f5] p-4 sm:grid-cols-[1fr_1fr_1fr]"
-                  >
-                    <p className="pb-3 text-sm font-extrabold">{tier.level}</p>
-                    <Field label="Điểm tích lũy tối thiểu">
-                      <Input
-                        required
-                        type="number"
-                        min={index === 0 ? 0 : 1}
-                        step={1}
-                        disabled={index === 0}
-                        value={tier.minLifetimePoints}
-                        onChange={(event) =>
-                          setDraft({
-                            ...form,
-                            tiers: form.tiers.map((item, i) =>
-                              i === index ? { ...item, minLifetimePoints: Number(event.target.value) } : item,
-                            ),
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Hệ số">
-                      <Input
-                        required
-                        pattern="[0-9]{1,3}\.[0-9]{2}"
-                        value={tier.multiplier}
-                        onChange={(event) =>
-                          setDraft({
-                            ...form,
-                            tiers: form.tiers.map((item, i) =>
-                              i === index ? { ...item, multiplier: event.target.value } : item,
-                            ),
-                          })
-                        }
-                      />
-                    </Field>
+              <p className="mt-1">
+                Số dư điểm hiện tại và phần điểm lẻ của hội viên sẽ được bảo lưu nguyên vẹn.
+              </p>
+            </div>
+
+            <Card className="p-6 sm:p-8">
+              <LoyaltyFormula config={config} />
+              <form onSubmit={save} className="mt-6 space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="VND cho mỗi điểm">
+                    <Input
+                      required
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={form.vndPerPoint}
+                      onChange={(event) => setDraft({ ...form, vndPerPoint: Number(event.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Quy tắc tích điểm">
+                    <Select
+                      value={form.isActive ? "true" : "false"}
+                      onChange={(event) => setDraft({ ...form, isActive: event.target.value === "true" })}
+                    >
+                      <option value="true">Hoạt động</option>
+                      <option value="false">Tạm dừng</option>
+                    </Select>
+                  </Field>
+                </div>
+                <div>
+                  <h2 className="font-extrabold">Các hạng</h2>
+                  <p className="mt-1 text-xs muted">
+                    Ngưỡng Bronze cố định ở 0. Nhập ngưỡng tăng dần và hệ số ở dạng 1.00.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {form.tiers.map((tier, index) => (
+                      <div
+                        key={tier.level}
+                        className="grid items-end gap-3 rounded-xl bg-[#f7f9f5] p-4 sm:grid-cols-[1fr_1fr_1fr]"
+                      >
+                        <p className="pb-3 text-sm font-extrabold">{tier.level}</p>
+                        <Field label="Điểm tích lũy tối thiểu">
+                          <Input
+                            required
+                            type="number"
+                            min={index === 0 ? 0 : 1}
+                            step={1}
+                            disabled={index === 0}
+                            value={tier.minLifetimePoints}
+                            onChange={(event) =>
+                              setDraft({
+                                ...form,
+                                tiers: form.tiers.map((item, i) =>
+                                  i === index
+                                    ? { ...item, minLifetimePoints: Number(event.target.value) }
+                                    : item,
+                                ),
+                              })
+                            }
+                          />
+                        </Field>
+                        <Field label="Hệ số">
+                          <Input
+                            required
+                            pattern="[0-9]{1,3}\.[0-9]{2}"
+                            value={tier.multiplier}
+                            onChange={(event) =>
+                              setDraft({
+                                ...form,
+                                tiers: form.tiers.map((item, i) =>
+                                  i === index ? { ...item, multiplier: event.target.value } : item,
+                                ),
+                              })
+                            }
+                          />
+                        </Field>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                {error && (
+                  <p role="alert" className="text-sm text-[#a4473a]">
+                    {error}
+                  </p>
+                )}
+                {notice && (
+                  <p role="status" className="text-sm text-[#357044]">
+                    {notice}
+                  </p>
+                )}
+                <Button disabled={busy}>{busy ? <BusyLabel>Đang lưu</BusyLabel> : "Lưu cấu hình"}</Button>
+              </form>
+            </Card>
+
+            <Card className="p-6 sm:p-8">
+              <h2 className="text-lg font-extrabold">Xem trước công thức tích điểm</h2>
+              <p className="mt-1 text-xs muted">
+                Thử tính toán điểm số cho đơn hàng dựa trên công thức hiện tại mà không thay đổi dữ liệu.
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                <Field label="Số tiền đơn hàng thử nghiệm (VNĐ)">
+                  <Input
+                    required
+                    type="number"
+                    min={1}
+                    aria-label="Số tiền đơn hàng thử nghiệm"
+                    value={previewAmount}
+                    onChange={(event) => setPreviewAmount(event.target.value)}
+                    placeholder="50000"
+                  />
+                </Field>
+                <Field label="Hạng thành viên (tùy chọn)">
+                  <Select
+                    value={previewTier}
+                    onChange={(event) => setPreviewTier(event.target.value as TierLevel | "")}
+                  >
+                    <option value="">Theo cấu hình</option>
+                    <option value="BRONZE">BRONZE</option>
+                    <option value="SILVER">SILVER</option>
+                    <option value="GOLD">GOLD</option>
+                    <option value="PLATINUM">PLATINUM</option>
+                  </Select>
+                </Field>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    disabled={previewBusy || !previewAmount}
+                    onClick={() => void runFormulaPreview()}
+                  >
+                    {previewBusy ? <BusyLabel>Đang tính</BusyLabel> : "Tính thử điểm"}
+                  </Button>
+                </div>
               </div>
-            </div>
-            {error && (
-              <p role="alert" className="text-sm text-[#a4473a]">
-                {error}
-              </p>
-            )}
-            {notice && (
-              <p role="status" className="text-sm text-[#357044]">
-                {notice}
-              </p>
-            )}
-            <Button disabled={busy}>{busy ? <BusyLabel>Đang lưu</BusyLabel> : "Lưu cấu hình"}</Button>
-          </form>
-        </Card>
+
+              {previewError && (
+                <p role="alert" className="mt-3 text-xs text-[#a4473a]">
+                  {previewError}
+                </p>
+              )}
+
+              {previewResult && (
+                <div className="mt-4 rounded-xl bg-[#edf4e9] p-4 text-xs">
+                  <p className="text-sm font-bold text-[#294833]">
+                    Điểm ước tính:{" "}
+                    <span className="font-mono text-base">{previewResult.estimatedPointsExact}</span> điểm
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[#46614d] sm:grid-cols-4">
+                    <p>
+                      Phần nguyên: <b>{previewResult.integerProjection}</b>
+                    </p>
+                    <p>
+                      Phần lẻ: <b>{previewResult.fractionalProjection}</b>
+                    </p>
+                    <p>
+                      Hệ số: <b>{previewResult.multiplier}×</b>
+                    </p>
+                    <p>
+                      Tỷ lệ: <b>{formatPrice(String(previewResult.vndPerPoint))}/điểm</b>
+                    </p>
+                  </div>
+                  <p className="mt-2 text-[11px] text-[#637269]">
+                    Làm tròn: {previewResult.rounding} · Độ chính xác: {previewResult.scale} chữ số thập phân
+                  </p>
+                </div>
+              )}
+            </Card>
+          </div>
+        )
+      ) : (
+        <MerchantLoyaltyTransactions />
       )}
     </>
   );

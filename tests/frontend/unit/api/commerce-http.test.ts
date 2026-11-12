@@ -139,7 +139,7 @@ describe("commerce HTTP contract", () => {
       .mockResolvedValueOnce(Response.json({ reward: { ...voucher, status: "FULFILLED" } }));
     const client = createCommerceClient("", fetcher);
 
-    const redeemed = await client.redeemVoucher(5, "member-token");
+    const redeemed = await client.redeemVoucher(5, "member-token", "redeem-key-5");
     const rewards = await client.listMerchantRewards("merchant-token");
     const fulfilled = await client.fulfillReward(33, { note: "Trao tại quầy" }, "merchant-token");
 
@@ -148,6 +148,7 @@ describe("commerce HTTP contract", () => {
       ["/api/merchant/rewards", "GET"],
       ["/api/merchant/rewards/33/fulfill", "POST"],
     ]);
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get("Idempotency-Key")).toBe("redeem-key-5");
     expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body))).toEqual({ note: "Trao tại quầy" });
     expect(redeemed.wallet).toEqual({ availablePoints: 20, lifetimeEarnedPoints: 120 });
     expect(rewards.rewards).toEqual([voucher]);
