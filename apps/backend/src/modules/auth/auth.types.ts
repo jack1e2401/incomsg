@@ -1,4 +1,4 @@
-import type { ApplicationStatus, UserRole } from "../../generated/prisma/enums.js";
+import type { AccountStatus, ApplicationStatus, UserRole } from "../../generated/prisma/enums.js";
 
 export type Credentials = { email: string; password: string };
 export type MerchantRegistration = Credentials & { storeName: string };
@@ -7,8 +7,11 @@ export type UserDto = {
   id: number;
   email: string;
   role: UserRole;
+  accountStatus: AccountStatus;
   isActive: boolean;
 };
+
+export type AuthenticatedUser = UserDto & { merchantIsActive: boolean | null };
 
 export type ApplicationDto = {
   id: number;
@@ -31,4 +34,5 @@ export type LoginIdentity = {
   passwordHash: string;
   applicationStatus: ApplicationStatus | null;
   merchant: MerchantDto | null;
+  blacklisted: boolean;
 };

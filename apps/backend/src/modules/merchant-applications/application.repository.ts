@@ -57,7 +57,10 @@ export const applicationRepository = {
         },
         select: { id: true, name: true, slug: true, isActive: true },
       });
-      await tx.user.update({ where: { id: application.applicantId }, data: { isActive: true } });
+      await tx.user.updateMany({
+        where: { id: application.applicantId, accountStatus: "PENDING_APPROVAL" },
+        data: { accountStatus: "ACTIVE" },
+      });
 
       return {
         kind: "approved",
@@ -87,6 +90,10 @@ export const applicationRepository = {
         data: { status: "REJECTED", reviewedById: reviewerId, reviewedAt },
       });
       if (claim.count !== 1) return { kind: "already_reviewed" };
+      await tx.user.updateMany({
+        where: { id: application.applicantId, accountStatus: "PENDING_APPROVAL" },
+        data: { accountStatus: "REJECTED" },
+      });
 
       return {
         kind: "rejected",

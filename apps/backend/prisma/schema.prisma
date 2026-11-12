@@ -15,6 +15,27 @@ enum UserRole {
   MEMBER
 }
 
+enum AccountStatus {
+  ACTIVE
+  PENDING_APPROVAL
+  REJECTED
+  SUSPENDED
+  BANNED
+}
+
+enum AdminAuditAction {
+  USER_STATUS_CHANGED
+  EMAIL_BLACKLISTED
+  EMAIL_BLACKLIST_DEACTIVATED
+  MERCHANT_STATUS_CHANGED
+}
+
+enum AdminAuditTargetType {
+  USER
+  EMAIL_BLACKLIST
+  MERCHANT
+}
+
 enum ApplicationStatus {
   PENDING
   APPROVED
@@ -96,7 +117,7 @@ model User {
   email                String                @unique @db.VarChar(191)
   passwordHash         String                @db.VarChar(255)
   role                 UserRole
-  isActive             Boolean               @default(true)
+  accountStatus        AccountStatus         @default(ACTIVE)
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   application          MerchantApplication?  @relation("Applicant")
@@ -107,6 +128,36 @@ model User {
   fulfilledRewards     RewardFulfillment[]   @relation("RewardFulfiller")
   cancelledRewards     RewardCancellation[]  @relation("RewardCanceller")
   refundsRequested     OrderRefund[]         @relation("RefundRequester")
+}
+
+model EmailBlacklistEntry {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique @db.VarChar(191)
+  reason         String   @db.VarChar(255)
+  isActive       Boolean  @default(true)
+  lastActorId    Int
+  lastActorEmail String   @db.VarChar(191)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive, updatedAt])
+}
+
+model AdminAuditLog {
+  id         Int                  @id @default(autoincrement())
+  actorId    Int
+  actorEmail String               @db.VarChar(191)
+  action     AdminAuditAction
+  targetType AdminAuditTargetType
+  targetId   Int
+  reason     String               @db.VarChar(255)
+  before     Json?
+  after      Json?
+  createdAt  DateTime             @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId, createdAt])
 }
 
 model MerchantApplication {
