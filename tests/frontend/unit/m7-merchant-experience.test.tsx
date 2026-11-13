@@ -109,9 +109,9 @@ describe("M7 Merchant Experience", () => {
       expect(screen.getByText("6.250000000000")).toBeInTheDocument();
     });
 
-    // Verify obsolete floor copy was removed and exact formula with fractional carry is shown
+    // The formula explains that fractional points carry forward.
     expect(screen.queryByText(/làm tròn xuống/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/fractional carry/i)).toBeInTheDocument();
+    expect(screen.getByText(/điểm lẻ được cộng dồn/i)).toBeInTheDocument();
   });
 
   it("displays exact fractional earned points in MerchantOrders rather than rounding down to 0", async () => {

@@ -9,15 +9,12 @@ export function LoyaltyFormula({ config }: { config?: Pick<LoyaltyConfigDto, "vn
       {config?.isActive === false && <p className="mt-2 text-sm font-semibold">Tích điểm đang tạm dừng.</p>}
       <div className="mt-2 space-y-1 text-sm leading-6">
         <p>
-          <strong>Điểm nhận</strong> = (tiền thực trả sau giảm giá ÷ {rate}) × hệ số hạng.
+          <strong>Điểm nhận</strong> = (tiền sau giảm giá ÷ {rate}) × hệ số hạng.
         </p>
-        <p>
-          Phần thập phân chưa thành điểm nguyên được lưu vào số dư tích lũy (fractional carry) và cộng dồn cho các đơn hàng tiếp theo.
-        </p>
+        <p>Điểm lẻ được cộng dồn qua các đơn sau.</p>
       </div>
       <p className="mt-2 text-sm leading-6 muted">
-        Khi bật tích điểm, chỉ đơn đã thanh toán mới được tính điểm. Đơn đầu tiên tại mỗi cửa hàng dùng hệ số
-        Bronze.
+        Khi bật tích điểm, chỉ đơn đã thanh toán được cộng điểm. Đơn đầu tại mỗi cửa hàng dùng hệ số Bronze.
       </p>
     </section>
   );
