@@ -1,13 +1,23 @@
 import type { RequestHandler } from "express";
 import { adminService } from "./admin.service.js";
+import { getMerchantFinance, readFinanceQuery } from "../merchant/merchant.finance.js";
+import { getAdminFinance, readFinancePeriod } from "./admin.finance.js";
 import { readAbuseReportListQuery, readAuditListQuery, readBlacklistCreate, readBlacklistListQuery, readId, readMerchantStatusChange, readReasonBody, readUserListQuery, readUserStatusChange } from "./admin.validation.js";
 
 export const listAdminMerchants: RequestHandler = async (_request, response) => {
   response.json({ merchants: await adminService.listMerchants() });
 };
 
+export const listAdminMerchantFees: RequestHandler = async (request, response) => {
+  response.json(await getMerchantFinance(readId(request.params.merchantId), readFinanceQuery(request.query)));
+};
+
 export const getAdminDashboard: RequestHandler = async (_request, response) => {
   response.json({ stats: await adminService.getDashboardStats() });
+};
+
+export const getAdminFinanceReport: RequestHandler = async (request, response) => {
+  response.json(await getAdminFinance(readFinancePeriod(request.query.period)));
 };
 
 export const listAdminUsers: RequestHandler = async (request, response) => {

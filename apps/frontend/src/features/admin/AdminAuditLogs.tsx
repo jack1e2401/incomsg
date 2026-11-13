@@ -15,6 +15,7 @@ import {
 } from "../../components/ui";
 import { AdminAuditLogsFilter } from "./AdminAuditLogsFilter";
 import { AdminAuditLogsTable } from "./AdminAuditLogsTable";
+import { pastYearRange, vietnamDateBounds } from "../../lib/vietnam-date";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -31,8 +32,9 @@ export function AdminAuditLogs() {
   const [targetTypeFilter, setTargetTypeFilter] = useState<AdminAuditTargetType | "ALL">("ALL");
   const [actorIdInput, setActorIdInput] = useState("");
   const [targetIdInput, setTargetIdInput] = useState("");
-  const [fromDateInput, setFromDateInput] = useState("");
-  const [toDateInput, setToDateInput] = useState("");
+  const [defaultRange] = useState(pastYearRange);
+  const [fromDateInput, setFromDateInput] = useState(defaultRange.from);
+  const [toDateInput, setToDateInput] = useState(defaultRange.to);
 
   // Applied query filters
   const [appliedFilters, setAppliedFilters] = useState<{
@@ -42,7 +44,7 @@ export function AdminAuditLogs() {
     targetId?: number;
     from?: string;
     to?: string;
-  }>({});
+  }>(() => vietnamDateBounds(defaultRange.from, defaultRange.to));
 
   // Expanded row IDs for before/after view
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -113,16 +115,7 @@ export function AdminAuditLogs() {
     if (targetIdInput.trim() && /^\d+$/.test(targetIdInput.trim())) {
       filters.targetId = Number(targetIdInput.trim());
     }
-    if (fromDateInput) {
-      filters.from = new Date(fromDateInput).toISOString();
-    }
-    if (toDateInput) {
-      const toDate = new Date(toDateInput);
-      toDate.setHours(23, 59, 59, 999);
-      filters.to = toDate.toISOString();
-    }
-
-    setAppliedFilters(filters);
+    setAppliedFilters({ ...filters, ...vietnamDateBounds(fromDateInput, toDateInput) });
   }
 
   function handleResetFilters() {
@@ -130,9 +123,10 @@ export function AdminAuditLogs() {
     setTargetTypeFilter("ALL");
     setActorIdInput("");
     setTargetIdInput("");
-    setFromDateInput("");
-    setToDateInput("");
-    setAppliedFilters({});
+    const range = pastYearRange();
+    setFromDateInput(range.from);
+    setToDateInput(range.to);
+    setAppliedFilters(vietnamDateBounds(range.from, range.to));
   }
 
   function toggleExpand(id: number) {

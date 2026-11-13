@@ -1,6 +1,8 @@
 import type {
   CreateOrderInput,
   AdminDashboardResponse,
+  AdminFinancePeriod,
+  AdminFinanceReport,
   FulfillRewardInput,
   LoyaltyConfigInput,
   LoyaltyConfigResponse,
@@ -55,6 +57,8 @@ import type {
   InventoryAdjustmentResponse,
   InventoryResponse,
   MerchantLoyaltyHistoryResponse,
+  MerchantFinanceResponse,
+  PlatformFeeFilters,
 } from "./commerce-types";
 
 export function translateApiError(code: string): string {
@@ -115,6 +119,14 @@ async function requestJson<T>(
 }
 
 /** Only endpoints currently mounted by apps/backend/src/app.ts. */
+function financePath(path: string, filters: PlatformFeeFilters) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  return query.size ? `${path}?${query}` : path;
+}
+
 export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
   return {
     listMerchants({ includeCover = false }: { includeCover?: boolean } = {}) {
@@ -123,8 +135,17 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
     getAdminDashboard(token: string) {
       return requestJson<AdminDashboardResponse>(fetcher, baseUrl, "/api/admin/dashboard", { token });
     },
+    getAdminFinance(period: AdminFinancePeriod, token: string) {
+      return requestJson<AdminFinanceReport>(fetcher, baseUrl, `/api/admin/finance?period=${period}`, { token });
+    },
     listAdminMerchants(token: string) {
       return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, "/api/admin/merchants", { token });
+    },
+    getMerchantFinance(token: string, filters: PlatformFeeFilters = {}) {
+      return requestJson<MerchantFinanceResponse>(fetcher, baseUrl, financePath("/api/merchant/finance", filters), { token });
+    },
+    getAdminMerchantFees(merchantId: number, token: string, filters: PlatformFeeFilters = {}) {
+      return requestJson<MerchantFinanceResponse>(fetcher, baseUrl, financePath(`/api/admin/merchants/${merchantId}/fees`, filters), { token });
     },
     getOwnMerchant(token: string) {
       return requestJson<OwnMerchantResponse>(fetcher, baseUrl, "/api/merchant/me", { token });

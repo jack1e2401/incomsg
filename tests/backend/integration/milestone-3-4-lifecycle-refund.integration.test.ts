@@ -165,6 +165,7 @@ after(async () => {
   await prisma.memberVoucher.deleteMany({ where: { membership: { merchantId: { in: merchantIds } } } });
   await prisma.orderItem.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.paymentAttempt.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
+  await prisma.merchantFeeTransaction.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.order.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.merchantMembership.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });

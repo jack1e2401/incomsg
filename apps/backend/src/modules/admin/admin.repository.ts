@@ -1,5 +1,6 @@
 import type { AccountStatus, AdminAuditAction, AdminAuditTargetType, UserRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
+import { getPlatformFeeSummary, listMerchantsWithFinanceTier } from "../merchant/merchant.finance.js";
 
 type PageQuery = { cursor: number | null; limit: number };
 
@@ -10,24 +11,23 @@ function pageResult<T extends { id: number }>(rows: T[], limit: number) {
 
 export const adminRepository = {
   async listMerchants() {
-    return prisma.merchant.findMany({
-      select: { id: true, name: true, slug: true, isActive: true },
-      orderBy: { id: "asc" },
-    });
+    return listMerchantsWithFinanceTier();
   },
 
   async getDashboardStats() {
-    const [merchants, pendingApplications, paidOrders, paidVolume] = await Promise.all([
+    const [merchants, pendingApplications, paidOrders, paidVolume, platformFees] = await Promise.all([
       prisma.merchant.count({ where: { isActive: true } }),
       prisma.merchantApplication.count({ where: { status: "PENDING" } }),
       prisma.order.count({ where: { status: "PAID" } }),
       prisma.order.aggregate({ where: { status: "PAID" }, _sum: { total: true } }),
+      getPlatformFeeSummary(),
     ]);
     return {
       merchants,
       pendingApplications,
       paidOrders,
       totalVolume: paidVolume._sum.total?.toFixed(0) ?? "0",
+      platformFees,
     };
   },
 

@@ -81,6 +81,7 @@ after(async () => {
   const orders = await prisma.order.findMany({ where: { memberId: { in: userIds } }, select: { id: true } });
   const orderIds = orders.map(({ id }) => id);
   await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+  await prisma.merchantFeeTransaction.deleteMany({ where: { order: { id: { in: orderIds } } } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.inventoryBalance.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });

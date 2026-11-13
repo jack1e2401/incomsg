@@ -71,6 +71,7 @@ after(async () => {
     await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.paymentAttempt.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.pointTransaction.deleteMany({ where: { orderId: { in: orderIds } } });
+    await prisma.merchantFeeTransaction.deleteMany({ where: { order: { id: { in: orderIds } } } });
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
     await prisma.product.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.merchantApplication.deleteMany({ where: { applicantId: { in: userIds } } });
@@ -89,13 +90,15 @@ async function request(path: string, token?: string) {
   return { response, json: await response.json() as Record<string, any> };
 }
 
-test("admin merchant directory returns only merchant directory fields", async () => {
+test("admin merchant directory returns directory fields and the fee tier", async () => {
   const { response, json } = await request("/api/admin/merchants", adminToken);
   assert.equal(response.status, 200);
   const active = json.merchants.find((merchant: { id: number }) => merchant.id === merchantId);
   const inactive = json.merchants.find((merchant: { id: number }) => merchant.id === inactiveMerchantId);
-  assert.deepEqual(Object.keys(active).sort(), ["id", "isActive", "name", "slug"]);
-  assert.deepEqual(Object.keys(inactive).sort(), ["id", "isActive", "name", "slug"]);
+  assert.deepEqual(Object.keys(active).sort(), ["financeTier", "id", "isActive", "name", "slug"]);
+  assert.deepEqual(Object.keys(inactive).sort(), ["financeTier", "id", "isActive", "name", "slug"]);
+  assert.equal(active.financeTier.revenueVnd, "200000");
+  assert.equal(inactive.financeTier.revenueVnd, "0");
   assert.equal(inactive.isActive, false);
 });
 
@@ -133,6 +136,7 @@ test("admin dashboard reports exact deltas and excludes pending orders", async (
     pendingApplications: before.json.stats.pendingApplications,
     paidOrders: before.json.stats.paidOrders + 1,
     totalVolume: (BigInt(before.json.stats.totalVolume) + BigInt(paidTotal)).toString(),
+    platformFees: before.json.stats.platformFees,
   });
 });
 

@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import type { AdminAuditAction, AdminAuditTargetType } from "../../api/commerce-types";
 import { Button, Card, Input, Select } from "../../components/ui";
+import { pastYearRange } from "../../lib/vietnam-date";
 
 interface AdminAuditLogsFilterProps {
   actionFilter: AdminAuditAction | "ALL";
@@ -111,6 +112,7 @@ export function AdminAuditLogsFilter({
               id="from-date"
               type="date"
               value={fromDateInput}
+              max={toDateInput || pastYearRange().to}
               onChange={(e) => onFromDateInputChange(e.target.value)}
             />
           </div>
@@ -123,6 +125,8 @@ export function AdminAuditLogsFilter({
               id="to-date"
               type="date"
               value={toDateInput}
+              min={fromDateInput || undefined}
+              max={pastYearRange().to}
               onChange={(e) => onToDateInputChange(e.target.value)}
             />
           </div>

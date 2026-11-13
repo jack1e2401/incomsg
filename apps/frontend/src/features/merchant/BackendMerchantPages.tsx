@@ -34,6 +34,8 @@ import {
 } from "../../components/ui";
 import { money } from "../../lib/utils";
 import { MerchantRevenueChart } from "./MerchantRevenueChart";
+import { MerchantFinanceOverview } from "../finance/MerchantFinanceOverview";
+import { PlatformFeeLedger } from "../finance/PlatformFeeLedger";
 import { MerchantStoreDetails } from "./MerchantStoreDetails";
 import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
@@ -160,6 +162,7 @@ export function MerchantOverview() {
         error={orders.error}
         retry={orders.reload}
       />
+      <MerchantFinanceOverview token={token} />
     </>
   );
 }
@@ -455,30 +458,52 @@ export function MerchantProducts() {
 }
 
 export function MerchantOrders() {
+  const token = useToken();
+  const [params, setParams] = useSearchParams();
+  const showFees = params.get("tab") === "fees";
+  const orderId = Number(params.get("orderId"));
+  const selectedOrderId = Number.isSafeInteger(orderId) && orderId > 0 ? orderId : null;
+  const voucherId = Number(params.get("voucherId"));
+  const selectedVoucherId = Number.isSafeInteger(voucherId) && voucherId > 0 ? voucherId : null;
   return (
     <>
       <PageHeader title="Đơn hàng" />
+      <div className="mb-5 flex flex-wrap gap-2" aria-label="Chế độ xem đơn hàng">
+        <Button type="button" size="sm" variant={showFees ? "outline" : "default"} aria-pressed={!showFees} onClick={() => setParams({})}>Đơn mua và quà đổi thưởng</Button>
+        <Button type="button" size="sm" variant={showFees ? "default" : "outline"} aria-pressed={showFees} onClick={() => setParams({ tab: "fees" })}>Sổ phí bán hàng</Button>
+      </div>
+      {showFees ? <PlatformFeeLedger token={token} /> :
       <div className="space-y-8">
-        <section aria-labelledby="merchant-order-rewards">
+        {selectedOrderId === null && <section aria-labelledby="merchant-order-rewards">
           <h2 id="merchant-order-rewards" className="mb-3 text-lg font-extrabold">
             Quà đổi thưởng
           </h2>
-          <MerchantRewardQueue />
-        </section>
-        <section aria-labelledby="merchant-purchase-orders">
+          {selectedVoucherId !== null && <Button type="button" size="sm" variant="outline" className="mb-3" onClick={() => setParams({})}>Tất cả quà đổi thưởng</Button>}
+          <MerchantRewardQueue key={selectedVoucherId ?? "all"} voucherId={selectedVoucherId ?? undefined} />
+        </section>}
+        {selectedVoucherId === null && <section aria-labelledby="merchant-purchase-orders">
           <h2 id="merchant-purchase-orders" className="mb-3 text-lg font-extrabold">
             Đơn mua hàng
           </h2>
-          <MerchantPurchaseOrders />
-        </section>
-      </div>
+          {selectedOrderId !== null && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setParams({ tab: "fees" })}>Về sổ phí</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setParams({})}>Tất cả đơn hàng</Button>
+            </div>
+          )}
+          <MerchantPurchaseOrders key={selectedOrderId ?? "all"} orderId={selectedOrderId} />
+        </section>}
+      </div>}
     </>
   );
 }
 
-function MerchantPurchaseOrders() {
+function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
   const token = useToken();
-  const resource = useResource(() => api.listMerchantOrders(token).then(({ orders }) => orders), [token]);
+  const resource = useResource<(OrderDto & { memberEmail?: string })[]>(
+    () => orderId === null ? api.listMerchantOrders(token).then(({ orders }) => orders) : api.getMerchantOrder(orderId, token).then(({ order }) => [order]),
+    [token, orderId],
+  );
   const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<OrderDto | null>(null);
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<(OrderDto & { memberEmail?: string }) | null>(null);
   const [policyOrderId, setPolicyOrderId] = useState<number | null>(null);

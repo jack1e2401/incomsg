@@ -30,11 +30,11 @@ function formatActionDate(value: string | null | undefined) {
     : null;
 }
 
-export function MerchantRewardQueue() {
+export function MerchantRewardQueue({ voucherId }: { voucherId?: number } = {}) {
   const token = useToken();
   const resource = useResource(
-    () => api.listMerchantRewards(token).then((response) => response.rewards),
-    [token],
+    () => api.listMerchantRewards(token).then(({ rewards }) => voucherId === undefined ? rewards : rewards.filter((reward) => reward.id === voucherId)),
+    [token, voucherId],
   );
   const [filterTab, setFilterTab] = useState<"ALL" | "PENDING" | "FULFILLED" | "CANCELLED">("ALL");
   const [busyId, setBusyId] = useState<number | null>(null);

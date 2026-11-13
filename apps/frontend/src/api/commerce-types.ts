@@ -90,11 +90,71 @@ export type VnpayPaymentResponse =
   { orderId: number; paymentUrl: string; txnRef: string } | { orderId: number; orderStatus: "PAID" };
 export type OrdersResponse = { orders: OrderDto[] };
 export type MerchantOrdersResponse = { orders: (OrderDto & { memberEmail?: string })[] };
-export type MerchantDirectoryItem = { id: number; name: string; slug: string; isActive?: boolean; coverImageUrl?: string | null };
+export type MerchantDirectoryItem = { id: number; name: string; slug: string; isActive?: boolean; coverImageUrl?: string | null; financeTier?: MerchantFinanceTier };
 export type MerchantDirectoryResponse = { merchants: MerchantDirectoryItem[] };
 export type AdminDashboardResponse = {
-  stats: { merchants: number; pendingApplications: number; paidOrders: number; totalVolume: string | number };
+  stats: { merchants: number; pendingApplications: number; paidOrders: number; totalVolume: string | number; platformFees?: PlatformFeeSummary };
 };
+
+export type MerchantFinanceTierLevel = "BRONZE" | "SILVER" | "GOLD";
+
+export interface MerchantFinanceTier {
+  level: MerchantFinanceTierLevel;
+  year: number;
+  feeRate: string;
+  revenueVnd: string;
+  nextTier: MerchantFinanceTierLevel | null;
+  nextThresholdVnd: string | null;
+  lastEvaluatedAt: string | null;
+}
+
+export interface PlatformFeeSummary {
+  chargedVnd: string;
+  reversedVnd: string;
+  netVnd: string;
+}
+
+export type AdminFinancePeriod = "7d" | "30d" | "year";
+
+export interface AdminFinanceReport {
+  from: string;
+  to: string;
+  granularity: "day" | "month";
+  summary: PlatformFeeSummary;
+  series: { bucket: string; netVnd: string }[];
+  merchants: (PlatformFeeSummary & { id: number; name: string; isActive: boolean; revenueVnd: string; feeCount: number; unrecordedOrderCount: number })[];
+}
+
+export type PlatformFeeType = "FEE_CHARGE" | "FEE_REVERSAL";
+
+export interface PlatformFeeItem {
+  id: number;
+  merchantId: number;
+  orderId: number;
+  type: PlatformFeeType;
+  amountVnd: string;
+  tier: MerchantFinanceTierLevel;
+  feeRate: string;
+  orderTotalVnd: string;
+  createdAt: string;
+  eventRef: string;
+}
+
+export interface PlatformFeeFilters {
+  from?: string;
+  to?: string;
+  type?: PlatformFeeType;
+  orderId?: number;
+  cursor?: number;
+}
+
+export interface MerchantFinanceResponse {
+  tier: MerchantFinanceTier;
+  summary: PlatformFeeSummary;
+  sales: { orderNetVnd: string; merchantReceivesVnd: string };
+  items: PlatformFeeItem[];
+  nextCursor: number | null;
+}
 
 interface OrderLineInput {
   productId: number;
@@ -270,6 +330,7 @@ export interface MerchantLedgerItemDto extends WalletTransactionDto {
 }
 
 export interface MerchantTransactionsResponse {
+  summary?: { earned: string; redeemed: string; reversed: string; restored: string };
   items: MerchantLedgerItemDto[];
   nextCursor: string | null;
 }

@@ -238,7 +238,7 @@ export async function listMerchantTransactions(merchantId: number, filters: Merc
   }
 
   const limit = Math.min(Math.max(filters.limit ?? 20, 1), 100);
-  const where: Prisma.PointTransactionWhereInput = {
+  const summaryWhere: Prisma.PointTransactionWhereInput = {
     wallet: {
       membership: {
         merchantId,
@@ -246,18 +246,16 @@ export async function listMerchantTransactions(merchantId: number, filters: Merc
       },
     },
     ...(filters.orderId ? { orderId: filters.orderId } : {}),
-    ...(filters.type ? { type: filters.type } : {}),
     ...(filters.from || filters.to ? {
       createdAt: {
         ...(filters.from ? { gte: new Date(filters.from) } : {}),
         ...(filters.to ? { lte: new Date(filters.to) } : {}),
       },
     } : {}),
-    ...(filters.cursor ? { id: { lt: filters.cursor } } : {}),
   };
 
-  const records = await prisma.pointTransaction.findMany({
-    where,
+  const [records, totals] = await prisma.$transaction([prisma.pointTransaction.findMany({
+    where: { ...summaryWhere, ...(filters.type ? { type: filters.type } : {}), ...(filters.cursor ? { id: { lt: filters.cursor } } : {}) },
     include: {
       wallet: {
         include: {
@@ -273,7 +271,7 @@ export async function listMerchantTransactions(merchantId: number, filters: Merc
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
-  });
+  }), prisma.pointTransaction.groupBy({ by: ["type"], orderBy: { type: "asc" }, where: summaryWhere, _sum: { delta: true } })]);
 
   const hasNext = records.length > limit;
   const pageRecords = hasNext ? records.slice(0, limit) : records;
@@ -312,5 +310,11 @@ export async function listMerchantTransactions(merchantId: number, filters: Merc
     };
   });
 
-  return { items, nextCursor };
+  const total = (type: PointTransactionType) => totals.find((row) => row.type === type)?._sum?.delta ?? new Prisma.Decimal(0);
+  return { items, nextCursor, summary: {
+    earned: exactPoints(total("EARN")),
+    redeemed: exactPoints(total("REDEEM_DISCOUNT").plus(total("REDEEM_REWARD")).abs()),
+    reversed: exactPoints(total("EARN_REVERSAL").abs()),
+    restored: exactPoints(total("REDEMPTION_REVERSAL")),
+  } };
 }

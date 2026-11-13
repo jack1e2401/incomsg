@@ -225,6 +225,17 @@ model MerchantApplication {
   @@index([status])
 }
 
+enum MerchantFeeTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum MerchantFeeType {
+  FEE_CHARGE
+  FEE_REVERSAL
+}
+
 model Merchant {
   id                 Int                  @id @default(autoincrement())
   ownerId            Int                  @unique
@@ -244,6 +255,10 @@ model Merchant {
   policyVersions     LoyaltyPolicyVersion[]
   inventoryBalances InventoryBalance[]
   inventoryMovements InventoryMovement[]
+  feeTier            MerchantFeeTier      @default(BRONZE)
+  feeTierYear        Int?
+  feeTierEvaluatedAt DateTime?
+  feeTransactions    MerchantFeeTransaction[]
 }
 
 model Product {
@@ -296,12 +311,33 @@ model Order {
   abuseReports     MerchantAbuseReport[]
   loyaltyPolicyVersion LoyaltyPolicyVersion? @relation(fields: [loyaltyPolicyVersionId], references: [id], onDelete: Restrict)
   inventoryMovements InventoryMovement[]
+  feeTransactions MerchantFeeTransaction[]
 
   @@index([merchantId, status])
+  @@index([merchantId, status, paidAt])
   @@index([memberId, createdAt])
   @@index([voucherId])
   @@index([merchantId, status, stockReservedUntil])
   @@index([loyaltyPolicyVersionId])
+}
+
+model MerchantFeeTransaction {
+  id            Int             @id @default(autoincrement())
+  merchantId    Int
+  orderId       Int
+  type          MerchantFeeType
+  amountVnd     Decimal         @db.Decimal(15, 0)
+  orderTotalVnd Decimal         @db.Decimal(15, 0)
+  tier          MerchantFeeTier
+  feeRate       Decimal         @db.Decimal(5, 4)
+  createdAt     DateTime        @default(now())
+  eventRef      String          @unique @db.VarChar(191)
+  merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, type])
+  @@index([merchantId, createdAt])
+  @@index([createdAt])
 }
 
 model PaymentAttempt {

@@ -14,6 +14,8 @@ export default function MerchantRevenuePlot({ days }: { days: { label: string; a
 
     const indexes = days.map((_, index) => index);
     const amounts = days.map((day) => day.amount);
+    const min = Math.min(0, ...amounts);
+    const max = Math.max(0, ...amounts);
     const plot = new uPlot(
       {
         width: Math.max(1, target.clientWidth),
@@ -22,12 +24,15 @@ export default function MerchantRevenuePlot({ days }: { days: { label: string; a
         cursor: { show: false },
         scales: {
           x: { time: false, range: [-0.5, days.length - 0.5] },
-          y: { range: [0, Math.max(1, ...amounts) * 1.15] },
+          y: { range: [min * 1.15, max === 0 && min === 0 ? 1 : max * 1.15] },
         },
         series: [{}, { fill: "#46754d", paths: uPlot.paths.bars?.({ size: [0.55, 48], radius: [0.14, 0] }) }],
         axes: [
           {
-            splits: indexes,
+            splits: () => {
+              const step = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor((target.clientWidth - 54) / 44))));
+              return indexes.filter((index) => (days.length - 1 - index) % step === 0);
+            },
             values: (_, ticks) => ticks.map((index) => days[index]?.label ?? ""),
             size: 28,
             font: "11px 'Plus Jakarta Sans', sans-serif",

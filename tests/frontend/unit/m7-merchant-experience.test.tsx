@@ -17,7 +17,7 @@ vi.mock("../../../apps/frontend/src/api/commerce-http", async (importOriginal) =
   };
 });
 
-import { cleanup, render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
 import {
@@ -392,22 +392,24 @@ describe("M7 Merchant Experience", () => {
     const ledgerTabBtn = screen.getByRole("button", { name: /lịch sử giao dịch điểm/i });
     fireEvent.click(ledgerTabBtn);
 
-    await waitFor(() => {
-      expect(screen.getByText("#101")).toBeInTheDocument();
-      expect(screen.getByText("EVT-EARN-101")).toBeInTheDocument();
-      expect(screen.getByText("Tích điểm đơn hàng #77")).toBeInTheDocument();
-      expect(screen.getByText("+0.800000000000")).toBeInTheDocument();
-      expect(screen.getByText(/điểm khả dụng sau gd: 24/i)).toBeInTheDocument();
-      expect(screen.getByText(/phần dư sau gd: 0\.800000000000/i)).toBeInTheDocument();
-      expect(screen.getByText(/nợ điểm sau gd: 0/i)).toBeInTheDocument();
-    });
+    const ledger = await screen.findByRole("table", { name: "Sổ giao dịch điểm" });
+    const firstRow = within(ledger).getByRole("row", { name: /#101/ });
+    expect(within(firstRow).getByText("+0.800000000000")).toBeInTheDocument();
+    fireEvent.click(within(firstRow).getByRole("button", { name: "Chi tiết" }));
+    const detail = within(await screen.findByRole("dialog"));
+    expect(detail.getByText("EVT-EARN-101")).toBeInTheDocument();
+    expect(detail.getByText(/Tích điểm đơn hàng #77/)).toBeInTheDocument();
+    expect(detail.getByText("Điểm khả dụng").nextElementSibling).toHaveTextContent("24");
+    expect(detail.getByText("Điểm lẻ").nextElementSibling).toHaveTextContent("0.800000000000");
+    expect(detail.getByText("Nợ điểm").nextElementSibling).toHaveTextContent("0");
+    expect(detail.getByRole("link", { name: "Đơn hàng #77" })).toHaveAttribute("href", "/merchant/orders?orderId=77");
+    fireEvent.click(detail.getByRole("button", { name: "Đóng" }));
 
     fireEvent.click(screen.getByRole("button", { name: /xem thêm giao dịch/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("#101")).toBeInTheDocument();
-      expect(screen.getByText("#102")).toBeInTheDocument();
-      expect(screen.getByText("EVT-EARN-102")).toBeInTheDocument();
+      expect(within(ledger).getByRole("row", { name: /#101/ })).toBeInTheDocument();
+      expect(within(ledger).getByRole("row", { name: /#102/ })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /xem thêm giao dịch/i })).not.toBeInTheDocument();
     });
 

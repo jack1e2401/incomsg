@@ -1,8 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { MerchantLedgerItemDto, PointTransactionType } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
+import { financeDateTime } from "../finance/finance-format";
+import { pastYearRange, vietnamDateBounds } from "../../lib/vietnam-date";
 import {
   Button,
   Card,
@@ -12,6 +16,7 @@ import {
   Input,
   LoadingState,
   Select,
+  StatCard,
   StatusText,
 } from "../../components/ui";
 
@@ -49,8 +54,9 @@ export function MerchantLoyaltyTransactions() {
   const [memberIdInput, setMemberIdInput] = useState("");
   const [orderIdInput, setOrderIdInput] = useState("");
   const [typeInput, setTypeInput] = useState<PointTransactionType | "">("");
-  const [fromInput, setFromInput] = useState("");
-  const [toInput, setToInput] = useState("");
+  const [defaultRange] = useState(pastYearRange);
+  const [fromInput, setFromInput] = useState(defaultRange.from);
+  const [toInput, setToInput] = useState(defaultRange.to);
   const [filters, setFilters] = useState<{
     memberId?: number;
     orderId?: number;
@@ -58,7 +64,7 @@ export function MerchantLoyaltyTransactions() {
     from?: string;
     to?: string;
     cursor?: string;
-  }>({});
+  }>(() => vietnamDateBounds(defaultRange.from, defaultRange.to));
 
   const resource = useResource(() => api.listMerchantTransactions(filters, token), [filters, token]);
   const [transactions, setTransactions] = useState<MerchantLedgerItemDto[]>([]);
@@ -85,8 +91,7 @@ export function MerchantLoyaltyTransactions() {
       memberId: memberIdInput ? Number(memberIdInput) : undefined,
       orderId: orderIdInput ? Number(orderIdInput) : undefined,
       type: typeInput ? typeInput : undefined,
-      from: fromInput ? fromInput : undefined,
-      to: toInput ? toInput : undefined,
+      ...vietnamDateBounds(fromInput, toInput),
     });
   }
 
@@ -124,10 +129,21 @@ export function MerchantLoyaltyTransactions() {
             </Select>
           </Field>
           <Field label="Từ ngày">
-            <Input type="date" value={fromInput} onChange={(e) => setFromInput(e.target.value)} />
+            <Input
+              type="date"
+              max={toInput || defaultRange.to}
+              value={fromInput}
+              onChange={(e) => setFromInput(e.target.value)}
+            />
           </Field>
           <Field label="Đến ngày">
-            <Input type="date" value={toInput} onChange={(e) => setToInput(e.target.value)} />
+            <Input
+              type="date"
+              min={fromInput || undefined}
+              max={defaultRange.to}
+              value={toInput}
+              onChange={(e) => setToInput(e.target.value)}
+            />
           </Field>
           <div className="flex items-end">
             <Button type="submit" className="w-full">
@@ -136,6 +152,15 @@ export function MerchantLoyaltyTransactions() {
           </div>
         </form>
       </Card>
+
+      {resource.data?.summary && (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Điểm đã tích" value={resource.data.summary.earned} />
+          <StatCard label="Điểm đã đổi" value={resource.data.summary.redeemed} />
+          <StatCard label="Điểm thu hồi" value={resource.data.summary.reversed} />
+          <StatCard label="Điểm đã hoàn" value={resource.data.summary.restored} />
+        </div>
+      )}
 
       {resource.loading && !transactions.length ? (
         <LoadingState cards={2} />
@@ -149,45 +174,41 @@ export function MerchantLoyaltyTransactions() {
       ) : (
         <div className="space-y-3">
           {resource.error && <ErrorState message={resource.error} retry={resource.reload} />}
-          {transactions.map((tx) => {
-            const isNeg = tx.delta.startsWith("-");
-            return (
-              <Card key={tx.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-[#5c7263]">#{tx.id}</span>
-                    {tx.eventRef && (
-                      <span className="rounded bg-[#f0f4ee] px-2 py-0.5 font-mono text-[11px] text-[#42594a]">
-                        {tx.eventRef}
-                      </span>
-                    )}
-                    <StatusText tone={isNeg ? "red" : "green"}>{transactionTypeLabel(tx.type)}</StatusText>
-                  </div>
-                  <p className="mt-1 font-bold text-[#20392a]">{tx.reason}</p>
-                  <p className="mt-1 text-xs muted">
-                    Thành viên #{tx.memberId} {tx.memberEmail && `(${tx.memberEmail})`} ·{" "}
-                    {new Date(tx.createdAt).toLocaleString("vi-VN")}
-                  </p>
-                  <div className="mt-1 flex flex-wrap gap-3 text-xs muted">
-                    {tx.orderId && <span>Đơn hàng #{tx.orderId}</span>}
-                    {tx.memberVoucherId && <span>Voucher #{tx.memberVoucherId}</span>}
-                    {tx.source && <span>Nguồn: {tx.source}</span>}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`font-extrabold text-lg ${isNeg ? "text-[#a4473a]" : "text-[#357044]"}`}>
-                    {isNeg ? tx.delta : `+${tx.delta}`}
-                  </p>
-                  <p className="mt-1 text-xs muted">Số dư sau GD: {tx.balanceAfter}</p>
-                  <p className="text-xs muted">Điểm khả dụng sau GD: {tx.availablePointsAfter}</p>
-                  <p className="text-xs muted">Phần dư sau GD: {tx.fractionalCarryAfter}</p>
-                  <p className={`text-xs ${tx.pointDebtAfter !== "0" ? "text-[#a4473a]" : "muted"}`}>
-                    Nợ điểm sau GD: {tx.pointDebtAfter}
-                  </p>
-                </div>
-              </Card>
-            );
-          })}
+          <Card className="overflow-x-auto">
+            <table className="w-full text-left text-sm" aria-label="Sổ giao dịch điểm">
+              <thead className="bg-[#f7f9f5] text-xs muted">
+                <tr>
+                  {["Thời gian", "Giao dịch", "Thành viên", "Điểm (+/−)", "Số dư sau", "Thao tác"].map(
+                    (heading) => (
+                      <th key={heading} scope="col" className="whitespace-nowrap px-4 py-3">
+                        {heading}
+                      </th>
+                    ),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((tx) => (
+                  <tr key={tx.id} className="border-t border-[#edf2eb]">
+                    <td className="whitespace-nowrap px-4 py-3">{financeDateTime(tx.createdAt)}</td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      #{tx.id} · {transactionTypeLabel(tx.type)}
+                    </td>
+                    <td className="px-4 py-3">{tx.memberEmail ?? `#${tx.memberId}`}</td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                      <StatusText tone={tx.delta.startsWith("-") ? "red" : "green"}>
+                        {signedPoints(tx.delta)}
+                      </StatusText>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 tabular-nums">{tx.balanceAfter}</td>
+                    <td className="px-4 py-3">
+                      <PointTransactionDetail transaction={tx} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
           {resource.loading && (
             <p role="status" className="text-center text-sm muted">
               Đang tải giao dịch tiếp theo…
@@ -208,5 +229,77 @@ export function MerchantLoyaltyTransactions() {
         </div>
       )}
     </div>
+  );
+}
+
+function signedPoints(delta: string) {
+  return delta === "0" || delta.startsWith("-") ? delta : `+${delta}`;
+}
+
+function PointTransactionDetail({ transaction: tx }: { transaction: MerchantLedgerItemDto }) {
+  const fields = [
+    ["Thành viên", tx.memberEmail ?? `#${tx.memberId}`],
+    ["Thay đổi", signedPoints(tx.delta)],
+    ["Số dư sau giao dịch", tx.balanceAfter],
+    ["Điểm khả dụng", tx.availablePointsAfter],
+    ["Điểm lẻ", tx.fractionalCarryAfter],
+    ["Nợ điểm", tx.pointDebtAfter],
+    ["Mã sự kiện", tx.eventRef],
+  ];
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <Button type="button" variant="outline" size="sm" className="whitespace-nowrap">
+          Chi tiết
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45" />
+        <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl p-6 shadow-2xl outline-none">
+          <Dialog.Title className="text-lg font-extrabold">
+            {transactionTypeLabel(tx.type)} #{tx.id}
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-sm muted">
+            {tx.reason} · {financeDateTime(tx.createdAt)}
+          </Dialog.Description>
+          <dl className="mt-4 divide-y divide-[#edf2eb] text-sm">
+            {fields.map(
+              ([label, value]) =>
+                value != null && (
+                  <div key={label} className="grid grid-cols-2 gap-3 py-2">
+                    <dt className="muted">{label}</dt>
+                    <dd className="break-words text-right font-semibold tabular-nums">{value}</dd>
+                  </div>
+                ),
+            )}
+          </dl>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            {tx.orderId && (
+              <Link className="underline underline-offset-2" to={`/merchant/orders?orderId=${tx.orderId}`}>
+                Đơn hàng #{tx.orderId}
+              </Link>
+            )}
+            {tx.memberVoucherId &&
+              (tx.voucherSummary?.type === "REWARD" ? (
+                <Link
+                  className="underline underline-offset-2"
+                  to={`/merchant/orders?voucherId=${tx.memberVoucherId}`}
+                >
+                  Quà đổi thưởng #{tx.memberVoucherId}
+                </Link>
+              ) : (
+                <span>
+                  {tx.voucherSummary?.title ?? "Voucher"} #{tx.memberVoucherId}
+                </span>
+              ))}
+            <Dialog.Close asChild>
+              <Button type="button" variant="outline" size="sm" className="ml-auto">
+                Đóng
+              </Button>
+            </Dialog.Close>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

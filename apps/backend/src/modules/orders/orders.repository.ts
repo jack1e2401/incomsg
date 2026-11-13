@@ -9,6 +9,7 @@ import type {
 } from "./orders.types.js";
 import { OrderNotCancellableError } from "./orders.types.js";
 import { loyaltyRepository } from "../loyalty/loyalty.repository.js";
+import { reverseMerchantFee } from "../merchant/merchant.finance.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
 import { calculateDiscountedTotal } from "./order-pricing.js";
 import { toOrderDto } from "./orders.serialization.js";
@@ -344,7 +345,7 @@ export const ordersRepository = {
 
       const originalEarned = points(order.earnedPointsExact ?? "0");
       let updatedWalletRecord = null;
-      if (originalEarned.isPositive()) {
+      if (originalEarned.greaterThan(0)) {
         const membership = await tx.merchantMembership.findUniqueOrThrow({
           where: { memberId_merchantId: { memberId: order.memberId, merchantId } },
           include: { wallet: true },
@@ -399,6 +400,8 @@ export const ordersRepository = {
           data: { status: "AVAILABLE", usedAt: null },
         });
       }
+
+      await reverseMerchantFee(tx, merchantId, order.id, completedAt);
 
       return {
         refund: {

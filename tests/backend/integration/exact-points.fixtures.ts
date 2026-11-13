@@ -62,6 +62,7 @@ export async function cleanup() {
     await prisma.pointTransaction.deleteMany({ where: { wallet: { membershipId: { in: membershipIds } } } });
     await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
     await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.merchantFeeTransaction.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
     await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
     await prisma.redemptionIdempotency.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
     await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
@@ -93,7 +94,7 @@ export async function request<T>(path: string, method = "GET", token?: string, b
   return { status: response.status, json: await response.json() as T };
 }
 
-async function createUser(role: "MEMBER" | "MERCHANT") {
+export async function createUser(role: "MEMBER" | "MERCHANT" | "ADMIN") {
   const user = await prisma.user.create({ data: { email: `exact-${randomUUID()}@test.local`, passwordHash: "fixture", role } });
   fixtureUserIds.push(user.id);
   return { id: user.id, token: await signAccessToken(user.id) };

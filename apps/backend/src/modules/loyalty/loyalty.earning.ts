@@ -7,6 +7,7 @@ import { canReservePoints } from "./points-reservation.js";
 import { toOrderDto } from "../orders/orders.serialization.js";
 import type { OrderDto } from "../orders/orders.types.js";
 import { consumeOrderInventory } from "../inventory/inventory.order.js";
+import { recordMerchantFee } from "../merchant/merchant.finance.js";
 
 export interface EarningSnapshot {
   vndPerPoint: number;
@@ -107,5 +108,6 @@ export async function completePaidOrder(
     include: { items: true, paymentAttempt: true, refund: true, pointTransactions: true },
   });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
+  await recordMerchantFee(tx, { ...order, paidAt: order.paidAt! });
   return { ...toOrderDto(paid), promotedToTier };
 }

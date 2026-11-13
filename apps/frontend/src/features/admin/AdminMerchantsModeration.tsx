@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CheckCircle, ShieldWarning } from "@phosphor-icons/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import { useResource } from "../../api/useResource";
@@ -13,6 +14,8 @@ import {
   StatusText,
 } from "../../components/ui";
 import { AdminReasonDialog } from "./AdminReasonDialog";
+import { PlatformFeeLedger } from "../finance/PlatformFeeLedger";
+import { feeMoney, feeRateLabel, merchantTierLabels } from "../finance/finance-format";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -62,7 +65,9 @@ export function AdminMerchants() {
 
       // Update in cached resource data
       resource.setData((prev) =>
-        prev ? prev.map((m) => (m.id === actionTarget.id ? { ...m, isActive: response.merchant.isActive } : m)) : null,
+        prev
+          ? prev.map((m) => (m.id === actionTarget.id ? { ...m, isActive: response.merchant.isActive } : m))
+          : null,
       );
 
       setActionNotice(
@@ -112,66 +117,100 @@ export function AdminMerchants() {
       ) : !merchants.length ? (
         <EmptyState title="Chưa có cửa hàng" description="Danh sách cửa hàng sẽ xuất hiện tại đây." />
       ) : (
-        <div className="space-y-3">
-          {merchants.map((merchant) => {
-            const isActive = merchant.isActive !== false;
-            return (
-              <Card
-                key={merchant.id}
-                className="flex flex-col gap-4 p-5 transition-colors sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <h2 className="text-base font-extrabold text-[#233829]">{merchant.name}</h2>
-                  <p className="mt-1 text-xs muted">
-                    {merchant.slug} · #{merchant.id}
-                  </p>
-                </div>
+        <Card className="overflow-x-auto">
+          <table className="w-full text-left text-sm" aria-label="Danh sách cửa hàng">
+            <thead className="text-xs muted">
+              <tr className="border-b border-[#e1e9e0]">
+                {["Cửa hàng", "Doanh thu xét hạng", "Hạng", "Tỷ lệ phí", "Trạng thái", "Thao tác"].map(
+                  (heading) => (
+                    <th key={heading} scope="col" className="whitespace-nowrap px-4 py-3">
+                      {heading}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {merchants.map((merchant) => {
+                const isActive = merchant.isActive !== false;
+                const tier = merchant.financeTier;
+                return (
+                  <tr key={merchant.id} className="border-b border-[#edf2eb] last:border-0">
+                    <th scope="row" className="min-w-40 px-4 py-4">
+                      <h2 className="text-base font-extrabold text-[#233829]">{merchant.name}</h2>
+                      <p className="mt-1 text-xs muted">
+                        {merchant.slug} · #{merchant.id}
+                      </p>
+                    </th>
 
-                <div className="flex items-center gap-4">
-                  <div>
-                    {isActive ? (
-                      <StatusText tone="green">Hoạt động</StatusText>
-                    ) : (
-                      <StatusText tone="amber">Tạm ngưng</StatusText>
-                    )}
-                  </div>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {tier ? (
+                        <>
+                          {feeMoney(tier.revenueVnd)}{" "}
+                          <span className="block text-xs muted">Năm {tier.year}</span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-4">{tier ? merchantTierLabels[tier.level] : "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-4">{tier ? feeRateLabel(tier.feeRate) : "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {isActive ? (
+                        <StatusText tone="green">Hoạt động</StatusText>
+                      ) : (
+                        <StatusText tone="amber">Tạm ngưng</StatusText>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        {accessToken && tier && (
+                          <AdminFeeDialog
+                            token={accessToken}
+                            merchantId={merchant.id}
+                            merchantName={merchant.name}
+                          />
+                        )}
 
-                  {isActive ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        setActionTarget({
-                          id: merchant.id,
-                          name: merchant.name,
-                          nextActive: false,
-                        })
-                      }
-                      title={`Tạm ngưng ${merchant.name}`}
-                    >
-                      <ShieldWarning size={15} /> Tạm ngưng
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        setActionTarget({
-                          id: merchant.id,
-                          name: merchant.name,
-                          nextActive: true,
-                        })
-                      }
-                      title={`Kích hoạt lại ${merchant.name}`}
-                    >
-                      <CheckCircle size={15} /> Kích hoạt
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+                        {isActive ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setActionTarget({
+                                id: merchant.id,
+                                name: merchant.name,
+                                nextActive: false,
+                              })
+                            }
+                            title={`Tạm ngưng ${merchant.name}`}
+                          >
+                            <ShieldWarning size={15} /> Tạm ngưng
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              setActionTarget({
+                                id: merchant.id,
+                                name: merchant.name,
+                                nextActive: true,
+                              })
+                            }
+                            title={`Kích hoạt lại ${merchant.name}`}
+                          >
+                            <CheckCircle size={15} /> Kích hoạt
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
       )}
 
       {/* Confirmation & Reason Dialog */}
@@ -198,5 +237,44 @@ export function AdminMerchants() {
         />
       )}
     </>
+  );
+}
+
+export function AdminFeeDialog({
+  token,
+  merchantId,
+  merchantName,
+  buttonLabel = "Chi tiết sổ phí",
+}: {
+  token: string;
+  merchantId: number;
+  merchantName: string;
+  buttonLabel?: string;
+}) {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger asChild>
+        <Button type="button" size="sm" variant="outline">
+          {buttonLabel}
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45" />
+        <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl p-5 shadow-2xl outline-none sm:p-7">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <Dialog.Title className="text-xl font-extrabold">Sổ phí · {merchantName}</Dialog.Title>
+            <Dialog.Close asChild>
+              <Button type="button" size="sm" variant="ghost">
+                Đóng
+              </Button>
+            </Dialog.Close>
+          </div>
+          <Dialog.Description className="sr-only">
+            Hạng và lịch sử giao dịch phí của {merchantName}.
+          </Dialog.Description>
+          <PlatformFeeLedger token={token} adminMerchantId={merchantId} />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
