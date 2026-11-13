@@ -13,7 +13,6 @@ const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://lo
 type Props = {
   product: ProductDto;
   token: string;
-  refreshKey: number;
   onEdit(): void;
   onStatusChange(): void;
 };
@@ -41,12 +40,12 @@ function newRequestKey(productId: number) {
     : `stock-${productId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function MerchantProductTableRow({ product, token, refreshKey, onEdit, onStatusChange }: Props) {
+export function MerchantProductTableRow({ product, token, onEdit, onStatusChange }: Props) {
   const resource = useResource(
     () => product.kind === "REWARD"
       ? api.getRewardInventory(product.id, token)
       : api.getProductInventory(product.id, token),
-    [product.id, product.kind, token, refreshKey],
+    [product.id, product.kind, token],
   );
   const [dialog, setDialog] = useState<"adjust" | "history" | null>(null);
   const [direction, setDirection] = useState<InventoryAdjustment["direction"]>("in");

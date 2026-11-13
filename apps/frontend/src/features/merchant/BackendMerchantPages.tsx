@@ -39,7 +39,6 @@ import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
 import { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "./MerchantRewardQueue";
-import { InventoryImportDialog } from "./InventoryImportDialog";
 import { MerchantProductTableRow } from "./MerchantProductTableRow";
 import { MerchantVoucherTableRow } from "./MerchantVoucherTableRow";
 import { MerchantLoyaltyHistory } from "./MerchantLoyaltyHistory";
@@ -214,8 +213,6 @@ export function MerchantProducts() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
-  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   function open(product?: ProductDto) {
     setEditing(product ?? "new");
@@ -306,14 +303,7 @@ export function MerchantProducts() {
 
   return (
     <>
-      <PageHeader title="Sản phẩm" action={<div className="flex gap-2"><Button variant="outline" onClick={() => setImportOpen(true)}>Nhập Excel</Button><Button onClick={() => open()}>Thêm sản phẩm</Button></div>} />
-      <InventoryImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        products={resource.data?.products ?? []}
-        token={token}
-        onImported={() => setInventoryRefreshKey((value) => value + 1)}
-      />
+      <PageHeader title="Sản phẩm" action={<Button onClick={() => open()}>Thêm sản phẩm</Button>} />
       {notice && (
         <p role="status" className="mb-4 rounded-xl bg-[#e1f2df] p-4 text-sm text-[#357044]">
           {notice}
@@ -452,7 +442,6 @@ export function MerchantProducts() {
                   key={product.id}
                   product={product}
                   token={token}
-                  refreshKey={inventoryRefreshKey}
                   onEdit={() => open(product)}
                   onStatusChange={() => void changeStatus(product)}
                 />

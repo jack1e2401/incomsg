@@ -76,7 +76,7 @@ chưa đối soát sẽ chặn cancel; VNPay refund giữ pending cho tới prov
 Demo mock refund hoàn thành ngay là mô phỏng thanh toán được backend kiểm soát.
 Không có tích hợp xác nhận VNPay refund thật hoặc partial refund.
 
-## Kịch bản UI: tồn kho, Excel và chính sách đơn
+## Kịch bản UI: tồn kho và chính sách đơn
 
 Thời lượng khoảng 8–10 phút. Dùng dữ liệu mới để có tồn kho và ví điểm sạch; không
 chạy `demo:verify` trước khi trình bày vì lệnh đó tạo giao dịch demo qua API.
@@ -108,11 +108,8 @@ VNPay. Nếu cổng 3000 hoặc 5173 đang bận, dừng phiên demo cũ trướ
    Bảng đọc tồn kho thật từ backend; mở dấu ba chấm ở `products.small` →
    **Điều chỉnh tồn kho** → **Tăng**, nhập `5`, ghi chú `Chuẩn bị demo với sếp`,
    rồi lưu. Tồn thay đổi từ 100 lên 105.
-2. Tạo file Excel `.xlsx` với hai cột `Mã sản phẩm` và `Số lượng nhập`; thêm một
-   dòng dùng `products.small` làm mã sản phẩm và số lượng `3`. Trên trang Sản phẩm,
-   chọn **Nhập Excel**, kiểm tra preview một dòng rồi xác nhận. Tồn thành 108.
-   Mở dấu ba chấm → **Lịch sử tồn kho** để xem hai lần nhập, người thực hiện và
-   ghi chú. Ghi chú nằm trong chi tiết lịch sử, không phải cột của bảng.
+2. Mở dấu ba chấm → **Lịch sử tồn kho** để xem lần tăng từ 100 lên 105,
+   người thực hiện và ghi chú.
 3. Đăng xuất Merchant, đăng nhập bằng email `member`, mở gian hàng
    `/member/<merchant.id>`. Thêm `products.recovery` (14.000 VND) vào giỏ và
    checkout. Trang đơn cho thấy tồn được giữ trong 5 phút. Chọn **Thanh toán
@@ -134,8 +131,8 @@ VNPay. Nếu cổng 3000 hoặc 5173 đang bận, dừng phiên demo cũ trướ
 
 ### Kết quả cần thấy
 
-- Sản phẩm `small`: 108 sau hai lần nhập; nếu làm phần mở rộng mua một món thì
-  còn 107. Sản phẩm `recovery`: 99 sau thanh toán. Quà vật lý còn 1 sau khi trao.
+- Sản phẩm `small`: 105 sau khi tăng tồn. Nếu mua thêm một món ở phần mở rộng,
+  số lượng còn 104. Sản phẩm `recovery`: 99 sau thanh toán. Quà vật lý còn 1 sau khi trao.
 - Lịch sử ghi mỗi thay đổi, số lượng trước/sau, actor và ghi chú. Payment chỉ
   hoàn tất sau phản hồi mock từ backend; policy snapshot giống nhau ở Member và
   Merchant.
