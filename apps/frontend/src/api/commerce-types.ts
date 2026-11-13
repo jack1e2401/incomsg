@@ -90,9 +90,8 @@ export type VnpayPaymentResponse =
   { orderId: number; paymentUrl: string; txnRef: string } | { orderId: number; orderStatus: "PAID" };
 export type OrdersResponse = { orders: OrderDto[] };
 export type MerchantOrdersResponse = { orders: (OrderDto & { memberEmail?: string })[] };
-export type MerchantDirectoryResponse = {
-  merchants: { id: number; name: string; slug: string; isActive?: boolean }[];
-};
+export type MerchantDirectoryItem = { id: number; name: string; slug: string; isActive?: boolean; coverImageUrl?: string | null };
+export type MerchantDirectoryResponse = { merchants: MerchantDirectoryItem[] };
 export type AdminDashboardResponse = {
   stats: { merchants: number; pendingApplications: number; paidOrders: number; totalVolume: string | number };
 };

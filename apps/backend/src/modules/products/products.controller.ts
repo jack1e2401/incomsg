@@ -27,7 +27,7 @@ export const listPublicProducts: RequestHandler = async (request, response) => {
   response.json({ products });
 };
 
-export const listPublicMerchants: RequestHandler = async (_request, response) => {
-  const merchants = await merchantService.listActiveStores();
+export const listPublicMerchants: RequestHandler = async (request, response) => {
+  const merchants = await merchantService.listActiveStores(request.query.include === "cover");
   response.json({ merchants });
 };

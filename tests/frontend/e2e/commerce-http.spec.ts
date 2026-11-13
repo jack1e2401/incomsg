@@ -75,7 +75,7 @@ test("repeated adds and different products checkout as one pending order", async
 
 test("Member discovers a real merchant and catalog from HTTP", async ({ page }) => {
   await signInAsMember(page);
-  await page.route("**/api/merchants", (route) =>
+  await page.route((url) => url.pathname === "/api/merchants" && url.searchParams.get("include") === "cover", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -102,8 +102,7 @@ test("Member discovers a real merchant and catalog from HTTP", async ({ page }) 
     }),
   );
   await page.goto("/member");
-  await page.getByRole("combobox", { name: "Cửa hàng" }).selectOption("7");
-  await page.getByRole("button", { name: /Mở/ }).click();
+  await page.getByRole("link", { name: "Mộc Studio Vào cửa hàng" }).click();
   await expect(page.getByRole("heading", { name: "Cửa hàng #7" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Demo Coffee" })).toBeVisible();
 });

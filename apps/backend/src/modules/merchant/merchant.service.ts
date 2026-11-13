@@ -2,8 +2,8 @@ import { HttpError } from "../../lib/http-error.js";
 import { merchantRepository } from "./merchant.repository.js";
 
 export const merchantService = {
-  async listActiveStores() {
-    return merchantRepository.listActiveStores();
+  async listActiveStores(includeCover = false) {
+    return merchantRepository.listActiveStores(includeCover);
   },
 
   async getOwnStore(ownerId: number) {

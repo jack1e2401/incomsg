@@ -117,8 +117,8 @@ async function requestJson<T>(
 /** Only endpoints currently mounted by apps/backend/src/app.ts. */
 export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
   return {
-    listMerchants() {
-      return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, "/api/merchants");
+    listMerchants({ includeCover = false }: { includeCover?: boolean } = {}) {
+      return requestJson<MerchantDirectoryResponse>(fetcher, baseUrl, includeCover ? "/api/merchants?include=cover" : "/api/merchants");
     },
     getAdminDashboard(token: string) {
       return requestJson<AdminDashboardResponse>(fetcher, baseUrl, "/api/admin/dashboard", { token });

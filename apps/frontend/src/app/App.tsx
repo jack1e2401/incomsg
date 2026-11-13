@@ -55,7 +55,6 @@ import {
   BackendMemberLayout,
   MemberCart,
   MemberCheckout,
-  MemberLanding,
   MemberOrderResult,
   MemberOrders,
   MemberProduct,
@@ -64,6 +63,7 @@ import {
   MemberVouchers,
   MemberWallet,
 } from "../features/member/BackendMemberPages";
+import { MemberLanding } from "../features/member/MemberLanding";
 
 // Production and local development use real endpoints. Fixtures are opt-in only.
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
