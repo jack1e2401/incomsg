@@ -83,7 +83,7 @@ export function AdminAuditLogs() {
         }
         setNextCursor(response.nextCursor);
       } catch (err) {
-        setFetchError(err instanceof Error ? err.message : "Không tải được nhật ký kiểm toán.");
+        setFetchError(err instanceof Error ? err.message : "Không tải được Nhật ký.");
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -144,7 +144,7 @@ export function AdminAuditLogs() {
   return (
     <>
       <PageHeader
-        title="Nhật ký kiểm toán"
+        title="Nhật ký"
         description="Theo dõi toàn bộ lịch sử thao tác kiểm duyệt trên người dùng, cửa hàng và danh sách đen."
       />
 
