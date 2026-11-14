@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams, useOutletContext } from "react-router-dom";
 import { ArrowLeft, Sparkle } from "@phosphor-icons/react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { OrderStatus, PointTransactionType } from "../../api/commerce-types";
@@ -129,6 +130,33 @@ export function MemberOrderResult() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [reservationExpiredDialogOpen, setReservationExpiredDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (order?.status !== "PENDING" || !order.stockReservedUntil) return;
+
+    const expiresAt = new Date(order.stockReservedUntil).getTime();
+    if (!Number.isFinite(expiresAt)) return;
+
+    const now = Date.now();
+    setCurrentTime(now);
+    if (expiresAt <= now) {
+      setReservationExpiredDialogOpen(true);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      const tick = Date.now();
+      setCurrentTime(tick);
+      if (tick >= expiresAt) {
+        setReservationExpiredDialogOpen(true);
+        window.clearInterval(intervalId);
+      }
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [order?.status, order?.stockReservedUntil]);
   async function pay() {
     if (!order || !accessToken || busy || order.status !== "PENDING") return;
     setBusy(true);
@@ -159,6 +187,13 @@ export function MemberOrderResult() {
   }
 
   const canCancel = order?.actions?.canCancel === true;
+  const reservedUntil = order?.stockReservedUntil ? new Date(order.stockReservedUntil).getTime() : null;
+  const remainingSeconds = reservedUntil === null
+    ? null
+    : Math.max(0, Math.ceil((reservedUntil - currentTime) / 1000));
+  const remainingLabel = remainingSeconds === null
+    ? null
+    : `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
   if (orderResource.loading) return <LoadingState cards={1} />;
   if (orderResource.error) return <ErrorState message={orderResource.error} retry={orderResource.reload} />;
@@ -223,9 +258,17 @@ export function MemberOrderResult() {
             <p className="text-xs leading-5 text-[#97682a] break-words">
               Đơn đang chờ thanh toán. Điểm được cập nhật sau khi máy chủ xác nhận thanh toán.
             </p>
-            {order.stockReservedUntil && <p className="mt-1 text-xs text-[#97682a]">Sản phẩm được giữ đến {new Date(order.stockReservedUntil).toLocaleTimeString("vi-VN")}.</p>}
+            {remainingLabel && (
+              <p className="mt-1 text-xs text-[#97682a]" role="timer" aria-label={`Thời gian giữ sản phẩm còn ${remainingLabel}`}>
+                {remainingSeconds === 0 ? (
+                  "Thời gian giữ sản phẩm đã hết."
+                ) : (
+                  <>Thời gian giữ sản phẩm còn <span className="font-bold tabular-nums">{remainingLabel}</span>.</>
+                )}
+              </p>
+            )}
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <Button type="button" className="w-full sm:w-auto" disabled={busy} onClick={pay}>
+              <Button type="button" className="w-full sm:w-auto" disabled={busy || remainingSeconds === 0} onClick={pay}>
                 {busy ? <BusyLabel>Đang xác nhận thanh toán</BusyLabel> : "Thanh toán (mô phỏng)"}
               </Button>
               {canCancel && (
@@ -357,6 +400,27 @@ export function MemberOrderResult() {
         error={cancelError}
         onConfirm={handleCancelOrder}
       />
+      <Dialog.Root open={reservationExpiredDialogOpen} onOpenChange={setReservationExpiredDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
+          <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl p-6 shadow-2xl outline-none sm:p-7">
+            <Dialog.Title className="text-xl font-extrabold text-[#20392a]">
+              Thời gian giữ sản phẩm đã hết
+            </Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm leading-6 muted">
+              Đơn này đã hết thời gian giữ sản phẩm. Quay lại cửa hàng để chọn sản phẩm và tạo đơn mới.
+            </Dialog.Description>
+            <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row">
+              <Dialog.Close asChild>
+                <Button type="button" variant="outline">Đóng</Button>
+              </Dialog.Close>
+              <Button asChild>
+                <Link to={`/member/${merchantId}`}>Quay lại cửa hàng</Link>
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </>
   );
 }
