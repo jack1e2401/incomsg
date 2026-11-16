@@ -15,14 +15,15 @@ test("Admin migration preserves identities and distinguishes pending/rejected ac
   assert.ok(env.databaseUrl);
   const url = new URL(env.databaseUrl);
   assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(url.hostname));
-  assert.equal(decodeURIComponent(url.pathname.slice(1)), "incomsg-test");
+  const database = decodeURIComponent(url.pathname.slice(1));
+  assert.match(database, /^(incomsg-test|incomsg_testdb_[a-z0-9_]+)$/);
   const nonce = randomUUID().replaceAll("-", "").slice(0, 12);
   const logicalNames = ["User", "MerchantApplication", "EmailBlacklistEntry", "AdminAuditLog"] as const;
   const tables = Object.fromEntries(logicalNames.map((name) => [name, `TestAdmin${nonce}${name}`])) as Record<typeof logicalNames[number], string>;
   const migration = readFileSync(new URL("../../../apps/backend/prisma/migrations/20261112110000_admin_moderation/migration.sql", import.meta.url), "utf8");
   const statements = logicalNames.reduce((sql, name) => sql.replaceAll(`\`${name}\``, `\`${tables[name]}\``), migration)
     .replace(/^\s*--.*$/gm, "").split(";").map((statement) => statement.trim()).filter(Boolean);
-  const sql = await createConnection({ host: url.hostname, port: Number(url.port || 3306), user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database: "incomsg-test" });
+  const sql = await createConnection({ host: url.hostname, port: Number(url.port || 3306), user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database });
   try {
     await sql.query(`CREATE TABLE \`${tables.User}\` (id INT PRIMARY KEY, email VARCHAR(191), passwordHash VARCHAR(255), role VARCHAR(20), isActive BOOLEAN)`);
     await sql.query(`CREATE TABLE \`${tables.MerchantApplication}\` (applicantId INT PRIMARY KEY, status VARCHAR(20))`);
