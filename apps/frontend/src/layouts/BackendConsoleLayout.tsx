@@ -27,6 +27,8 @@ const merchantLinks = [
   ["/merchant/orders", "Đơn hàng"],
   ["/merchant/loyalty", "Loyalty"],
   ["/merchant/vouchers", "Voucher"],
+  ["/merchant/customers", "Khách hàng"],
+  ["/merchant/analytics", "Phân tích"],
 ];
 
 export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {

@@ -19,6 +19,8 @@ import { merchantMediaRoutes } from "./modules/media/media.routes.js";
 import { resolveUploadRoot } from "./modules/media/media.service.js";
 import { merchantStorefrontRoutes, publicStorefrontRoutes } from "./modules/storefront/storefront.routes.js";
 import { merchantEventRoutes, publicStoreEventRoutes } from "./modules/events/events.routes.js";
+import { merchantCustomerRoutes } from "./modules/customers/customers.routes.js";
+import { merchantAnalyticsRoutes } from "./modules/analytics/analytics.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
@@ -38,6 +40,8 @@ app.use("/api/merchant/media", merchantMediaRoutes);
 app.use("/api/merchant/storefront", merchantStorefrontRoutes);
 app.use("/api/public", publicStorefrontRoutes);
 app.use("/api/merchant/events", merchantEventRoutes);
+app.use("/api/merchant/customers", merchantCustomerRoutes);
+app.use("/api/merchant/analytics", merchantAnalyticsRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
 app.use("/api/member", memberLoyaltyRoutes);
