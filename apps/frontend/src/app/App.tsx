@@ -51,6 +51,9 @@ import {
   MerchantStore,
   MerchantVouchers,
 } from "../features/merchant/BackendMerchantPages";
+import { MerchantCustomersPage } from "../features/customers/MerchantCustomersPage";
+import { MerchantCustomerDetailPage } from "../features/customers/MerchantCustomerDetailPage";
+import { MerchantAnalyticsPage } from "../features/analytics/MerchantAnalyticsPage";
 import {
   BackendMemberLayout,
   MemberCart,
@@ -99,6 +102,9 @@ function BackendRoutes() {
           <Route path="orders" element={<MerchantOrders />} />
           <Route path="loyalty" element={<MerchantLoyalty />} />
           <Route path="vouchers" element={<MerchantVouchers />} />
+          <Route path="customers" element={<MerchantCustomersPage />} />
+          <Route path="customers/:memberId" element={<MerchantCustomerDetailPage />} />
+          <Route path="analytics" element={<MerchantAnalyticsPage />} />
           <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
         </Route>
       </Route>

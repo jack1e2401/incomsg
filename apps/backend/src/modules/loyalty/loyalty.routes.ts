@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { authenticate, requireRole } from "../../middleware/auth.js";
 import {
+  ensureStoreMembershipByMerchantId,
+  ensureStoreMembershipBySlug,
   getLoyaltyConfig,
   listLoyaltyPolicyHistory,
   getMemberWallet,
@@ -23,5 +25,7 @@ merchantLoyaltyRoutes.get("/members", listMerchantMembers);
 merchantLoyaltyRoutes.get("/members/:memberId/wallet", getMerchantMemberWallet);
 
 export const memberLoyaltyRoutes = Router();
+memberLoyaltyRoutes.post("/stores/:slug/membership", authenticate, requireRole("MEMBER"), ensureStoreMembershipBySlug);
+memberLoyaltyRoutes.post("/merchants/:merchantId/membership", authenticate, requireRole("MEMBER"), ensureStoreMembershipByMerchantId);
 memberLoyaltyRoutes.get("/merchants/:merchantId/wallet", authenticate, requireRole("MEMBER"), getMemberWallet);
 memberLoyaltyRoutes.post("/merchants/:merchantId/loyalty/preview", authenticate, requireRole("MEMBER"), previewMemberEarning);

@@ -6,6 +6,10 @@ import { loyaltyRepository } from "./loyalty.repository.js";
 import { VALID_TRANSACTION_TYPES } from "./loyalty.read.js";
 import { HttpError } from "../../lib/http-error.js";
 import { readRouteId } from "../products/products.validation.js";
+import {
+  ensureMemberStoreMembershipByMerchantId,
+  ensureMemberStoreMembershipBySlug,
+} from "./loyalty.membership.js";
 
 export const getLoyaltyConfig: RequestHandler = async (_request, response) => {
   response.json({ config: await loyaltyService.getConfig(response.locals.user.id) });
@@ -145,4 +149,16 @@ export const listMerchantTransactions: RequestHandler = async (request, response
     limit,
   });
   response.json(result);
+};
+
+export const ensureStoreMembershipBySlug: RequestHandler = async (request, response) => {
+  const slug = typeof request.params.slug === "string" ? request.params.slug : "";
+  const result = await ensureMemberStoreMembershipBySlug(response.locals.user.id, slug);
+  response.status(200).json(result);
+};
+
+export const ensureStoreMembershipByMerchantId: RequestHandler = async (request, response) => {
+  const merchantId = readRouteId(request.params.merchantId);
+  const result = await ensureMemberStoreMembershipByMerchantId(response.locals.user.id, merchantId);
+  response.status(200).json(result);
 };
