@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
 import { Button } from "../components/ui";
 import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
@@ -51,6 +51,7 @@ import {
   MerchantStore,
   MerchantVouchers,
 } from "../features/merchant/BackendMerchantPages";
+import { MerchantCategoriesPage } from "../features/merchant/MerchantCategoriesPage";
 import { MerchantCustomersPage } from "../features/customers/MerchantCustomersPage";
 import { MerchantCustomerDetailPage } from "../features/customers/MerchantCustomerDetailPage";
 import { MerchantAnalyticsPage } from "../features/analytics/MerchantAnalyticsPage";
@@ -111,7 +112,14 @@ function BackendRoutes() {
           <Route path="products" element={<MerchantProducts />} />
           <Route path="events" element={<MerchantEventsPage />} />
           <Route path="orders" element={<MerchantOrders />} />
-          <Route path="loyalty" element={<MerchantLoyalty />} />
+          <Route path="loyalty">
+            <Route index element={<LegacyMerchantLoyaltyRedirect />} />
+            <Route path="config" element={<MerchantLoyalty />} />
+            <Route path="transactions" element={<MerchantLoyalty />} />
+            <Route path="history" element={<MerchantLoyalty />} />
+            <Route path="members" element={<MerchantLoyalty />} />
+          </Route>
+          <Route path="categories" element={<MerchantCategoriesPage />} />
           <Route path="vouchers" element={<MerchantVouchers />} />
           <Route path="customers" element={<MerchantCustomersPage />} />
           <Route path="customers/:memberId" element={<MerchantCustomerDetailPage />} />
@@ -153,6 +161,16 @@ function BackendRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+function LegacyMerchantLoyaltyRedirect() {
+  const [searchParams] = useSearchParams();
+  const tab = searchParams.get("tab");
+  const route = tab === "ledger" ? "transactions" : tab === "history" ? "history" : tab === "members" ? "members" : "config";
+  const queryParams = new URLSearchParams(searchParams);
+  queryParams.delete("tab");
+  const query = queryParams.size ? `?${queryParams.toString()}` : "";
+  return <Navigate to={`/merchant/loyalty/${route}${query}`} replace />;
 }
 
 function DemoRoutes() {

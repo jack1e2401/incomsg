@@ -21,8 +21,16 @@ export interface StorefrontAllowedLink {
   url: string;
 }
 
+export interface StorefrontOpeningHoursDay {
+  day: number;
+  closed: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+}
+
 export interface StorefrontBrandingConfig {
   logoUrl: string | null;
+  storeImageUrl: string | null;
   bannerUrl: string | null;
   primaryColor: string;
   heroTitle: string;
@@ -34,6 +42,7 @@ export interface StorefrontBrandingConfig {
   contactEmail: string | null;
   contactPhone: string | null;
   address: string | null;
+  openingHours: StorefrontOpeningHoursDay[] | null;
   allowedLinks: StorefrontAllowedLink[];
 }
 

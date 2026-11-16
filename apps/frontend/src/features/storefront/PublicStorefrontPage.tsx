@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Ticket, Wallet } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
@@ -11,8 +11,8 @@ import { Card, ErrorState, LoadingState } from "../../components/ui";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { memberTierLabel } from "../member/MemberLoyaltyPolicyDialog";
 import { useMemberCart } from "../member/useMemberCart";
-import { StorefrontCatalogSection } from "./StorefrontCatalogSection";
 import { StorefrontSectionRenderer } from "./StorefrontSections";
+import { StorefrontStoreInfoCard } from "./StorefrontStoreInfoCard";
 import { useStorefrontShell, type StorefrontShellData } from "./storefront-context";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
@@ -107,14 +107,10 @@ function StorefrontHomeContent({
 }) {
   const { user, accessToken } = useAuthSession();
   const navigate = useNavigate();
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-
   const fallbackProducts = useResource(
     async () => {
-      if (data.featuredProducts.length > 0 || data.config.featuredProductIds.length > 0) {
-        return [];
-      }
-      const res = await commerceApi.listPublicProducts(data.merchant.id, { limit: 8 });
+      if (data.featuredProducts.length > 0) return [];
+      const res = await commerceApi.listPublicProducts(data.merchant.id, { limit: 6, sort: "newest" });
       return res.items.map(
         (product): StorefrontProductDto => ({
           id: product.id,
@@ -144,7 +140,7 @@ function StorefrontHomeContent({
   );
 
   const displayProducts =
-    data.featuredProducts.length > 0 ? data.featuredProducts : (fallbackProducts.data ?? []);
+    (data.featuredProducts.length > 0 ? data.featuredProducts : (fallbackProducts.data ?? [])).slice(0, 6);
   const enabledSections = useMemo(
     () => [...data.config.sections].filter((s) => s.enabled).sort((a, b) => a.order - b.order),
     [data.config.sections],
@@ -161,9 +157,7 @@ function StorefrontHomeContent({
     cart.addProduct(product);
   }
 
-  const bodySections = enabledSections.filter((s) => s.key !== "footer");
-  const footerSections = enabledSections.filter((s) => s.key === "footer");
-  const hasCategoriesSection = bodySections.some((s) => s.key === "categories");
+  const bodySections = enabledSections.filter((s) => s.key !== "footer" && s.key !== "store_info");
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -180,11 +174,6 @@ function StorefrontHomeContent({
               user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
             }
             onBuy={handleBuy}
-            selectedCategoryId={selectedCategoryId}
-            onSelectCategory={(catId) => {
-              setSelectedCategoryId(catId);
-              document.getElementById("storefront-catalog")?.scrollIntoView({ behavior: "smooth" });
-            }}
           />
 
           {section.key === "hero" && memberWallet.data && (
@@ -220,36 +209,7 @@ function StorefrontHomeContent({
         </div>
       ))}
 
-      {!data.isDraftPreview && (
-        <StorefrontCatalogSection
-          slug={data.merchant.slug}
-          accent={accent}
-          categories={hasCategoriesSection ? [] : data.categories}
-          canAdd={(productId, available) =>
-            user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
-          }
-          onBuy={handleBuy}
-          selectedCategoryId={selectedCategoryId}
-          onCategoryChange={setSelectedCategoryId}
-          limit={8}
-        />
-      )}
-
-      {footerSections.map((section) => (
-        <StorefrontSectionRenderer
-          key={section.key}
-          section={section}
-          merchant={data.merchant}
-          branding={data.config.branding}
-          products={displayProducts}
-          categories={data.categories}
-          events={data.upcomingEvents}
-          canAdd={(productId, available) =>
-            user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
-          }
-          onBuy={handleBuy}
-        />
-      ))}
+      <StorefrontStoreInfoCard merchant={data.merchant} branding={data.config.branding} />
     </div>
   );
 }

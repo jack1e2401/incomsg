@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpRight, FloppyDisk, Plus, RocketLaunch, Trash } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, ArrowUpRight, FloppyDisk, RocketLaunch } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { ProductDto } from "../../api/commerce-types";
@@ -25,6 +25,7 @@ import {
   Textarea,
 } from "../../components/ui";
 import { StorefrontImageField } from "./StorefrontImageField";
+import { StorefrontOpeningHoursEditor } from "./StorefrontOpeningHoursEditor";
 import { StorefrontVersionHistory } from "./StorefrontVersionHistory";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
@@ -89,7 +90,7 @@ export function MerchantStorefrontEditor() {
   }, [state.data]);
 
   const orderedSections = useMemo(
-    () => (draft ? [...draft.sections].sort((a, b) => a.order - b.order) : []),
+    () => (draft ? draft.sections.filter((section) => section.key !== "store_info" && section.key !== "footer").sort((a, b) => a.order - b.order) : []),
     [draft],
   );
 
@@ -118,13 +119,18 @@ export function MerchantStorefrontEditor() {
   }
 
   function moveSection(index: number, delta: -1 | 1) {
+    if (!draft) return;
     const targetIndex = index + delta;
     if (targetIndex < 0 || targetIndex >= orderedSections.length) return;
     const next = [...orderedSections];
     const [moved] = next.splice(index, 1);
     next.splice(targetIndex, 0, moved);
     const reindexed = next.map((section, idx) => ({ ...section, order: idx }));
-    setDraft((current) => (current ? { ...current, sections: reindexed } : current));
+    const fixedSections = ["store_info", "footer"].flatMap((key, idx) => {
+      const section = draft.sections.find((item) => item.key === key);
+      return section ? [{ ...section, order: reindexed.length + idx }] : [];
+    });
+    setDraft((current) => (current ? { ...current, sections: [...reindexed, ...fixedSections] } : current));
   }
 
   function toggleFeaturedProduct(productId: number) {
@@ -137,8 +143,8 @@ export function MerchantStorefrontEditor() {
           featuredProductIds: current.featuredProductIds.filter((id) => id !== productId),
         };
       }
-      if (current.featuredProductIds.length >= 12) {
-        setError("Tối đa 12 sản phẩm nổi bật.");
+      if (current.featuredProductIds.length >= 6) {
+        setError("Tối đa 6 sản phẩm nổi bật.");
         return current;
       }
       setError("");
@@ -250,6 +256,13 @@ export function MerchantStorefrontEditor() {
             onUpload={(file) => storefrontApi.uploadMedia(file, accessToken!).then((r) => r.url)}
           />
           <StorefrontImageField
+            label="Ảnh cửa hàng"
+            value={draft.branding.storeImageUrl ?? null}
+            onChange={(url) => updateBranding("storeImageUrl", url)}
+            onUpload={(file) => storefrontApi.uploadMedia(file, accessToken!).then((r) => r.url)}
+            hint="Nếu để trống, logo cửa hàng sẽ được dùng thay thế."
+          />
+          <StorefrontImageField
             label="Ảnh bìa (Banner)"
             value={draft.branding.bannerUrl}
             onChange={(url) => updateBranding("bannerUrl", url)}
@@ -342,71 +355,11 @@ export function MerchantStorefrontEditor() {
           </Field>
         </div>
 
-        <Field label="Mô tả chân trang">
-          <Textarea
-            maxLength={500}
-            value={draft.branding.footerDescription ?? ""}
-            onChange={(event) => updateBranding("footerDescription", event.target.value || null)}
-          />
-        </Field>
+        <StorefrontOpeningHoursEditor
+          value={draft.branding.openingHours ?? null}
+          onChange={(openingHours) => updateBranding("openingHours", openingHours)}
+        />
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-[#506154]">Liên kết chân trang (tối đa 8)</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={draft.branding.allowedLinks.length >= 8}
-              onClick={() =>
-                updateBranding("allowedLinks", [
-                  ...draft.branding.allowedLinks,
-                  { label: "Trang cửa hàng", url: `/s/${merchant.slug}` },
-                ])
-              }
-            >
-              <Plus aria-hidden="true" size={14} /> Thêm liên kết
-            </Button>
-          </div>
-          {draft.branding.allowedLinks.map((link, idx) => (
-            <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
-              <Input
-                value={link.label}
-                maxLength={60}
-                placeholder="Nhãn liên kết"
-                onChange={(event) => {
-                  const next = [...draft.branding.allowedLinks];
-                  next[idx] = { ...link, label: event.target.value };
-                  updateBranding("allowedLinks", next);
-                }}
-              />
-              <Input
-                value={link.url}
-                maxLength={2048}
-                placeholder={`/s/${merchant.slug} hoặc https://...`}
-                onChange={(event) => {
-                  const next = [...draft.branding.allowedLinks];
-                  next[idx] = { ...link, url: event.target.value };
-                  updateBranding("allowedLinks", next);
-                }}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label="Xóa liên kết"
-                onClick={() =>
-                  updateBranding(
-                    "allowedLinks",
-                    draft.branding.allowedLinks.filter((_, i) => i !== idx),
-                  )
-                }
-              >
-                <Trash aria-hidden="true" size={15} />
-              </Button>
-            </div>
-          ))}
-        </div>
       </Card>
 
       <Card className="space-y-4 p-5 sm:p-6">
@@ -468,7 +421,7 @@ export function MerchantStorefrontEditor() {
       <Card className="space-y-4 p-5 sm:p-6">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-extrabold text-[#20392a]">Sản phẩm nổi bật</h2>
-          <span className="text-xs font-semibold muted">{draft.featuredProductIds.length}/12 đã chọn</span>
+          <span className="text-xs font-semibold muted">{draft.featuredProductIds.length}/6 đã chọn</span>
         </div>
         {!saleProducts.length ? (
           <p className="text-sm muted">Chưa có sản phẩm đang bán để chọn làm sản phẩm nổi bật.</p>

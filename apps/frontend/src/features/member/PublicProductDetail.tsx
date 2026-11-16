@@ -6,11 +6,12 @@ import { createCommerceClient, translateApiError } from "../../api/commerce-http
 import type { ProductDto } from "../../api/commerce-types";
 import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
-import { Button, EmptyState, ErrorState, Input, LoadingState, StatusText } from "../../components/ui";
+import { Button, EmptyState, ErrorState, Input, LoadingState } from "../../components/ui";
 import { money } from "../../lib/utils";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useStorefrontShell } from "../storefront/storefront-context";
 import { useMemberCart } from "./useMemberCart";
+import { productStockDisplay } from "../storefront/storefront-stock";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -47,6 +48,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
   }, [product.id]);
 
   const available = product.inventory?.availableQuantity ?? 0;
+  const stockDisplay = productStockDisplay(available);
   const maxSelectable = Math.max(1, Math.min(99, available));
   const activeImage = gallery[activeIndex] ?? gallery[0] ?? null;
 
@@ -115,9 +117,9 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
 
         <div className="flex flex-col justify-center">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusText tone={available > 0 ? "green" : "amber"} className="w-fit">
-              {available > 0 ? "Đang bán" : "Hết hàng"}
-            </StatusText>
+            <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${stockDisplay.badgeClass}`} role="status">
+              {stockDisplay.label}
+            </span>
             {product.category && (
               <span
                 className="rounded-full bg-[#edf4e9] px-3 py-1 text-xs font-semibold"
@@ -139,7 +141,6 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
             {money(Number(product.price))}
           </p>
 
-          <p className="mt-1.5 text-sm muted">Còn {available} sản phẩm</p>
 
           {product.description && (
             <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#3f5345] break-words">

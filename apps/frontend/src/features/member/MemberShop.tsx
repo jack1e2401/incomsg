@@ -26,6 +26,7 @@ import {
 import { money } from "../../lib/utils";
 import type { MemberOutlet } from "../../layouts/MemberLayout";
 import { MemberMascot } from "./MemberMascot";
+import { productStockDisplay } from "../storefront/storefront-stock";
 
 function ProductCard({ product, add }: { product: Product; add: () => void }) {
   return (
@@ -185,7 +186,9 @@ export function MemberProduct() {
               <h1 className="serif mt-5 text-4xl leading-tight text-[#294432] sm:text-5xl">{product.name}</h1>
               <p className="mt-4 text-2xl font-extrabold accent">{money(product.price)}</p>
               <p className="mt-7 text-sm leading-8 muted">{product.description}</p>
-              <p className="mt-5 text-xs muted">Còn {product.stock} sản phẩm</p>
+              <p className={`mt-5 inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold ${productStockDisplay(product.stock).badgeClass}`}>
+                {productStockDisplay(product.stock).label}
+              </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Button size="lg" disabled={product.stock < 1} onClick={() => addToCart(product.id)}>
                   <ShoppingCart size={18} /> Thêm vào giỏ

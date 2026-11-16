@@ -3,6 +3,7 @@ import type {
   StorefrontAllowedLink,
   StorefrontBrandingConfig,
   StorefrontConfig,
+  StorefrontOpeningHoursDay,
   StorefrontSectionConfig,
   StorefrontSectionKey,
 } from "./storefront.types.js";
@@ -21,6 +22,7 @@ const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RELATIVE_STORE_LINK_REGEX = /^\/s\/[a-z0-9]+(?:-[a-z0-9]+)*(?:[/?#][^\s<>]*)?$/;
 const SAFE_LOCAL_IMAGE_REGEX = /^\/(?:images|uploads)\/[^\s<>"{}|\\^`]+$/;
+const TIME_REGEX = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 function containsHtmlOrScript(value: string): boolean {
   return /<script/i.test(value) || /<[^>]*>/.test(value);
@@ -71,6 +73,36 @@ function readNullableImageUrl(value: unknown): string | null {
   if (trimmed.length === 0) return null;
   if (!isValidImageUrl(trimmed)) throw new HttpError(400, "INVALID_INPUT");
   return trimmed;
+}
+
+function readOpeningHours(value: unknown): StorefrontOpeningHoursDay[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length !== 7) throw new HttpError(400, "INVALID_INPUT");
+  const days = new Set<number>();
+  return value.map((item) => {
+    const record = readObject(item);
+    if (typeof record.day !== "number" || !Number.isInteger(record.day) || record.day < 1 || record.day > 7 || days.has(record.day)) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
+    days.add(record.day);
+    if (typeof record.closed !== "boolean") throw new HttpError(400, "INVALID_INPUT");
+    if (record.closed) return { day: record.day, closed: true, openTime: null, closeTime: null };
+    if (record.openTime === null && record.closeTime === null) {
+      return { day: record.day, closed: false, openTime: null, closeTime: null };
+    }
+    if (
+      typeof record.openTime !== "string" || !TIME_REGEX.test(record.openTime) ||
+      typeof record.closeTime !== "string" || !TIME_REGEX.test(record.closeTime)
+    ) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
+    return {
+      day: record.day,
+      closed: false,
+      openTime: record.openTime,
+      closeTime: record.closeTime,
+    };
+  });
 }
 
 export function isValidStorefrontLink(url: string): boolean {
@@ -132,6 +164,7 @@ function readBranding(value: unknown): StorefrontBrandingConfig {
 
   return {
     logoUrl: readNullableImageUrl(input.logoUrl),
+    storeImageUrl: readNullableImageUrl(input.storeImageUrl),
     bannerUrl: readNullableImageUrl(input.bannerUrl),
     primaryColor,
     heroTitle: readRequiredText(input.heroTitle, 120),
@@ -143,6 +176,7 @@ function readBranding(value: unknown): StorefrontBrandingConfig {
     contactEmail,
     contactPhone: readNullableText(input.contactPhone, 40),
     address: readNullableText(input.address, 255),
+    openingHours: readOpeningHours(input.openingHours),
     allowedLinks: readAllowedLinks(input.allowedLinks),
   };
 }
@@ -196,9 +230,9 @@ function readSections(value: unknown): StorefrontSectionConfig[] {
   return normalized.sort((a, b) => a.order - b.order);
 }
 
-function readFeaturedProductIds(value: unknown): number[] {
+function readFeaturedProductIds(value: unknown, maxItems: number): number[] {
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.length > 12) {
+  if (!Array.isArray(value) || value.length > maxItems) {
     throw new HttpError(400, "INVALID_INPUT");
   }
   const uniqueIds: number[] = [];
@@ -215,12 +249,12 @@ function readFeaturedProductIds(value: unknown): number[] {
   return uniqueIds;
 }
 
-export function readStorefrontConfig(value: unknown): StorefrontConfig {
+export function readStorefrontConfig(value: unknown, maxFeaturedProducts = 12): StorefrontConfig {
   const input = readObject(value);
   return {
     branding: readBranding(input.branding),
     sections: readSections(input.sections),
-    featuredProductIds: readFeaturedProductIds(input.featuredProductIds),
+    featuredProductIds: readFeaturedProductIds(input.featuredProductIds, maxFeaturedProducts),
   };
 }
 
@@ -251,6 +285,7 @@ export function defaultStorefrontConfig(merchantName: string, slug: string): Sto
   return {
     branding: {
       logoUrl: null,
+      storeImageUrl: null,
       bannerUrl: null,
       primaryColor: "#335e3d",
       heroTitle: safeHeroTitle,
@@ -262,6 +297,7 @@ export function defaultStorefrontConfig(merchantName: string, slug: string): Sto
       contactEmail: null,
       contactPhone: null,
       address: null,
+      openingHours: null,
       allowedLinks: [],
     },
     sections: [

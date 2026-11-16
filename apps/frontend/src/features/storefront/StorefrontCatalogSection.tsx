@@ -20,7 +20,7 @@ export function StorefrontCatalogSection({
   initialSort = "newest",
   initialPage = 1,
   onStateChange,
-  limit = 12,
+  limit = 8,
   title = "Thực đơn & Sản phẩm",
 }: {
   slug: string;

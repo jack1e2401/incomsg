@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Folders } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
+import { Link } from "react-router-dom";
 import { createCommerceClient, translateApiError } from "../../api/commerce-http";
 import type {
   ProductCategoryDto,
@@ -19,7 +19,6 @@ import {
   LoadingState,
   PageHeader,
 } from "../../components/ui";
-import { MerchantCategoriesPanel } from "./MerchantCategoriesPanel";
 import { MerchantProductFiltersBar } from "./MerchantProductFiltersBar";
 import { MerchantProductFormDialog } from "./MerchantProductFormDialog";
 import { MerchantProductTableRow } from "./MerchantProductTableRow";
@@ -60,9 +59,7 @@ export function MerchantProducts() {
   const [sort, setSort] = useState<ProductSortOption>("newest");
   const [page, setPage] = useState(1);
 
-  const [showCategories, setShowCategories] = useState(false);
   const [categories, setCategories] = useState<ProductCategoryDto[]>([]);
-  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<ProductDto | "new" | null>(null);
@@ -71,7 +68,6 @@ export function MerchantProducts() {
   const [notice, setNotice] = useState("");
 
   const loadCategories = useCallback(async () => {
-    setCategoriesLoading(true);
     setCategoriesError(null);
     try {
       const response = await api.listOwnCategories(token);
@@ -83,8 +79,6 @@ export function MerchantProducts() {
       } else {
         setCategoriesError(translateApiError(raw || "Không thể tải danh mục."));
       }
-    } finally {
-      setCategoriesLoading(false);
     }
   }, [token]);
 
@@ -176,11 +170,10 @@ export function MerchantProducts() {
         action={
           <div className="flex flex-wrap gap-2">
             <Button
-              type="button"
+              asChild
               variant="outline"
-              onClick={() => setShowCategories((prev) => !prev)}
             >
-              <Folders size={16} /> {showCategories ? "Ẩn danh mục" : "Quản lý danh mục"}
+              <Link to="/merchant/categories">Quản lý danh mục</Link>
             </Button>
             <Button
               type="button"
@@ -196,19 +189,6 @@ export function MerchantProducts() {
         }
       />
 
-      {showCategories && (
-        <MerchantCategoriesPanel
-          token={token}
-          categories={categories}
-          loading={categoriesLoading}
-          error={categoriesError}
-          onChanged={() => {
-            void loadCategories();
-            resource.reload();
-          }}
-        />
-      )}
-
       {notice && (
         <p role="status" className="mb-4 rounded-xl bg-[#e1f2df] p-4 text-sm text-[#357044]">
           {notice}
@@ -217,6 +197,11 @@ export function MerchantProducts() {
       {error && !editing && (
         <p role="alert" className="mb-4 rounded-xl bg-[#fae7e3] p-4 text-sm text-[#a4473a]">
           {error}
+        </p>
+      )}
+      {categoriesError && (
+        <p role="alert" className="mb-4 rounded-xl bg-[#fae7e3] p-4 text-sm text-[#a4473a]">
+          {categoriesError} <button type="button" className="font-bold underline" onClick={() => void loadCategories()}>Thử lại</button>
         </p>
       )}
 

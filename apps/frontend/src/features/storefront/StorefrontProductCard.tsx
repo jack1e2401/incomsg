@@ -4,6 +4,7 @@ import type { ProductDto } from "../../api/commerce-types";
 import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import type { StorefrontProductDto } from "../../api/storefront-types";
 import { money } from "../../lib/utils";
+import { productStockDisplay } from "./storefront-stock";
 
 type CardProduct = StorefrontProductDto | ProductDto;
 
@@ -46,6 +47,7 @@ export function StorefrontProductCard({
 }) {
   const imgSrc = resolveStorefrontAssetUrl(product.imageUrl);
   const available = product.inventory.availableQuantity;
+  const stockDisplay = productStockDisplay(available);
   const detailPath = `/s/${encodeURIComponent(slug)}/products/${product.id}${returnSearch}`;
 
   return (
@@ -67,11 +69,6 @@ export function StorefrontProductCard({
             <Storefront aria-hidden="true" size={32} weight="light" />
           </div>
         )}
-        {available <= 0 && (
-          <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-bold text-white">
-            Hết hàng
-          </span>
-        )}
       </Link>
 
       <div className="mt-2.5 flex flex-1 flex-col">
@@ -91,8 +88,8 @@ export function StorefrontProductCard({
             <p className="truncate text-sm font-extrabold tabular-nums sm:text-base" style={{ color: accent }}>
               {money(Number(product.price))}
             </p>
-            <p className="text-[10px] text-[#6d7d72]">
-              {available > 0 ? `Còn ${available}` : "Tạm hết"}
+            <p className={`inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold ${stockDisplay.badgeClass}`}>
+              {stockDisplay.label}
             </p>
           </div>
           <button

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Calendar, CaretDown, Envelope, MapPin, Phone } from "@phosphor-icons/react";
+import { Calendar, MapPin } from "@phosphor-icons/react";
 import type { ProductDto } from "../../api/commerce-types";
 import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import type {
@@ -12,6 +12,7 @@ import type {
 } from "../../api/storefront-types";
 import { Card, EmptyState } from "../../components/ui";
 import { StorefrontProductCard } from "./StorefrontProductCard";
+import { StorefrontStoreInfoCard } from "./StorefrontStoreInfoCard";
 
 function StorefrontLink({
   href,
@@ -142,7 +143,7 @@ export function StorefrontSectionRenderer({
             />
           ) : (
             <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-              {products.map((product) => (
+              {products.slice(0, 6).map((product) => (
                 <StorefrontProductCard
                   key={product.id}
                   slug={merchant.slug}
@@ -294,63 +295,9 @@ export function StorefrontSectionRenderer({
     }
 
     case "store_info":
-      return (
-        <section aria-labelledby="section-store-info">
-          <details className="group rounded-2xl border border-[#e5ece3] bg-white px-4 py-3">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-extrabold text-[#20392a]">
-              <span id="section-store-info">{section.title || `Thông tin ${merchant.name}`}</span>
-              <CaretDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="mt-3 grid gap-2 border-t border-[#edf2ea] pt-3 text-xs text-[#405b47] sm:grid-cols-3">
-              {branding.contactEmail && (
-                <p className="flex items-center gap-1.5 break-all">
-                  <Envelope aria-hidden="true" size={14} /> {branding.contactEmail}
-                </p>
-              )}
-              {branding.contactPhone && (
-                <p className="flex items-center gap-1.5">
-                  <Phone aria-hidden="true" size={14} /> {branding.contactPhone}
-                </p>
-              )}
-              {branding.address && (
-                <p className="flex items-center gap-1.5 break-words">
-                  <MapPin aria-hidden="true" size={14} /> {branding.address}
-                </p>
-              )}
-              {!branding.contactEmail && !branding.contactPhone && !branding.address && (
-                <p className="muted">Thông tin liên hệ đang được cập nhật.</p>
-              )}
-            </div>
-          </details>
-        </section>
-      );
+      return <StorefrontStoreInfoCard merchant={merchant} branding={branding} />;
 
     case "footer":
-      return (
-        <footer className="border-t border-[#e5ece3] pt-4 text-xs text-[#53685a]">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <span className="font-extrabold text-[#24452f]">{merchant.name}</span>
-              {branding.footerDescription && (
-                <span className="ml-2 line-clamp-1 muted">{branding.footerDescription}</span>
-              )}
-            </div>
-            {branding.allowedLinks.length > 0 && (
-              <nav aria-label="Liên kết cửa hàng" className="flex flex-wrap gap-3">
-                {branding.allowedLinks.map((link, index) => (
-                  <StorefrontLink
-                    key={`${link.url}-${index}`}
-                    href={link.url}
-                    className="font-bold hover:underline"
-                    style={{ color: accent }}
-                  >
-                    {link.label}
-                  </StorefrontLink>
-                ))}
-              </nav>
-            )}
-          </div>
-        </footer>
-      );
+      return null;
   }
 }

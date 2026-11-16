@@ -66,7 +66,7 @@ export function StorefrontProductsPage() {
       initialSort={initialSort}
       initialPage={initialPage}
       onStateChange={updateUrlState}
-      limit={12}
+      limit={8}
       title={`Sản phẩm tại ${storefront.merchant.name}`}
     />
   );

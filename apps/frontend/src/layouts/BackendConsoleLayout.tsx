@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { List, SignOut, X } from "@phosphor-icons/react";
 import { useAuthSession } from "../api/auth-session";
 import { createCommerceClient } from "../api/commerce-http";
@@ -18,24 +18,37 @@ const adminLinks = [
   ["/admin/audit-logs", "Nhật ký"],
   ["/admin/abuse-reports", "Báo cáo vi phạm"],
 ];
-const merchantLinks = [
-  ["/merchant", "Tổng quan"],
-  ["/merchant/store", "Cửa hàng"],
-  ["/merchant/storefront", "Giao diện cửa hàng"],
-  ["/merchant/products", "Sản phẩm"],
-  ["/merchant/events", "Sự kiện"],
-  ["/merchant/orders", "Đơn hàng"],
-  ["/merchant/loyalty", "Loyalty"],
-  ["/merchant/vouchers", "Voucher"],
-  ["/merchant/customers", "Khách hàng"],
-  ["/merchant/analytics", "Phân tích"],
+const merchantGroups = [
+  { label: "Vận hành", links: [["/merchant", "Tổng quan"], ["/merchant/orders", "Đơn hàng"]] },
+  { label: "Sản phẩm", links: [["/merchant/products", "Sản phẩm"], ["/merchant/categories", "Danh mục"]] },
+  { label: "Cửa hàng", links: [["/merchant/store", "Thông tin cửa hàng"], ["/merchant/storefront", "Giao diện cửa hàng"]] },
+  {
+    label: "Khách hàng & Loyalty",
+    links: [
+      ["/merchant/customers", "Khách hàng"],
+      ["/merchant/loyalty/config", "Cấu hình điểm"],
+      ["/merchant/loyalty/transactions", "Giao dịch điểm"],
+      ["/merchant/loyalty/history", "Lịch sử chính sách"],
+      ["/merchant/loyalty/members", "Thành viên"],
+      ["/merchant/vouchers", "Voucher"],
+    ],
+  },
+  { label: "Marketing", links: [["/merchant/events", "Sự kiện"]] },
+  { label: "Báo cáo", links: [["/merchant/analytics", "Phân tích"]] },
 ];
 
 export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { user, logout } = useAuthSession();
   const navigate = useNavigate();
-  const links = role === "admin" ? adminLinks : merchantLinks;
+  const location = useLocation();
+  const links = adminLinks;
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(merchantGroups.map((group) => [
+      group.label,
+      group.links.some(([to]) => location.pathname === to || (to !== "/merchant" && location.pathname.startsWith(`${to}/`))),
+    ])),
+  );
   return (
     <div className="min-h-dvh bg-[#f7f8f4] lg:pl-64">
       {menuOpen && (
@@ -59,12 +72,12 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
             <X size={20} />
           </button>
         </div>
-        <nav aria-label="Điều hướng chính" className="mt-10 space-y-1">
-          {links.map(([to, label]) => (
+        <nav aria-label="Điều hướng chính" className="mt-10 space-y-1 overflow-y-auto">
+          {role === "admin" ? links.map(([to, label]) => (
             <NavLink
               key={to}
               to={to}
-              end={to === "/admin" || to === "/merchant"}
+              end={to === "/admin"}
               onClick={() => setMenuOpen(false)}
               className={({ isActive }) =>
                 cn(
@@ -75,6 +88,36 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
             >
               {label}
             </NavLink>
+          )) : merchantGroups.map((group) => (
+            <section key={group.label} className="pt-2">
+              <button
+                type="button"
+                aria-expanded={expandedGroups[group.label] ?? false}
+                onClick={() => setExpandedGroups((current) => ({ ...current, [group.label]: !current[group.label] }))}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[11px] font-extrabold uppercase tracking-wide text-white/45 hover:text-white/75"
+              >
+                {group.label}
+                <span aria-hidden="true" className="text-sm">{expandedGroups[group.label] ? "−" : "+"}</span>
+              </button>
+              {expandedGroups[group.label] && (
+                <div className="space-y-1">
+                  {group.links.map(([to, label]) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={to === "/merchant"}
+                      onClick={() => setMenuOpen(false)}
+                      className={({ isActive }) => cn(
+                        "block rounded-xl px-4 py-2.5 text-sm font-semibold text-white/70 hover:bg-white/10",
+                        isActive && "bg-[#c7ec9f] text-[#26442e] hover:bg-[#c7ec9f]",
+                      )}
+                    >
+                      {label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </section>
           ))}
         </nav>
         <p className="mt-auto truncate px-3 text-xs text-white/60">{user?.email}</p>

@@ -38,6 +38,7 @@ import { MemberLoyaltyPolicyDialog } from "./MemberLoyaltyPolicyDialog";
 import { LoyaltyWalletContent } from "./LoyaltyWalletContent";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useMemberCart } from "./useMemberCart";
+import { productStockDisplay } from "../storefront/storefront-stock";
 
 function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
   switch (status) {
@@ -247,7 +248,9 @@ export function MemberStorefront() {
                 <p className="mt-4 text-lg font-extrabold text-[#335e3d] tabular-nums">
                   {money(product.price)}
                 </p>
-                <p className="mt-1 text-xs muted">Còn {product.inventory.availableQuantity} sản phẩm</p>
+                <p className={`mt-1 inline-flex w-fit rounded-full px-2 py-1 text-xs font-semibold ${productStockDisplay(product.inventory.availableQuantity).badgeClass}`}>
+                  {productStockDisplay(product.inventory.availableQuantity).label}
+                </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button asChild variant="outline" className="flex-1 sm:flex-none">
                     <Link to={`product/${product.id}`} aria-label={`Chi tiết ${product.name}`}>
@@ -316,9 +319,9 @@ export function MemberProduct() {
           )}
         </div>
         <div className="flex flex-col justify-center">
-          <StatusText tone={product.inventory.availableQuantity > 0 ? "green" : "amber"} className="w-fit">
-            {product.inventory.availableQuantity > 0 ? "Đang bán" : "Hết hàng"}
-          </StatusText>
+          <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${productStockDisplay(product.inventory.availableQuantity).badgeClass}`} role="status">
+            {productStockDisplay(product.inventory.availableQuantity).label}
+          </span>
           <h1 className="mt-4 sm:mt-5 text-2xl font-extrabold text-[#294432] break-words sm:text-4xl">
             {product.name}
           </h1>
@@ -330,7 +333,6 @@ export function MemberProduct() {
               {product.description}
             </p>
           )}
-          <p className="mt-3 text-sm muted">Còn {product.inventory.availableQuantity} sản phẩm</p>
           <Button
             type="button"
             className="mt-6 sm:mt-8 w-full sm:w-fit"
