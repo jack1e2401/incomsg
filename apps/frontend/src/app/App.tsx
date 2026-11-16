@@ -55,7 +55,6 @@ import { MerchantCustomersPage } from "../features/customers/MerchantCustomersPa
 import { MerchantCustomerDetailPage } from "../features/customers/MerchantCustomerDetailPage";
 import { MerchantAnalyticsPage } from "../features/analytics/MerchantAnalyticsPage";
 import {
-  BackendMemberLayout,
   MemberCart,
   MemberCheckout,
   MemberOrderResult,
@@ -69,7 +68,10 @@ import {
 import { MemberLanding } from "../features/member/MemberLanding";
 import { MerchantStorefrontEditor } from "../features/storefront/MerchantStorefrontEditor";
 import { PublicStorefrontPage } from "../features/storefront/PublicStorefrontPage";
-import { SlugMemberLayout } from "../features/storefront/SlugMemberLayout";
+import { StorefrontAuthGate, StorefrontShellLayout } from "../features/storefront/StorefrontShellLayout";
+import { StorefrontProductsPage } from "../features/storefront/StorefrontProductsPage";
+import { StorefrontProfilePage } from "../features/storefront/StorefrontProfilePage";
+import { LegacyMemberRedirect } from "../features/storefront/LegacyMemberRedirect";
 import { PublicProductDetail } from "../features/member/PublicProductDetail";
 import { MerchantEventsPage } from "../features/events/MerchantEventsPage";
 import { PublicEventsPage } from "../features/events/PublicEventsPage";
@@ -89,9 +91,6 @@ function BackendRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/application/status" element={<ApplicationStatusPage />} />
-      <Route path="/s/:slug/products/:productId" element={<PublicProductDetail />} />
-      <Route path="/s/:slug/events" element={<PublicEventsPage />} />
-      <Route path="/s/:slug/events/:eventSlug" element={<PublicEventDetailPage />} />
       <Route element={<RequireRole role="ADMIN" />}>
         <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
           <Route index element={<AdminOverview />} />
@@ -120,19 +119,26 @@ function BackendRoutes() {
           <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
         </Route>
       </Route>
-      <Route path="/s/:slug" element={<PublicStorefrontPage />} />
-      <Route path="/s/:slug" element={<SlugMemberLayout />}>
-        <Route path="cart" element={<MemberCart />} />
-        <Route path="checkout" element={<MemberCheckout />} />
-        <Route path="wallet" element={<MemberWallet />} />
-        <Route path="vouchers" element={<MemberVouchers />} />
-        <Route path="rewards" element={<MemberRewards />} />
-        <Route path="orders" element={<MemberOrders />} />
-        <Route path="orders/:orderId" element={<MemberOrderResult />} />
+      <Route path="/s/:slug" element={<StorefrontShellLayout />}>
+        <Route index element={<PublicStorefrontPage />} />
+        <Route path="products" element={<StorefrontProductsPage />} />
+        <Route path="products/:productId" element={<PublicProductDetail />} />
+        <Route path="events" element={<PublicEventsPage />} />
+        <Route path="events/:eventSlug" element={<PublicEventDetailPage />} />
+        <Route path="profile" element={<StorefrontProfilePage />} />
+        <Route element={<StorefrontAuthGate />}>
+          <Route path="cart" element={<MemberCart />} />
+          <Route path="checkout" element={<MemberCheckout />} />
+          <Route path="wallet" element={<MemberWallet />} />
+          <Route path="vouchers" element={<MemberVouchers />} />
+          <Route path="rewards" element={<MemberRewards />} />
+          <Route path="orders" element={<MemberOrders />} />
+          <Route path="orders/:orderId" element={<MemberOrderResult />} />
+        </Route>
       </Route>
       <Route element={<RequireRole role="MEMBER" />}>
         <Route path="/member" element={<MemberLanding />} />
-        <Route path="/member/:merchantId" element={<BackendMemberLayout />}>
+        <Route path="/member/:merchantId" element={<LegacyMemberRedirect />}>
           <Route index element={<MemberStorefront />} />
           <Route path="product/:productId" element={<MemberProduct />} />
           <Route path="cart" element={<MemberCart />} />

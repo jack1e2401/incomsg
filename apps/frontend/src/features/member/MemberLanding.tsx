@@ -87,7 +87,7 @@ function MerchantCard({ merchant }: { merchant: MerchantDirectoryItem }) {
   const image = merchant.coverImageUrl;
   return (
     <Link
-      to={`/member/${merchant.id}`}
+      to={`/s/${merchant.slug}`}
       className="group block h-full rounded-[1.5rem] bg-white p-1.5 shadow-[0_8px_24px_rgba(37,67,47,.05)] ring-1 ring-[#e2e9df] outline-none hover:ring-[#a5bca0] focus-visible:ring-2 focus-visible:ring-[#335e3d]"
     >
       <div className="relative grid aspect-[2/1] place-items-center overflow-hidden rounded-[1.125rem] bg-[#e8efe2] text-[#54725a]">

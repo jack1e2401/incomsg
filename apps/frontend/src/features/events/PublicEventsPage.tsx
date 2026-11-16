@@ -7,6 +7,7 @@ import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
 import { Button, Card, EmptyState, ErrorState, LoadingState } from "../../components/ui";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
+import { useStorefrontShell } from "../storefront/storefront-context";
 import { formatEventSchedule } from "./event-format";
 
 const eventsApi = createEventsClient();
@@ -21,43 +22,33 @@ export function PublicEventsPage() {
   const { slug = "" } = useParams();
   const [scope, setScope] = useState<PublicEventScope>("upcoming");
   const [page, setPage] = useState(1);
-  useEnsureMembership({ slug });
+  const shell = useStorefrontShell();
+  useEnsureMembership({ slug, enabled: !shell });
 
   const resource = useResource(
     () => eventsApi.listPublicStoreEvents(slug, { scope, page, limit: 12 }),
     [slug, scope, page],
   );
 
-  const storeName = resource.data?.merchant?.name ?? slug;
+  const storeName = resource.data?.merchant?.name ?? shell?.storefront.merchant.name ?? slug;
   const items = resource.data?.items ?? [];
   const pagination = resource.data?.pagination;
 
-  return (
-    <main className="min-h-dvh bg-[#f7f8f4]">
-      <header className="border-b border-[#e7ede6] bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
-          <div className="min-w-0">
-            <Link
-              to={`/s/${encodeURIComponent(slug)}`}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#335e3d] hover:text-[#20392a]"
-            >
-              <ArrowLeft size={16} aria-hidden="true" /> Quay lại cửa hàng
-            </Link>
-            <h1 className="mt-1 truncate text-2xl font-extrabold tracking-tight text-[#20392a]">
-              Sự kiện tại {storeName}
-            </h1>
-          </div>
+  const content = (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
           <Link
             to={`/s/${encodeURIComponent(slug)}`}
-            className="hidden shrink-0 rounded-full bg-[#edf4e9] px-4 py-2 text-xs font-bold text-[#335e3d] hover:bg-[#e1eed9] sm:inline-flex"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#335e3d] hover:text-[#20392a]"
           >
-            /s/{slug}
+            <ArrowLeft size={14} aria-hidden="true" /> Quay lại cửa hàng
           </Link>
+          <h1 className="mt-1 text-xl font-extrabold tracking-tight text-[#20392a] sm:text-2xl">
+            Sự kiện tại {storeName}
+          </h1>
         </div>
-      </header>
-
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <div className="mb-6 flex flex-wrap gap-2" role="tablist" aria-label="Lọc thời gian sự kiện">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Lọc thời gian sự kiện">
           {scopeTabs.map((tab) => {
             const active = scope === tab.key;
             return (
@@ -78,61 +69,69 @@ export function PublicEventsPage() {
             );
           })}
         </div>
-
-        {resource.loading ? (
-          <LoadingState cards={3} />
-        ) : resource.error ? (
-          <ErrorState message={translateEventError(resource.error)} retry={resource.reload} />
-        ) : items.length === 0 ? (
-          <EmptyState
-            title="Chưa có sự kiện phù hợp"
-            description="Hiện chưa có sự kiện nào được xuất bản trong mục này."
-            action={
-              <Button asChild variant="outline">
-                <Link to={`/s/${encodeURIComponent(slug)}`}>Quay lại cửa hàng</Link>
-              </Button>
-            }
-          />
-        ) : (
-          <>
-            <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((eventItem) => (
-                <li key={eventItem.id} className="min-w-0">
-                  <PublicEventCard storeSlug={slug} event={eventItem} />
-                </li>
-              ))}
-            </ul>
-
-            {pagination && pagination.totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-between">
-                <p className="text-sm text-[#5d6f62]">
-                  Trang {pagination.page} / {pagination.totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={pagination.page <= 1}
-                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                  >
-                    Trước
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={pagination.page >= pagination.totalPages}
-                    onClick={() => setPage((prev) => prev + 1)}
-                  >
-                    Sau
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
       </div>
+
+      {resource.loading ? (
+        <LoadingState cards={3} />
+      ) : resource.error ? (
+        <ErrorState message={translateEventError(resource.error)} retry={resource.reload} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title="Chưa có sự kiện phù hợp"
+          description="Hiện chưa có sự kiện nào được xuất bản trong mục này."
+          action={
+            <Button asChild variant="outline">
+              <Link to={`/s/${encodeURIComponent(slug)}`}>Quay lại cửa hàng</Link>
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((eventItem) => (
+              <li key={eventItem.id} className="min-w-0">
+                <PublicEventCard storeSlug={slug} event={eventItem} />
+              </li>
+            ))}
+          </ul>
+
+          {pagination && pagination.totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between">
+              <p className="text-sm text-[#5d6f62]">
+                Trang {pagination.page} / {pagination.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pagination.page <= 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Trước
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => setPage((prev) => prev + 1)}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  if (shell) return content;
+
+  return (
+    <main className="min-h-dvh bg-[#f7f8f4]">
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">{content}</div>
     </main>
   );
 }

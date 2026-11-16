@@ -274,7 +274,7 @@ export function MemberStorefront() {
 }
 
 export function MemberProduct() {
-  const { merchantId, cart } = useMerchantContext();
+  const { merchantId, basePath, cart } = useMerchantContext();
   const productId = Number(useParams().productId);
   const products = useResource(
     () => commerce.listPublicProducts(merchantId).then((response) => response.items),
@@ -292,7 +292,7 @@ export function MemberProduct() {
         description="Sản phẩm có thể đã được ẩn hoặc ngừng bán."
         action={
           <Button asChild variant="outline">
-            <Link to={`/member/${merchantId}`}>Về gian hàng</Link>
+            <Link to={basePath}>Về gian hàng</Link>
           </Button>
         }
       />
@@ -300,7 +300,7 @@ export function MemberProduct() {
   return (
     <>
       <Link
-        to={`/member/${merchantId}`}
+        to={basePath}
         className="mb-5 inline-flex items-center gap-2 rounded text-sm font-bold text-[#335e3d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
       >
         <ArrowLeft aria-hidden="true" size={16} /> Gian hàng
@@ -812,7 +812,16 @@ export function MemberVouchers() {
 
   return (
     <>
-      <PageHeader title="Voucher" />
+      <PageHeader
+        title="Voucher & Ưu đãi"
+        action={
+          <Button asChild variant="outline" size="sm">
+            <Link to={`${basePath}/rewards`}>
+              <Gift size={15} aria-hidden="true" /> Quà tặng đã đổi
+            </Link>
+          </Button>
+        }
+      />
       {actionError && (
         <div role="alert" className="mb-4 rounded-xl bg-[#fee2e2] p-3 text-sm text-[#a4473a]">
           <p className="break-words">{actionError}</p>

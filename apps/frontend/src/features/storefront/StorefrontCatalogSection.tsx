@@ -1,12 +1,10 @@
-import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { MagnifyingGlass, ShoppingCart, Storefront } from "@phosphor-icons/react";
+import { useEffect, useState, type FormEvent } from "react";
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { ProductCategoryDto, ProductDto, ProductSortOption } from "../../api/commerce-types";
-import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
-import { Button, Card, EmptyState, Input, Select } from "../../components/ui";
-import { money } from "../../lib/utils";
+import { Button, EmptyState, Input, Select } from "../../components/ui";
+import { StorefrontProductCard } from "./StorefrontProductCard";
 
 const commerceApi = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -16,29 +14,59 @@ export function StorefrontCatalogSection({
   categories,
   canAdd,
   onBuy,
+  selectedCategoryId,
+  onCategoryChange,
+  initialQuery = "",
+  initialSort = "newest",
+  initialPage = 1,
+  onStateChange,
+  limit = 12,
+  title = "Thực đơn & Sản phẩm",
 }: {
   slug: string;
   accent: string;
   categories: { id: number; name: string }[];
   canAdd: (productId: number, availableQuantity?: number) => boolean;
   onBuy: (product: ProductDto) => void;
+  selectedCategoryId?: number | null;
+  onCategoryChange?: (categoryId: number | null) => void;
+  initialQuery?: string;
+  initialSort?: ProductSortOption;
+  initialPage?: number;
+  onStateChange?: (next: { q: string; categoryId: number | null; sort: ProductSortOption; page: number }) => void;
+  limit?: number;
+  title?: string;
 }) {
-  const [draftQuery, setDraftQuery] = useState("");
-  const [query, setQuery] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
-  const [sort, setSort] = useState<ProductSortOption>("newest");
-  const [page, setPage] = useState(1);
+  const [draftQuery, setDraftQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
+  const [internalCatId, setInternalCatId] = useState<number | null>(selectedCategoryId ?? null);
+  const [sort, setSort] = useState<ProductSortOption>(initialSort);
+  const [page, setPage] = useState(initialPage);
+
+  const activeCategoryId = selectedCategoryId !== undefined ? selectedCategoryId : internalCatId;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const trimmed = draftQuery.trim();
+      if (trimmed !== query) {
+        setQuery(trimmed);
+        setPage(1);
+        onStateChange?.({ q: trimmed, categoryId: activeCategoryId ?? null, sort, page: 1 });
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [draftQuery, query, activeCategoryId, sort, onStateChange]);
 
   const resource = useResource(
     () =>
       commerceApi.listPublicStoreProducts(slug, {
         q: query || undefined,
-        categoryId: categoryId ? Number(categoryId) : undefined,
+        categoryId: activeCategoryId ?? undefined,
         sort,
         page,
-        limit: 9,
+        limit,
       }),
-    [slug, query, categoryId, sort, page],
+    [slug, query, activeCategoryId, sort, page, limit],
   );
 
   if (resource.loading && !resource.data) return null;
@@ -51,130 +79,148 @@ export function StorefrontCatalogSection({
       ? resource.data!.categories
       : categories;
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setQuery(draftQuery.trim());
+  function chooseCategory(nextId: number | null) {
+    if (onCategoryChange) {
+      onCategoryChange(nextId);
+    } else {
+      setInternalCatId(nextId);
+    }
     setPage(1);
+    onStateChange?.({ q: query, categoryId: nextId, sort, page: 1 });
   }
 
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = draftQuery.trim();
+    setQuery(trimmed);
+    setPage(1);
+    onStateChange?.({ q: trimmed, categoryId: activeCategoryId ?? null, sort, page: 1 });
+  }
+
+  const returnParams = new URLSearchParams();
+  if (query) returnParams.set("q", query);
+  if (activeCategoryId) returnParams.set("categoryId", String(activeCategoryId));
+  if (sort !== "newest") returnParams.set("sort", sort);
+  if (page > 1) returnParams.set("page", String(page));
+  const returnSearch = returnParams.size ? `?${returnParams.toString()}` : "";
+
   return (
-    <section aria-labelledby="section-storefront-catalog" className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="section-storefront-catalog" className="text-xl font-extrabold text-[#20392a] sm:text-2xl">
-            Tất cả sản phẩm
-          </h2>
-        </div>
-        <form onSubmit={submitSearch} className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Input
-              type="search"
-              aria-label="Tìm sản phẩm trong cửa hàng"
-              placeholder="Tìm sản phẩm hoặc SKU..."
-              value={draftQuery}
-              onChange={(event) => setDraftQuery(event.target.value)}
-              className="w-52 pr-8"
-            />
-            <MagnifyingGlass
-              size={15}
-              aria-hidden="true"
-              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#6b7d70]"
-            />
-          </div>
-          <Select
-            aria-label="Lọc theo danh mục"
-            value={categoryId}
-            onChange={(event) => {
-              setCategoryId(event.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Tất cả danh mục</option>
-            {availableCategories.map((cat) => (
-              <option key={cat.id} value={String(cat.id)}>
-                {cat.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="Sắp xếp sản phẩm"
-            value={sort}
-            onChange={(event) => {
-              setSort(event.target.value as ProductSortOption);
-              setPage(1);
-            }}
-          >
-            <option value="newest">Mới nhất</option>
-            <option value="price_asc">Giá tăng dần</option>
-            <option value="price_desc">Giá giảm dần</option>
-            <option value="name_asc">Tên A-Z</option>
-          </Select>
-          <Button type="submit" size="sm" variant="outline">
-            Tìm
-          </Button>
-        </form>
+    <section id="storefront-catalog" aria-labelledby="section-storefront-catalog" className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="section-storefront-catalog" className="text-base font-extrabold text-[#20392a] sm:text-xl">
+          {title}
+        </h2>
+        {pagination && (
+          <span className="text-xs font-semibold text-[#647569] tabular-nums">
+            {pagination.totalItems} sản phẩm
+          </span>
+        )}
       </div>
+
+      {/* Compact single-row search + sort */}
+      <form onSubmit={submitSearch} className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <MagnifyingGlass
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7d70]"
+          />
+          <Input
+            type="search"
+            aria-label="Tìm đồ uống, sản phẩm"
+            placeholder="Tìm đồ uống, sản phẩm..."
+            value={draftQuery}
+            onChange={(event) => setDraftQuery(event.target.value)}
+            className="h-10 w-full rounded-full pl-9 pr-3 text-sm"
+          />
+        </div>
+        <Select
+          aria-label="Sắp xếp sản phẩm"
+          value={sort}
+          onChange={(event) => {
+            const nextSort = event.target.value as ProductSortOption;
+            setSort(nextSort);
+            setPage(1);
+            onStateChange?.({ q: query, categoryId: activeCategoryId ?? null, sort: nextSort, page: 1 });
+          }}
+          className="h-10 w-32 shrink-0 rounded-full text-xs sm:w-40"
+        >
+          <option value="newest">Mới nhất</option>
+          <option value="price_asc">Giá thấp → cao</option>
+          <option value="price_desc">Giá cao → thấp</option>
+          <option value="name_asc">Tên A–Z</option>
+        </Select>
+      </form>
+
+      {/* Horizontal scrollable category chips */}
+      {availableCategories.length > 0 && (
+        <div
+          role="tablist"
+          aria-label="Danh mục sản phẩm"
+          className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategoryId === null}
+            onClick={() => chooseCategory(null)}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              activeCategoryId === null
+                ? "text-white shadow-sm"
+                : "border border-[#dce6da] bg-white text-[#4c6052] hover:bg-[#edf4e9]"
+            }`}
+            style={activeCategoryId === null ? { backgroundColor: accent } : undefined}
+          >
+            Tất cả
+          </button>
+          {availableCategories.map((cat) => {
+            const active = activeCategoryId === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => chooseCategory(cat.id)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+                  active
+                    ? "text-white shadow-sm"
+                    : "border border-[#dce6da] bg-white text-[#4c6052] hover:bg-[#edf4e9]"
+                }`}
+                style={active ? { backgroundColor: accent } : undefined}
+              >
+                {cat.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <EmptyState
           title="Không tìm thấy sản phẩm"
-          description="Thử từ khóa khác hoặc chọn tất cả danh mục."
+          description="Thử từ khóa khác hoặc chọn danh mục Tất cả."
         />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((product) => {
-              const imgSrc = resolveStorefrontAssetUrl(product.imageUrl);
-              const available = product.inventory.availableQuantity;
-              return (
-                <Card key={product.id} className="flex flex-col overflow-hidden">
-                  <Link to={`/s/${slug}/products/${product.id}`} className="block aspect-[4/3] bg-[#edf2e9]">
-                    {imgSrc ? (
-                      <img src={imgSrc} alt={product.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="grid h-full place-items-center text-[#709275]">
-                        <Storefront aria-hidden="true" size={36} />
-                      </div>
-                    )}
-                  </Link>
-                  <div className="flex flex-1 flex-col p-4 sm:p-5">
-                    {product.category && (
-                      <span className="text-xs font-bold" style={{ color: accent }}>
-                        {product.category.name}
-                      </span>
-                    )}
-                    <h3 className="mt-1 font-extrabold text-[#294432] break-words">
-                      <Link to={`/s/${slug}/products/${product.id}`} className="hover:underline">
-                        {product.name}
-                      </Link>
-                    </h3>
-                    {product.description && (
-                      <p className="mt-2 line-clamp-2 text-sm muted break-words">{product.description}</p>
-                    )}
-                    <p className="mt-auto pt-4 text-lg font-extrabold tabular-nums" style={{ color: accent }}>
-                      {money(Number(product.price))}
-                    </p>
-                    <p className="mt-1 text-xs muted">Còn {available} sản phẩm</p>
-                    <Button
-                      type="button"
-                      className="mt-4 w-full"
-                      style={{ backgroundColor: available > 0 ? accent : undefined }}
-                      disabled={!canAdd(product.id, available)}
-                      onClick={() => onBuy(product)}
-                    >
-                      <ShoppingCart aria-hidden="true" size={16} />
-                      {available > 0 ? "Chọn mua" : "Hết hàng"}
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {items.map((product) => (
+              <StorefrontProductCard
+                key={product.id}
+                slug={slug}
+                product={product}
+                accent={accent}
+                canAdd={canAdd(product.id, product.inventory.availableQuantity)}
+                onAdd={onBuy}
+                returnSearch={returnSearch}
+              />
+            ))}
           </div>
 
           {pagination && pagination.totalPages > 1 && (
             <div className="flex items-center justify-between pt-2">
-              <p className="text-xs muted">
-                Trang {pagination.page} / {pagination.totalPages} ({pagination.totalItems} sản phẩm)
+              <p className="text-xs text-[#647569]">
+                Trang {pagination.page} / {pagination.totalPages}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -182,18 +228,26 @@ export function StorefrontCatalogSection({
                   size="sm"
                   variant="outline"
                   disabled={pagination.page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => {
+                    const nextPage = Math.max(1, page - 1);
+                    setPage(nextPage);
+                    onStateChange?.({ q: query, categoryId: activeCategoryId ?? null, sort, page: nextPage });
+                  }}
                 >
-                  Trang trước
+                  Trước
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => {
+                    const nextPage = page + 1;
+                    setPage(nextPage);
+                    onStateChange?.({ q: query, categoryId: activeCategoryId ?? null, sort, page: nextPage });
+                  }}
                 >
-                  Trang sau
+                  Sau
                 </Button>
               </div>
             </div>
