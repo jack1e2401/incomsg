@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <rect width="400" height="400" fill="#eff2ea"/>
+  <circle cx="200" cy="175" r="96" fill="#5b634b" fill-opacity="0.12"/>
+  <circle cx="200" cy="175" r="62" fill="#5b634b" fill-opacity="0.22"/>
+  <rect x="152" y="135" width="96" height="82" rx="22" fill="#5b634b"/>
+  <rect x="166" y="149" width="68" height="54" rx="14" fill="#eff2ea" fill-opacity="0.22"/>
+  <text x="200" y="315" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="700" letter-spacing="2" fill="#5b634b">TABLEWARE</text>
+  <text x="200" y="345" text-anchor="middle" font-family="system-ui,sans-serif" font-size="22" font-weight="800" fill="#20392a">Bát cơm men rạn</text>
+</svg>

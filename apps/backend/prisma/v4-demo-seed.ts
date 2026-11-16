@@ -36,7 +36,8 @@ async function main(): Promise<void> {
   const existingGom = await prisma.merchant.findUnique({ where: { slug: "xuong-gom-an-nhien" } });
 
   if (existingMoc && existingGom) {
-    console.info("V4 demo seed already present (ca-phe-moc, xuong-gom-an-nhien); skipping duplicate seed.");
+    await enrichV4Catalogs(existingMoc.id, ownerMoc.id, existingGom.id, ownerGom.id);
+    console.info("V4 demo seed already present; enriched catalogs idempotently (ca-phe-moc, xuong-gom-an-nhien).");
     return;
   }
 
@@ -474,10 +475,135 @@ async function main(): Promise<void> {
       data: { walletId: huyWallet.id, type: "EARN", delta: new Prisma.Decimal("9.25"), balanceAfter: new Prisma.Decimal("9.25"), promotedToTier: "BRONZE", reason: "Đơn hàng gốm #1", source: "MOCK_PAYMENT", orderId: oGom1.id },
     });
 
-    return { mocSlug: moc.slug, gomSlug: gom.slug };
+    return { mocSlug: moc.slug, gomSlug: gom.slug, mocId: moc.id, gomId: gom.id };
   });
 
-  console.info("V4 demo seed created:", result);
+  await enrichV4Catalogs(result.mocId, ownerMoc.id, result.gomId, ownerGom.id);
+  console.info("V4 demo seed created:", { mocSlug: result.mocSlug, gomSlug: result.gomSlug });
+}
+
+type CatalogSeedItem = {
+  sku: string;
+  categorySlug: string;
+  name: string;
+  description: string;
+  richDescription?: string;
+  price: string;
+  imageUrl: string;
+  lowStockThreshold?: number;
+  initialQuantity: number;
+};
+
+async function upsertCategory(
+  tx: Prisma.TransactionClient,
+  merchantId: number,
+  slug: string,
+  name: string,
+  sortOrder: number,
+) {
+  return tx.productCategory.upsert({
+    where: { merchantId_slug: { merchantId, slug } },
+    update: { name, sortOrder },
+    create: { merchantId, slug, name, sortOrder },
+  });
+}
+
+async function ensureCatalogProduct(
+  tx: Prisma.TransactionClient,
+  merchantId: number,
+  actorId: number,
+  categoryId: number,
+  item: CatalogSeedItem,
+) {
+  const existing = await tx.product.findUnique({
+    where: { merchantId_sku: { merchantId, sku: item.sku } },
+    include: { images: true, inventoryBalance: true },
+  });
+  if (existing) {
+    if (existing.categoryId !== categoryId || existing.imageUrl !== item.imageUrl) {
+      await tx.product.update({
+        where: { id: existing.id },
+        data: { categoryId, imageUrl: item.imageUrl },
+      });
+    }
+    return existing;
+  }
+
+  const product = await tx.product.create({
+    data: {
+      merchantId,
+      categoryId,
+      sku: item.sku,
+      name: item.name,
+      description: item.description,
+      richDescription: item.richDescription ?? item.description,
+      price: item.price,
+      imageUrl: item.imageUrl,
+      lowStockThreshold: item.lowStockThreshold ?? 5,
+      status: "ACTIVE",
+      kind: "SALE",
+    },
+  });
+  await tx.productImage.create({
+    data: { productId: product.id, merchantId, url: item.imageUrl, altText: item.name, sortOrder: 0 },
+  });
+  await createInventoryBalance(
+    tx,
+    { merchantId, ownerType: "SALE_PRODUCT", productId: product.id },
+    item.initialQuantity,
+    actorId,
+  );
+  return product;
+}
+
+async function enrichV4Catalogs(mocId: number, mocOwnerId: number, gomId: number, gomOwnerId: number) {
+  await prisma.$transaction(async (tx) => {
+    const mocCats = {
+      "ca-phe-truyen-thong": (await upsertCategory(tx, mocId, "ca-phe-truyen-thong", "Cà phê truyền thống", 0)).id,
+      "ca-phe-sang-tao": (await upsertCategory(tx, mocId, "ca-phe-sang-tao", "Cà phê sáng tạo", 1)).id,
+      "tra-do-uong": (await upsertCategory(tx, mocId, "tra-do-uong", "Trà & đồ uống", 2)).id,
+      "banh-ngot": (await upsertCategory(tx, mocId, "banh-ngot", "Bánh ngọt", 3)).id,
+    };
+
+    const mocProducts: CatalogSeedItem[] = [
+      { sku: "MOC-TR-01", categorySlug: "ca-phe-truyen-thong", name: "Cà Phê Sữa Đá Sài Gòn", price: "35000", imageUrl: "/images/demo-products/ca-phe-sua-da.svg", initialQuantity: 30, description: "Phin Robusta đậm vị hòa quyện sữa đặc truyền thống." },
+      { sku: "MOC-TR-02", categorySlug: "ca-phe-truyen-thong", name: "Bạc Xỉu Đá Mộc", price: "39000", imageUrl: "/images/demo-products/bac-xiu.svg", initialQuantity: 24, description: "Sữa tươi béo nhẹ điểm chút cốt cà phê rang mộc." },
+      { sku: "MOC-LT-01", categorySlug: "ca-phe-truyen-thong", name: "Cà Phê Latte", price: "45000", imageUrl: "/images/demo-products/latte.jpg", initialQuantity: 3, description: "Espresso đậm đà kết hợp sữa tươi thanh trùng." },
+      { sku: "MOC-CB-01", categorySlug: "ca-phe-sang-tao", name: "Cold Brew Cam Sả", price: "49000", imageUrl: "/images/demo-products/cold-brew-orange.png", initialQuantity: 25, description: "Ủ lạnh 16 giờ cùng cam vàng và sả tươi." },
+      { sku: "MOC-ST-02", categorySlug: "ca-phe-sang-tao", name: "Espresso Tonic Chanh Vàng", price: "52000", imageUrl: "/images/demo-products/espresso-tonic.svg", initialQuantity: 16, description: "Cà phê đặc sản kết hợp tonic mát lạnh sảng khoái." },
+      { sku: "MOC-MC-01", categorySlug: "tra-do-uong", name: "Matcha Latte Uji", price: "52000", imageUrl: "/images/demo-products/matcha-latte.jpg", initialQuantity: 12, description: "Bột trà xanh Nhật Bản nguyên chất." },
+      { sku: "MOC-TD-02", categorySlug: "tra-do-uong", name: "Trà Đào Cam Sả", price: "45000", imageUrl: "/images/demo-products/tra-dao-cam-sa.svg", initialQuantity: 22, description: "Trà đen ủ lạnh cùng miếng đào giòn và hương sả dịu." },
+      { sku: "MOC-TD-03", categorySlug: "tra-do-uong", name: "Trà Sen Vàng Kem Phô Mai", price: "49000", imageUrl: "/images/demo-products/tra-sen-vang.svg", initialQuantity: 18, description: "Trà ô long thanh nhẹ cùng hạt sen bùi và lớp kem mặn." },
+      { sku: "MOC-CR-01", categorySlug: "banh-ngot", name: "Bánh Sừng Bò Bơ Pháp", price: "35000", imageUrl: "/images/demo-products/croissant.jpg", initialQuantity: 18, description: "Nướng mới mỗi sáng với lớp vỏ giòn rụm." },
+      { sku: "MOC-BN-02", categorySlug: "banh-ngot", name: "Tiramisu Cacao Mộc", price: "55000", imageUrl: "/images/demo-products/tiramisu.svg", initialQuantity: 10, description: "Bánh lạnh mascarpone thấm đẫm hương espresso." },
+      { sku: "MOC-BN-03", categorySlug: "banh-ngot", name: "Bánh Mì Bơ Tỏi Phô Mai", price: "42000", imageUrl: "/images/demo-products/banh-bo-toi.svg", initialQuantity: 14, description: "Nướng giòn thơm mùi bơ tỏi béo ngậy." },
+    ];
+    for (const item of mocProducts) {
+      await ensureCatalogProduct(tx, mocId, mocOwnerId, mocCats[item.categorySlug as keyof typeof mocCats], item);
+    }
+
+    const gomCats = {
+      "ly-tach-thu-cong": (await upsertCategory(tx, gomId, "ly-tach-thu-cong", "Ly/cốc gốm", 0)).id,
+      "bat-dia": (await upsertCategory(tx, gomId, "bat-dia", "Bát/đĩa", 1)).id,
+      "binh-hoa": (await upsertCategory(tx, gomId, "binh-hoa", "Bình hoa", 2)).id,
+      "phu-kien-gom": (await upsertCategory(tx, gomId, "phu-kien-gom", "Phụ kiện gốm", 3)).id,
+    };
+
+    const gomProducts: CatalogSeedItem[] = [
+      { sku: "GOM-MUG-01", categorySlug: "ly-tach-thu-cong", name: "Cốc Gốm Men Tro", price: "185000", imageUrl: "/images/demo-products/ceramic-mug.jpg", initialQuantity: 18, lowStockThreshold: 4, description: "Nung lò củi 1280 độ, men tro tự nhiên không chì." },
+      { sku: "GOM-LY-02", categorySlug: "ly-tach-thu-cong", name: "Ly Espresso Men Mộc", price: "135000", imageUrl: "/images/demo-products/gom-ly-espresso.svg", initialQuantity: 20, description: "Dung tích 90ml giữ nhiệt tốt cho espresso buổi sáng." },
+      { sku: "GOM-LY-03", categorySlug: "ly-tach-thu-cong", name: "Chén Trà Men Nhật Tro", price: "110000", imageUrl: "/images/demo-products/gom-chen-tra.svg", initialQuantity: 15, description: "Dáng chén cầm vừa tay, vân men tự nhiên mộc mạc." },
+      { sku: "GOM-BD-01", categorySlug: "bat-dia", name: "Bát Cơm Men Rạn Cổ", price: "145000", imageUrl: "/images/demo-products/gom-bat-com.svg", initialQuantity: 24, description: "Men rạn thủ công an toàn dùng trong máy rửa chén." },
+      { sku: "GOM-BD-02", categorySlug: "bat-dia", name: "Đĩa Tròn Thủ Công 22cm", price: "210000", imageUrl: "/images/demo-products/gom-dia-tron.svg", initialQuantity: 12, description: "Đĩa gốm viền mộc phù hợp bày bánh hoặc món chính." },
+      { sku: "GOM-VASE-01", categorySlug: "binh-hoa", name: "Bình Hoa Đất Nung Mộc", price: "320000", imageUrl: "/images/ceramics-market.jpg", initialQuantity: 2, description: "Chế tác bàn xoay thủ công, mỗi sản phẩm là duy nhất." },
+      { sku: "GOM-BH-02", categorySlug: "binh-hoa", name: "Bình Hoa Cổ Cao Men Xanh", price: "380000", imageUrl: "/images/demo-products/gom-binh-su.svg", initialQuantity: 7, description: "Phù hợp cắm cành khô hoặc hoa tươi dáng cao." },
+      { sku: "GOM-PK-01", categorySlug: "phu-kien-gom", name: "Đế Lót Ly Gốm Thấm Nước", price: "65000", imageUrl: "/images/demo-products/gom-khay-lot.svg", initialQuantity: 30, description: "Chất đất nung thấm hút hơi nước bảo vệ mặt bàn." },
+      { sku: "GOM-PK-02", categorySlug: "phu-kien-gom", name: "Hũ Đựng Trà Nắp Gỗ", price: "260000", imageUrl: "/images/demo-products/gom-hu-tra.svg", initialQuantity: 9, description: "Nắp gỗ kín khí giúp bảo quản trà và hạt cà phê." },
+    ];
+    for (const item of gomProducts) {
+      await ensureCatalogProduct(tx, gomId, gomOwnerId, gomCats[item.categorySlug as keyof typeof gomCats], item);
+    }
+  });
 }
 
 main()
