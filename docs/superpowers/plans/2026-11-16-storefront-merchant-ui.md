@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Featured products: maximum 6; fallback to up to 6 newest SALE products when no configured featured product is available.
+- Featured products: editor and public display maximum 6; fallback to up to 6 newest SALE products when no configured featured product is available. Preserve legacy config arrays up to 12 for read/write compatibility.
 - Public catalog: 8 products per page; homepage CTA is “Xem tất cả”.
 - Inventory labels: >10 “Còn hàng”; 1–10 “Chỉ còn X sản phẩm”; 0 “Hết hàng”.
 - Do not implement product promotions or discounted-price UI in this milestone.

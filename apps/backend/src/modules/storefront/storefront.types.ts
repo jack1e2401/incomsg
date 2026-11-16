@@ -21,8 +21,10 @@ export interface StorefrontAllowedLink {
   url: string;
 }
 
+export type StorefrontWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
 export interface StorefrontOpeningHoursDay {
-  day: number;
+  day: StorefrontWeekday;
   closed: boolean;
   openTime: string | null;
   closeTime: string | null;

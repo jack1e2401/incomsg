@@ -4,6 +4,7 @@ import type {
   StorefrontBrandingConfig,
   StorefrontConfig,
   StorefrontOpeningHoursDay,
+  StorefrontWeekday,
   StorefrontSectionConfig,
   StorefrontSectionKey,
 } from "./storefront.types.js";
@@ -84,12 +85,10 @@ function readOpeningHours(value: unknown): StorefrontOpeningHoursDay[] | null {
     if (typeof record.day !== "number" || !Number.isInteger(record.day) || record.day < 1 || record.day > 7 || days.has(record.day)) {
       throw new HttpError(400, "INVALID_INPUT");
     }
-    days.add(record.day);
+    const day = record.day as StorefrontWeekday;
+    days.add(day);
     if (typeof record.closed !== "boolean") throw new HttpError(400, "INVALID_INPUT");
-    if (record.closed) return { day: record.day, closed: true, openTime: null, closeTime: null };
-    if (record.openTime === null && record.closeTime === null) {
-      return { day: record.day, closed: false, openTime: null, closeTime: null };
-    }
+    if (record.closed) return { day, closed: true, openTime: null, closeTime: null };
     if (
       typeof record.openTime !== "string" || !TIME_REGEX.test(record.openTime) ||
       typeof record.closeTime !== "string" || !TIME_REGEX.test(record.closeTime)
@@ -97,7 +96,7 @@ function readOpeningHours(value: unknown): StorefrontOpeningHoursDay[] | null {
       throw new HttpError(400, "INVALID_INPUT");
     }
     return {
-      day: record.day,
+      day,
       closed: false,
       openTime: record.openTime,
       closeTime: record.closeTime,
@@ -249,12 +248,12 @@ function readFeaturedProductIds(value: unknown, maxItems: number): number[] {
   return uniqueIds;
 }
 
-export function readStorefrontConfig(value: unknown, maxFeaturedProducts = 12): StorefrontConfig {
+export function readStorefrontConfig(value: unknown): StorefrontConfig {
   const input = readObject(value);
   return {
     branding: readBranding(input.branding),
     sections: readSections(input.sections),
-    featuredProductIds: readFeaturedProductIds(input.featuredProductIds, maxFeaturedProducts),
+    featuredProductIds: readFeaturedProductIds(input.featuredProductIds, 12),
   };
 }
 

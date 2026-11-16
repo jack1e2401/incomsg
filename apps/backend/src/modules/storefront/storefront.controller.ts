@@ -7,7 +7,7 @@ export const getMerchantStorefront: RequestHandler = async (_request, response) 
 };
 
 export const saveMerchantStorefrontDraft: RequestHandler = async (request, response) => {
-  const config = readStorefrontConfig(request.body, 6);
+  const config = readStorefrontConfig(request.body);
   response.json(await storefrontService.saveDraft(response.locals.user.id, config));
 };
 

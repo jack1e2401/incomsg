@@ -1,7 +1,7 @@
-import type { StorefrontOpeningHoursDay } from "../../api/storefront-types";
+import type { StorefrontOpeningHoursDay, StorefrontWeekday } from "../../api/storefront-types";
 import { Button, Field, Input } from "../../components/ui";
 
-const WEEKDAYS = [
+const WEEKDAYS: { day: StorefrontWeekday; label: string }[] = [
   { day: 1, label: "Thứ 2" },
   { day: 2, label: "Thứ 3" },
   { day: 3, label: "Thứ 4" },
@@ -31,7 +31,7 @@ export function StorefrontOpeningHoursEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 id="opening-hours-title" className="font-bold text-[#24452f]">Giờ mở cửa</h3>
-          <p className="mt-1 text-xs muted">Thiết lập lịch tuần. Đánh dấu ngày nghỉ hoặc để trống ngày chưa cập nhật.</p>
+          <p className="mt-1 text-xs muted">Nhập giờ cho ngày mở cửa hoặc đánh dấu ngày nghỉ.</p>
         </div>
         {value ? (
           <Button type="button" size="sm" variant="outline" onClick={() => onChange(null)}>

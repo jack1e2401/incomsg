@@ -155,8 +155,18 @@ export function MerchantStorefrontEditor() {
     });
   }
 
+  function hasIncompleteOpeningHours() {
+    return draft?.branding.openingHours?.some(
+      (day) => !day.closed && (!day.openTime || !day.closeTime),
+    ) ?? false;
+  }
+
   async function handleSaveDraft() {
     if (!accessToken || !draft || savingDraft) return;
+    if (hasIncompleteOpeningHours()) {
+      setError("Nhập giờ mở và đóng cửa hoặc đánh dấu nghỉ cho từng ngày.");
+      return;
+    }
     setSavingDraft(true);
     setNotice("");
     setError("");
@@ -173,6 +183,10 @@ export function MerchantStorefrontEditor() {
 
   async function handlePublish() {
     if (!accessToken || !draft || publishing) return;
+    if (hasIncompleteOpeningHours()) {
+      setError("Nhập giờ mở và đóng cửa hoặc đánh dấu nghỉ cho từng ngày.");
+      return;
+    }
     setPublishing(true);
     setNotice("");
     setError("");
