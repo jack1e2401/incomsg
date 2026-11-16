@@ -1,6 +1,7 @@
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
+import { MAX_STORE_SLUG_LENGTH, slugifyStoreName } from "../storefront/storefront.slug.js";
 import type { ApplicationDto, AuthenticatedUser, LoginIdentity, MerchantDto, UserDto } from "./auth.types.js";
 
 const userSelection = {
@@ -14,10 +15,48 @@ const applicationSelection = {
   id: true,
   applicantId: true,
   storeName: true,
+  slug: true,
   status: true,
   reviewedById: true,
   reviewedAt: true,
 } as const;
+
+async function isSlugTaken(tx: Prisma.TransactionClient, slug: string): Promise<boolean> {
+  const [merchant, application] = await Promise.all([
+    tx.merchant.findUnique({ where: { slug }, select: { id: true } }),
+    tx.merchantApplication.findUnique({ where: { slug }, select: { id: true } }),
+  ]);
+  return merchant !== null || application !== null;
+}
+
+async function resolveApplicantSlug(
+  tx: Prisma.TransactionClient,
+  storeName: string,
+  requestedSlug?: string,
+): Promise<string> {
+  if (requestedSlug !== undefined) {
+    if (await isSlugTaken(tx, requestedSlug)) {
+      throw new HttpError(409, "SLUG_TAKEN");
+    }
+    return requestedSlug;
+  }
+
+  const base = slugifyStoreName(storeName);
+  if (!(await isSlugTaken(tx, base))) {
+    return base;
+  }
+
+  for (let suffixNum = 2; suffixNum < 10_000; suffixNum += 1) {
+    const suffix = `-${suffixNum}`;
+    const maxBaseLen = Math.max(3, MAX_STORE_SLUG_LENGTH - suffix.length);
+    const trimmedBase = base.slice(0, maxBaseLen).replace(/-+$/g, "") || "store";
+    const candidate = `${trimmedBase}${suffix}`;
+    if (!(await isSlugTaken(tx, candidate))) {
+      return candidate;
+    }
+  }
+  throw new HttpError(409, "SLUG_TAKEN");
+}
 
 function toUserDto(user: { id: number; email: string; role: UserDto["role"]; accountStatus: UserDto["accountStatus"] }): UserDto {
   return { id: user.id, email: user.email, role: user.role, accountStatus: user.accountStatus, isActive: user.accountStatus === "ACTIVE" };
@@ -44,16 +83,18 @@ export const authRepository = {
     email: string,
     passwordHash: string,
     storeName: string,
+    requestedSlug?: string,
   ): Promise<{ user: UserDto; application: ApplicationDto }> {
     return prisma.$transaction(async (tx) => {
       await assertNotBlacklisted(tx, email);
+      const slug = await resolveApplicantSlug(tx, storeName, requestedSlug);
       const created = await tx.user.create({
         data: {
           email,
           passwordHash,
           role: "MERCHANT",
           accountStatus: "PENDING_APPROVAL",
-          application: { create: { storeName } },
+          application: { create: { storeName, slug } },
         },
         select: {
           ...userSelection,

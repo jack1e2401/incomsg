@@ -16,6 +16,7 @@ export interface BackendApplicationDto {
   id: number;
   applicantId: number;
   storeName: string;
+  slug?: string | null;
   status: BackendApplicationStatus;
   reviewedById: number | null;
   reviewedAt: string | null;

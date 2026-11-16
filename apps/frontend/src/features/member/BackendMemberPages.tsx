@@ -79,10 +79,14 @@ const money = (value: string | bigint) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(
     typeof value === "bigint" ? value : Number(value),
   );
-type MemberContext = { merchantId: number; cart: ReturnType<typeof useMemberCart> };
+type MemberContext = { merchantId: number; basePath?: string; cart: ReturnType<typeof useMemberCart> };
 
 function useMerchantContext() {
-  return useOutletContext<MemberContext>();
+  const ctx = useOutletContext<MemberContext>();
+  return {
+    ...ctx,
+    basePath: ctx.basePath ?? `/member/${ctx.merchantId}`,
+  };
 }
 
 export function BackendMemberLayout() {
@@ -96,12 +100,23 @@ export function BackendMemberLayout() {
   return <MemberStoreLayout key={storageKey} merchantId={merchantId} storageKey={storageKey} />;
 }
 
-function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; storageKey: string }) {
+export function MemberStoreLayout({
+  merchantId,
+  storageKey,
+  basePath,
+  storeName,
+}: {
+  merchantId: number;
+  storageKey: string;
+  basePath?: string;
+  storeName?: string;
+}) {
   const cart = useMemberCart(storageKey, merchantId);
   const { logout } = useAuthSession();
   const navigate = useNavigate();
 
-  const base = `/member/${merchantId}`;
+  const base = basePath ?? `/member/${merchantId}`;
+  const isSlugRoute = base.startsWith("/s/");
   const cartQuantity = cart.quantity;
   const cartLabel = cartQuantity > 0 ? `Giỏ hàng, ${cartQuantity} sản phẩm` : undefined;
   const cartBadge = cartQuantity > 0 && (
@@ -125,13 +140,13 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
       <header className="sticky top-0 z-20 border-b border-[#e5ece3] bg-[#fcfcf8]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-7">
           <Link
-            to="/member"
+            to={isSlugRoute ? base : "/member"}
             className="rounded-md font-extrabold tracking-tight text-[#24452f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
           >
             loyalty<span className="text-[#89b461]">.</span>
           </Link>
           <span className="min-w-0 truncate text-xs font-semibold text-[#527353]">
-            Cửa hàng #{merchantId}
+            {storeName ?? `Cửa hàng #${merchantId}`}
           </span>
           <nav aria-label="Member" className="hidden gap-1 lg:flex">
             {links.map(({ to, label, end, isCart }) => (
@@ -164,7 +179,7 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-7 sm:px-7 lg:py-10">
-        <Outlet context={{ merchantId, cart } satisfies MemberContext} />
+        <Outlet context={{ merchantId, basePath: base, cart } satisfies MemberContext} />
       </main>
       <nav
         aria-label="Điều hướng Member"
@@ -330,7 +345,7 @@ export function MemberProduct() {
 }
 
 export function MemberCart() {
-  const { merchantId, cart } = useMerchantContext();
+  const { basePath, cart } = useMerchantContext();
   const stockIssue = cart.lines.find(({ product, quantity }) => quantity > (product.inventory?.availableQuantity ?? quantity));
   return (
     <>
@@ -341,7 +356,7 @@ export function MemberCart() {
           description="Chọn sản phẩm từ gian hàng để tạo đơn."
           action={
             <Button asChild>
-              <Link to={`/member/${merchantId}`}>Xem sản phẩm</Link>
+              <Link to={basePath}>Xem sản phẩm</Link>
             </Button>
           }
         />
@@ -386,7 +401,7 @@ export function MemberCart() {
             <p className="mt-2 text-2xl font-extrabold tabular-nums break-words">{money(cart.subtotal)}</p>
             {stockIssue && <p role="alert" className="mt-3 text-sm text-[#a4473a]">Số lượng {stockIssue.product.name} vượt tồn kho hiện tại.</p>}
             <Button asChild className="mt-5 w-full" disabled={Boolean(stockIssue)}>
-              <Link to={`/member/${merchantId}/checkout`} aria-disabled={Boolean(stockIssue)}>
+              <Link to={`${basePath}/checkout`} aria-disabled={Boolean(stockIssue)}>
                 Tiếp tục <ArrowRight aria-hidden="true" size={16} />
               </Link>
             </Button>
@@ -398,7 +413,7 @@ export function MemberCart() {
 }
 
 export function MemberCheckout() {
-  const { merchantId, cart } = useMerchantContext();
+  const { merchantId, basePath, cart } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -478,7 +493,7 @@ export function MemberCheckout() {
         accessToken,
       );
       cart.clear();
-      navigate(`/member/${merchantId}/orders/${order.id}`, { state: { order } });
+      navigate(`${basePath}/orders/${order.id}`, { state: { order } });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể tạo đơn");
       if (reason instanceof Error) {
@@ -499,7 +514,7 @@ export function MemberCheckout() {
           description="Vui lòng chọn sản phẩm trước khi tạo đơn."
           action={
             <Button asChild>
-              <Link to={`/member/${merchantId}`}>Về gian hàng</Link>
+              <Link to={basePath}>Về gian hàng</Link>
             </Button>
           }
         />
@@ -620,7 +635,7 @@ export function MemberCheckout() {
 export { MemberOrderResult } from "./MemberOrderResult";
 
 export function MemberOrders() {
-  const { merchantId } = useMerchantContext();
+  const { merchantId, basePath } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const resource = useResource(
     () => commerce.listMemberOrders(merchantId, accessToken!).then(({ orders }) => orders),
@@ -639,7 +654,7 @@ export function MemberOrders() {
           description="Đơn bạn tạo tại cửa hàng này sẽ xuất hiện ở đây."
           action={
             <Button asChild>
-              <Link to={`/member/${merchantId}`}>Mua sắm ngay</Link>
+              <Link to={basePath}>Mua sắm ngay</Link>
             </Button>
           }
         />
@@ -668,7 +683,7 @@ export function MemberOrders() {
                 </div>
                 <Button asChild variant="outline" size="sm" className="shrink-0">
                   <Link
-                    to={`/member/${merchantId}/orders/${order.id}`}
+                    to={`${basePath}/orders/${order.id}`}
                     aria-label={`Chi tiết đơn hàng #${order.id}`}
                   >
                     Chi tiết
@@ -684,7 +699,7 @@ export function MemberOrders() {
 }
 
 export function MemberWallet() {
-  const { merchantId } = useMerchantContext();
+  const { merchantId, basePath } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const resource = useResource(
     () => commerce.getMemberWallet(merchantId, accessToken!).then((response) => response.wallet),
@@ -709,11 +724,11 @@ export function MemberWallet() {
         <LoyaltyWalletContent
           wallet={wallet}
           tierArtwork={<MemberMascot mood="hello" />}
-          orderLink={(id) => `/member/${merchantId}/orders/${id}`}
-          voucherLink={`/member/${merchantId}/vouchers`}
+          orderLink={(id) => `${basePath}/orders/${id}`}
+          voucherLink={`${basePath}/vouchers`}
           emptyAction={
             <Button asChild variant="outline">
-              <Link to={`/member/${merchantId}`}>Khám phá gian hàng</Link>
+              <Link to={basePath}>Khám phá gian hàng</Link>
             </Button>
           }
         />
@@ -723,7 +738,7 @@ export function MemberWallet() {
 }
 
 export function MemberVouchers() {
-  const { merchantId } = useMerchantContext();
+  const { merchantId, basePath } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
@@ -820,7 +835,7 @@ export function MemberVouchers() {
             description="Cửa hàng chưa đăng voucher đang hoạt động."
             action={
               <Button asChild variant="outline">
-                <Link to={`/member/${merchantId}`}>Xem gian hàng</Link>
+                <Link to={basePath}>Xem gian hàng</Link>
               </Button>
             }
           />
@@ -856,7 +871,7 @@ export function MemberVouchers() {
                 </Button>
               ) : (
                 <Button asChild variant="outline">
-                  <Link to={`/member/${merchantId}`}>Xem gian hàng</Link>
+                  <Link to={basePath}>Xem gian hàng</Link>
                 </Button>
               )
             }
@@ -874,7 +889,7 @@ export function MemberVouchers() {
 }
 
 export function MemberRewards() {
-  const { merchantId } = useMerchantContext();
+  const { merchantId, basePath } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const resource = useResource(
     () =>
@@ -896,7 +911,7 @@ export function MemberRewards() {
           description="Voucher quà đã nhận sẽ xuất hiện tại đây."
           action={
             <Button asChild variant="outline">
-              <Link to={`/member/${merchantId}/vouchers`}>Đổi quà từ voucher</Link>
+              <Link to={`${basePath}/vouchers`}>Đổi quà từ voucher</Link>
             </Button>
           }
         />

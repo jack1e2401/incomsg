@@ -21,6 +21,7 @@ interface AuthSessionValue {
     email: string;
     password: string;
     storeName: string;
+    slug?: string;
   }): Promise<MerchantRegistrationResponse>;
   checkApplicationStatus(input: { email: string; password: string }): Promise<ApplicationStatusResponse>;
   logout(): void;

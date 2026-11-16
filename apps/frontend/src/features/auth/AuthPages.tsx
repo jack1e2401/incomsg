@@ -5,6 +5,18 @@ import { useAuthSession, routeForRole } from "../../api/auth-session";
 import { Button, BusyLabel, Card, Field, Input, StatusText } from "../../components/ui";
 import type { BackendApplicationDto } from "../../api/contracts/milestone2";
 
+function resolveSafeReturnTo(raw: string | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("/\\")) {
+    return null;
+  }
+  if (trimmed.startsWith("/login") || trimmed.startsWith("/register")) {
+    return null;
+  }
+  return trimmed;
+}
+
 function explainAuthError(message: string) {
   const explanations: Record<string, string> = {
     INVALID_CREDENTIALS: "Email hoặc mật khẩu chưa đúng.",
@@ -58,13 +70,14 @@ export function LoginPage() {
   const { user, login } = useAuthSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const returnTo = resolveSafeReturnTo(searchParams.get("returnTo"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={routeForRole(user.role)} replace />;
+  if (user) return <Navigate to={returnTo ?? routeForRole(user.role)} replace />;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,7 +86,7 @@ export function LoginPage() {
     setErrorCode("");
     try {
       const result = await login({ email, password });
-      navigate(routeForRole(result.user.role), {
+      navigate(returnTo ?? routeForRole(result.user.role), {
         replace: true,
       });
     } catch (reason) {
@@ -146,7 +159,10 @@ export function LoginPage() {
       </form>
       <p className="mt-6 text-center text-sm muted">
         Chưa có tài khoản?{" "}
-        <Link className="font-bold accent" to="/register">
+        <Link
+          className="font-bold accent"
+          to={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : "/register"}
+        >
           Tạo tài khoản Member hoặc Merchant
         </Link>
       </p>
@@ -156,14 +172,18 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const { registerMember, registerMerchant } = useAuthSession();
+  const [searchParams] = useSearchParams();
+  const returnTo = resolveSafeReturnTo(searchParams.get("returnTo"));
   const [role, setRole] = useState<"MEMBER" | "MERCHANT">("MEMBER");
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingApplication, setPendingApplication] = useState<{
     storeName: string;
+    slug?: string | null;
     applicationId: number;
     email: string;
   } | null>(null);
@@ -179,9 +199,16 @@ export function RegisterPage() {
         setRegisteredMember(email);
         return;
       }
-      const result = await registerMerchant({ email, password, storeName: name });
+      const trimmedSlug = slug.trim();
+      const result = await registerMerchant({
+        email,
+        password,
+        storeName: name,
+        ...(trimmedSlug ? { slug: trimmedSlug } : {}),
+      });
       setPendingApplication({
         storeName: result.application.storeName,
+        slug: result.application.slug,
         applicationId: result.application.id,
         email,
       });
@@ -191,6 +218,10 @@ export function RegisterPage() {
         setError("Email này đã được đăng ký.");
       } else if (message === "EMAIL_BLACKLISTED") {
         setError("Địa chỉ email đã bị chặn trong danh sách đen.");
+      } else if (message === "SLUG_TAKEN") {
+        setError("Đường dẫn cửa hàng (slug) này đã có người sử dụng. Vui lòng chọn đường dẫn khác.");
+      } else if (message === "INVALID_INPUT") {
+        setError("Thông tin chưa hợp lệ. Đường dẫn chỉ gồm chữ thường, số và dấu gạch ngang (3–63 ký tự).");
       } else {
         setError(message);
       }
@@ -200,6 +231,9 @@ export function RegisterPage() {
   }
 
   if (registeredMember) {
+    const loginAfterRegister = returnTo
+      ? `/login?registered=member&returnTo=${encodeURIComponent(returnTo)}`
+      : "/login?registered=member";
     return (
       <AuthFrame title="Tài khoản đã sẵn sàng">
         <div className="rounded-2xl bg-[#edf4e9] p-5">
@@ -212,7 +246,7 @@ export function RegisterPage() {
           </p>
         </div>
         <Link
-          to="/login?registered=member"
+          to={loginAfterRegister}
           className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#335e3d] text-sm font-bold text-white"
         >
           Đăng nhập <ArrowRight size={16} />
@@ -229,6 +263,11 @@ export function RegisterPage() {
             <CheckCircle size={23} />
           </span>
           <h3 className="mt-4 text-lg font-extrabold">{pendingApplication.storeName}</h3>
+          {pendingApplication.slug && (
+            <p className="mt-1 text-xs font-semibold text-[#335e3d]">
+              Đường dẫn dự kiến: /s/{pendingApplication.slug}
+            </p>
+          )}
           <p className="mt-2 text-sm leading-6 text-[#5d715f]">
             Hồ sơ #{pendingApplication.applicationId} đang chờ Admin phê duyệt.
           </p>
@@ -267,16 +306,30 @@ export function RegisterPage() {
       )}
       <form onSubmit={submit} className="space-y-4">
         {role === "MERCHANT" && (
-          <Field label="Tên cửa hàng">
-            <Input
-              required
-              minLength={1}
-              maxLength={191}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Tên cửa hàng của bạn"
-            />
-          </Field>
+          <>
+            <Field label="Tên cửa hàng">
+              <Input
+                required
+                minLength={1}
+                maxLength={191}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Tên cửa hàng của bạn"
+              />
+            </Field>
+            <Field
+              label="Đường dẫn cửa hàng (tùy chọn)"
+              hint="3–63 ký tự: chữ thường, số và dấu gạch ngang (vd: ca-phe-moc). Để trống để tự tạo."
+            >
+              <Input
+                value={slug}
+                maxLength={63}
+                pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                onChange={(event) => setSlug(event.target.value.toLowerCase())}
+                placeholder="vd: ca-phe-moc"
+              />
+            </Field>
+          </>
         )}
         <Field label="Email">
           <Input
@@ -318,7 +371,10 @@ export function RegisterPage() {
       </form>
       <p className="mt-6 text-center text-sm muted">
         Đã có tài khoản?{" "}
-        <Link className="font-bold accent" to="/login">
+        <Link
+          className="font-bold accent"
+          to={returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login"}
+        >
           Đăng nhập
         </Link>
       </p>

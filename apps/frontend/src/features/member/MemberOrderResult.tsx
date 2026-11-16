@@ -28,10 +28,15 @@ const money = (value: string | bigint) =>
 
 interface MemberContext {
   merchantId: number;
+  basePath?: string;
 }
 
 function useMerchantContext() {
-  return useOutletContext<MemberContext>();
+  const ctx = useOutletContext<MemberContext>();
+  return {
+    ...ctx,
+    basePath: ctx.basePath ?? `/member/${ctx.merchantId}`,
+  };
 }
 
 function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
@@ -94,11 +99,11 @@ function transactionTypeLabel(type: PointTransactionType) {
 function Unavailable({
   title,
   description,
-  merchantId,
+  basePath,
 }: {
   title: string;
   description: string;
-  merchantId: number;
+  basePath: string;
 }) {
   return (
     <>
@@ -108,7 +113,7 @@ function Unavailable({
         description={description}
         action={
           <Button asChild variant="outline">
-            <Link to={`/member/${merchantId}/orders`}>Xem danh sách đơn hàng</Link>
+            <Link to={`${basePath}/orders`}>Xem danh sách đơn hàng</Link>
           </Button>
         }
       />
@@ -117,7 +122,7 @@ function Unavailable({
 }
 
 export function MemberOrderResult() {
-  const { merchantId } = useMerchantContext();
+  const { merchantId, basePath } = useMerchantContext();
   const { accessToken } = useAuthSession();
   const orderId = Number(useParams().orderId);
   const orderResource = useResource(
@@ -202,14 +207,14 @@ export function MemberOrderResult() {
       <Unavailable
         title="Không tải được đơn hàng"
         description="Đơn không tồn tại hoặc không thuộc cửa hàng hiện tại."
-        merchantId={merchantId}
+        basePath={basePath}
       />
     );
 
   return (
     <>
       <Link
-        to={`/member/${merchantId}/orders`}
+        to={`${basePath}/orders`}
         className="mb-5 inline-flex items-center gap-2 rounded text-sm font-bold text-[#335e3d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
       >
         <ArrowLeft aria-hidden="true" size={16} /> Danh sách đơn hàng
@@ -293,7 +298,7 @@ export function MemberOrderResult() {
               </p>
             </div>
             <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto">
-              <Link to={`/member/${merchantId}`}>Tiếp tục mua hàng</Link>
+              <Link to={basePath}>Tiếp tục mua hàng</Link>
             </Button>
           </div>
         ) : order.status === "REFUNDED" ? (
@@ -304,10 +309,10 @@ export function MemberOrderResult() {
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
-                <Link to={`/member/${merchantId}/wallet`}>Xem ví điểm</Link>
+                <Link to={`${basePath}/wallet`}>Xem ví điểm</Link>
               </Button>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
-                <Link to={`/member/${merchantId}`}>Tiếp tục mua sắm</Link>
+                <Link to={basePath}>Tiếp tục mua sắm</Link>
               </Button>
             </div>
           </div>
@@ -321,7 +326,7 @@ export function MemberOrderResult() {
               </p>
             </div>
             <Button asChild variant="outline" size="sm" className="mt-4 w-full sm:w-auto">
-              <Link to={`/member/${merchantId}/wallet`}>Xem ví điểm</Link>
+              <Link to={`${basePath}/wallet`}>Xem ví điểm</Link>
             </Button>
           </div>
         ) : (
@@ -344,10 +349,10 @@ export function MemberOrderResult() {
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
-                <Link to={`/member/${merchantId}/wallet`}>Xem ví điểm</Link>
+                <Link to={`${basePath}/wallet`}>Xem ví điểm</Link>
               </Button>
               <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
-                <Link to={`/member/${merchantId}`}>Tiếp tục mua sắm</Link>
+                <Link to={basePath}>Tiếp tục mua sắm</Link>
               </Button>
             </div>
           </div>
@@ -415,7 +420,7 @@ export function MemberOrderResult() {
                 <Button type="button" variant="outline">Đóng</Button>
               </Dialog.Close>
               <Button asChild>
-                <Link to={`/member/${merchantId}`}>Quay lại cửa hàng</Link>
+                <Link to={basePath}>Quay lại cửa hàng</Link>
               </Button>
             </div>
           </Dialog.Content>
