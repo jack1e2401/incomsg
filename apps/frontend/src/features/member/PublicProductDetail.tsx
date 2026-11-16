@@ -4,9 +4,11 @@ import { ArrowLeft, ShoppingCart, Storefront } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient, translateApiError } from "../../api/commerce-http";
 import type { ProductDto } from "../../api/commerce-types";
+import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
 import { Button, EmptyState, ErrorState, Input, LoadingState, StatusText } from "../../components/ui";
 import { money } from "../../lib/utils";
+import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useMemberCart } from "./useMemberCart";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
@@ -14,6 +16,7 @@ const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http
 function ProductDetailContent({ slug, product }: { slug: string; product: ProductDto }) {
   const { user } = useAuthSession();
   const navigate = useNavigate();
+  useEnsureMembership({ slug });
   const storageKey =
     user?.role === "MEMBER"
       ? `loyalty.member.cart.${user.id}.${product.merchantId}`
@@ -67,7 +70,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
           <div className="flex items-center gap-3">
             {user?.role === "MEMBER" ? (
               <Link
-                to={`/member/${product.merchantId}/cart`}
+                to={`/s/${slug}/cart`}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#e8f1e2] px-3.5 py-2 text-xs font-bold text-[#335e3d]"
               >
                 <ShoppingCart size={16} />
@@ -91,7 +94,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
             <div className="aspect-square overflow-hidden rounded-[1.7rem] bg-[#edf2e9]">
               {activeImage ? (
                 <img
-                  src={activeImage.url}
+                  src={resolveStorefrontAssetUrl(activeImage.url) ?? activeImage.url}
                   alt={activeImage.altText ?? product.name}
                   className="h-full w-full object-cover"
                 />
@@ -116,7 +119,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
                     }`}
                   >
                     <img
-                      src={img.url}
+                      src={resolveStorefrontAssetUrl(img.url) ?? img.url}
                       alt=""
                       className="h-full w-full object-cover"
                     />

@@ -264,19 +264,27 @@ describe("V4 Storefront UI & Auth returnTo/slug", () => {
 
     commerceFetchHandler = async () =>
       Response.json({
-        products: [
+        items: [
           {
             id: 11,
             merchantId: 5,
+            categoryId: null,
+            category: null,
+            sku: "SKU-11",
             name: "Bạc Xỉu Đá",
             description: null,
+            richDescription: null,
             imageUrl: null,
+            images: [],
+            lowStockThreshold: 5,
+            isLowStock: false,
             kind: "SALE",
             status: "ACTIVE",
             price: "39000",
             inventory: { availableQuantity: 8 },
           },
         ],
+        pagination: { page: 1, limit: 100, totalItems: 1, totalPages: 1 },
       });
 
     render(

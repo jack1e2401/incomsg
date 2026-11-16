@@ -75,6 +75,10 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
 }
 
+export function useOptionalAuthSession() {
+  return useContext(AuthSessionContext);
+}
+
 export function useAuthSession() {
   const value = useContext(AuthSessionContext);
   if (!value) throw new Error("useAuthSession must be used inside AuthSessionProvider");

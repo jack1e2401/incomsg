@@ -122,7 +122,7 @@ export function StorefrontSectionRenderer({
                 const available = product.inventory.availableQuantity;
                 return (
                   <Card key={product.id} className="flex flex-col overflow-hidden">
-                    <div className="aspect-[4/3] bg-[#edf2e9]">
+                    <Link to={`/s/${merchant.slug}/products/${product.id}`} className="block aspect-[4/3] bg-[#edf2e9]">
                       {imgSrc ? (
                         <img src={imgSrc} alt={product.name} className="h-full w-full object-cover" />
                       ) : (
@@ -130,14 +130,18 @@ export function StorefrontSectionRenderer({
                           <Storefront aria-hidden="true" size={36} />
                         </div>
                       )}
-                    </div>
+                    </Link>
                     <div className="flex flex-1 flex-col p-4 sm:p-5">
                       {product.category && (
                         <span className="text-xs font-bold" style={{ color: accent }}>
                           {product.category.name}
                         </span>
                       )}
-                      <h3 className="mt-1 font-extrabold text-[#294432] break-words">{product.name}</h3>
+                      <h3 className="mt-1 font-extrabold text-[#294432] break-words">
+                        <Link to={`/s/${merchant.slug}/products/${product.id}`} className="hover:underline">
+                          {product.name}
+                        </Link>
+                      </h3>
                       {product.description && (
                         <p className="mt-2 line-clamp-2 text-sm muted break-words">{product.description}</p>
                       )}
@@ -154,9 +158,16 @@ export function StorefrontSectionRenderer({
                           onBuy({
                             id: product.id,
                             merchantId: product.merchantId,
+                            categoryId: product.categoryId,
+                            category: product.category,
+                            sku: product.sku,
                             name: product.name,
                             description: product.description,
+                            richDescription: null,
                             imageUrl: product.imageUrl,
+                            images: [],
+                            lowStockThreshold: 5,
+                            isLowStock: false,
                             kind: product.kind,
                             status: product.status,
                             price: product.price,
@@ -205,11 +216,20 @@ export function StorefrontSectionRenderer({
     case "upcoming_events":
       return (
         <section aria-labelledby="section-events" className="space-y-4">
-          <div>
-            <h2 id="section-events" className="text-xl font-extrabold text-[#20392a] sm:text-2xl">
-              {section.title || "Sự kiện sắp tới"}
-            </h2>
-            {section.subtitle && <p className="mt-1 text-sm muted">{section.subtitle}</p>}
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 id="section-events" className="text-xl font-extrabold text-[#20392a] sm:text-2xl">
+                {section.title || "Sự kiện sắp tới"}
+              </h2>
+              {section.subtitle && <p className="mt-1 text-sm muted">{section.subtitle}</p>}
+            </div>
+            <Link
+              to={`/s/${merchant.slug}/events`}
+              className="text-xs font-bold hover:underline"
+              style={{ color: accent }}
+            >
+              Xem tất cả sự kiện →
+            </Link>
           </div>
           {!events.length ? (
             <Card className="p-5 text-sm muted">Hiện chưa có sự kiện sắp diễn ra.</Card>
@@ -220,12 +240,16 @@ export function StorefrontSectionRenderer({
                 return (
                   <Card key={event.id} className="overflow-hidden">
                     {eventBanner && (
-                      <div className="aspect-[16/9] bg-[#edf2e9]">
+                      <Link to={`/s/${merchant.slug}/events/${event.slug}`} className="block aspect-[16/9] bg-[#edf2e9]">
                         <img src={eventBanner} alt={event.title} className="h-full w-full object-cover" />
-                      </div>
+                      </Link>
                     )}
                     <div className="p-4 sm:p-5">
-                      <h3 className="font-extrabold text-[#24452f]">{event.title}</h3>
+                      <h3 className="font-extrabold text-[#24452f]">
+                        <Link to={`/s/${merchant.slug}/events/${event.slug}`} className="hover:underline">
+                          {event.title}
+                        </Link>
+                      </h3>
                       <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[#53685a]">
                         <Calendar aria-hidden="true" size={14} />
                         {new Date(event.startAt).toLocaleString("vi-VN")}

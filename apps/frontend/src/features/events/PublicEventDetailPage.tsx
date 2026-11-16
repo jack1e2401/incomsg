@@ -2,8 +2,10 @@ import { useState } from "react";
 import { ArrowLeft, CalendarBlank, MapPin } from "@phosphor-icons/react";
 import { Link, useParams } from "react-router-dom";
 import { createEventsClient, translateEventError } from "../../api/events-client";
+import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
 import { Button, Card, ErrorState, LoadingState } from "../../components/ui";
+import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { formatEventSchedule } from "./event-format";
 
 const eventsApi = createEventsClient();
@@ -11,6 +13,7 @@ const eventsApi = createEventsClient();
 export function PublicEventDetailPage() {
   const { slug = "", eventSlug = "" } = useParams();
   const [failedBanner, setFailedBanner] = useState<string | null>(null);
+  useEnsureMembership({ slug });
 
   const resource = useResource(
     () => eventsApi.getPublicStoreEvent(slug, eventSlug),
@@ -52,7 +55,7 @@ export function PublicEventDetailPage() {
             {event.bannerUrl && failedBanner !== event.bannerUrl && (
               <div className="aspect-[16/8] w-full overflow-hidden bg-[#e8efe4]">
                 <img
-                  src={event.bannerUrl}
+                  src={resolveStorefrontAssetUrl(event.bannerUrl) ?? event.bannerUrl}
                   alt={event.title}
                   onError={() => setFailedBanner(event.bannerUrl)}
                   className="size-full object-cover"

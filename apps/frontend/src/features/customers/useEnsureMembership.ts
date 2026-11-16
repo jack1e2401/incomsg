@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAuthSession } from "../../api/auth-session";
+import { useOptionalAuthSession } from "../../api/auth-session";
 import { createAnalyticsClient } from "../../api/analytics-client";
 import type { EnsureMembershipResponse } from "../../api/analytics-types";
 
@@ -10,7 +10,9 @@ export function useEnsureMembership(params: {
   merchantId?: number;
   enabled?: boolean;
 }) {
-  const { user, accessToken } = useAuthSession();
+  const session = useOptionalAuthSession();
+  const user = session?.user ?? null;
+  const accessToken = session?.accessToken ?? null;
   const [state, setState] = useState<{
     membership: EnsureMembershipResponse["membership"] | null;
     created: boolean;

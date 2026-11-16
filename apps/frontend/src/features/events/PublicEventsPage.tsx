@@ -3,8 +3,10 @@ import { ArrowLeft, ArrowRight, CalendarBlank, MapPin } from "@phosphor-icons/re
 import { Link, useParams } from "react-router-dom";
 import { createEventsClient, translateEventError } from "../../api/events-client";
 import type { MerchantEventDto, PublicEventScope } from "../../api/events-types";
+import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import { useResource } from "../../api/useResource";
 import { Button, Card, EmptyState, ErrorState, LoadingState } from "../../components/ui";
+import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { formatEventSchedule } from "./event-format";
 
 const eventsApi = createEventsClient();
@@ -19,6 +21,7 @@ export function PublicEventsPage() {
   const { slug = "" } = useParams();
   const [scope, setScope] = useState<PublicEventScope>("upcoming");
   const [page, setPage] = useState(1);
+  useEnsureMembership({ slug });
 
   const resource = useResource(
     () => eventsApi.listPublicStoreEvents(slug, { scope, page, limit: 12 }),
@@ -144,7 +147,7 @@ function PublicEventCard({ storeSlug, event }: { storeSlug: string; event: Merch
         <CalendarBlank size={40} weight="light" aria-hidden="true" />
         {event.bannerUrl && failedBanner !== event.bannerUrl && (
           <img
-            src={event.bannerUrl}
+            src={resolveStorefrontAssetUrl(event.bannerUrl) ?? event.bannerUrl}
             alt={event.title}
             loading="lazy"
             decoding="async"

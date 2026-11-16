@@ -14,7 +14,9 @@ import type {
 } from "../../api/storefront-types";
 import { useResource } from "../../api/useResource";
 import { Button, ErrorState, LoadingState } from "../../components/ui";
+import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useMemberCart } from "../member/useMemberCart";
+import { StorefrontCatalogSection } from "./StorefrontCatalogSection";
 import { StorefrontSectionRenderer } from "./StorefrontSections";
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
@@ -37,6 +39,8 @@ export function PublicStorefrontPage() {
 
   const wantsDraftPreview =
     searchParams.get("preview") === "draft" && user?.role === "MERCHANT" && Boolean(accessToken);
+
+  useEnsureMembership({ slug, enabled: !wantsDraftPreview });
 
   const resource = useResource<LoadedStorefront>(
     async () => {
@@ -76,14 +80,14 @@ export function PublicStorefrontPage() {
       ) {
         return [];
       }
-      const res = await commerceApi.listPublicProducts(resource.data.merchant.id);
-      return res.products.map(
+      const res = await commerceApi.listPublicProducts(resource.data.merchant.id, { limit: 12 });
+      return res.items.map(
         (product): StorefrontProductDto => ({
           id: product.id,
           merchantId: product.merchantId,
-          categoryId: null,
-          category: null,
-          sku: null,
+          categoryId: product.categoryId,
+          category: product.category,
+          sku: product.sku,
           name: product.name,
           description: product.description,
           imageUrl: product.imageUrl,
@@ -249,21 +253,51 @@ function StorefrontShell({
       </header>
 
       <main className="mx-auto max-w-6xl space-y-10 px-4 py-8 sm:px-7 lg:py-10">
-        {enabledSections.map((section) => (
-          <StorefrontSectionRenderer
-            key={section.key}
-            section={section}
-            merchant={data.merchant}
-            branding={data.config.branding}
-            products={products}
+        {enabledSections
+          .filter((s) => s.key !== "footer")
+          .map((section) => (
+            <StorefrontSectionRenderer
+              key={section.key}
+              section={section}
+              merchant={data.merchant}
+              branding={data.config.branding}
+              products={products}
+              categories={data.categories}
+              events={data.upcomingEvents}
+              canAdd={(productId, available) =>
+                user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
+              }
+              onBuy={handleBuy}
+            />
+          ))}
+        {!data.isDraftPreview && (
+          <StorefrontCatalogSection
+            slug={data.merchant.slug}
+            accent={data.config.branding.primaryColor || "#335e3d"}
             categories={data.categories}
-            events={data.upcomingEvents}
             canAdd={(productId, available) =>
               user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
             }
             onBuy={handleBuy}
           />
-        ))}
+        )}
+        {enabledSections
+          .filter((s) => s.key === "footer")
+          .map((section) => (
+            <StorefrontSectionRenderer
+              key={section.key}
+              section={section}
+              merchant={data.merchant}
+              branding={data.config.branding}
+              products={products}
+              categories={data.categories}
+              events={data.upcomingEvents}
+              canAdd={(productId, available) =>
+                user?.role === "MEMBER" ? cart.canAdd(productId, available) : (available ?? 0) > 0
+              }
+              onBuy={handleBuy}
+            />
+          ))}
       </main>
     </div>
   );

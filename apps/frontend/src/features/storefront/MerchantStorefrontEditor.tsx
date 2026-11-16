@@ -60,12 +60,12 @@ export function MerchantStorefrontEditor() {
       const [storefront, versionsRes, productsRes] = await Promise.all([
         storefrontApi.getMerchantStorefront(accessToken!),
         storefrontApi.listVersions(accessToken!),
-        commerceApi.listOwnProducts(accessToken!),
+        commerceApi.listOwnProducts(accessToken!, { limit: 100 }),
       ]);
       return {
         storefront,
         versions: versionsRes.versions,
-        saleProducts: productsRes.products.filter((p) => p.kind === "SALE" && p.status === "ACTIVE"),
+        saleProducts: productsRes.items.filter((p) => p.kind === "SALE" && p.status === "ACTIVE"),
       };
     },
     [accessToken],

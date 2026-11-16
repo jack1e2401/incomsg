@@ -36,6 +36,7 @@ import {
 import { MemberMascot } from "./MemberMascot";
 import { MemberLoyaltyPolicyDialog } from "./MemberLoyaltyPolicyDialog";
 import { LoyaltyWalletContent } from "./LoyaltyWalletContent";
+import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useMemberCart } from "./useMemberCart";
 
 function orderStatusTone(status: OrderStatus): "green" | "amber" | "neutral" | "red" | "purple" {
@@ -114,6 +115,7 @@ export function MemberStoreLayout({
   const cart = useMemberCart(storageKey, merchantId);
   const { logout } = useAuthSession();
   const navigate = useNavigate();
+  useEnsureMembership({ merchantId });
 
   const base = basePath ?? `/member/${merchantId}`;
   const isSlugRoute = base.startsWith("/s/");
