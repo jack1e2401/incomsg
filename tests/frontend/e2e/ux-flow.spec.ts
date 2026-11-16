@@ -252,7 +252,7 @@ test("Merchant store previews the public catalog and the configured loyalty rule
   await page.route("**/api/merchants/5/products", (route) =>
     route.fulfill({
       json: {
-        products: [
+        items: [
           {
             id: 101,
             merchantId: 5,
@@ -274,6 +274,7 @@ test("Merchant store previews the public catalog and the configured loyalty rule
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 2, totalPages: 1 },
       },
     }),
   );
@@ -332,7 +333,7 @@ test("Merchant product workspace uses backend data and plain status text", async
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        products: [
+        items: [
           {
             id: 101,
             merchantId: 5,
@@ -343,6 +344,7 @@ test("Merchant product workspace uses backend data and plain status text", async
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
       }),
     }),
   );

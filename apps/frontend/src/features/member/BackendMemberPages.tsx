@@ -195,7 +195,7 @@ function MemberStoreLayout({ merchantId, storageKey }: { merchantId: number; sto
 export function MemberStorefront() {
   const { merchantId, cart } = useMerchantContext();
   const products = useResource(
-    () => commerce.listPublicProducts(merchantId).then((response) => response.products),
+    () => commerce.listPublicProducts(merchantId).then((response) => response.items),
     [merchantId],
   );
   return (
@@ -260,7 +260,7 @@ export function MemberProduct() {
   const { merchantId, cart } = useMerchantContext();
   const productId = Number(useParams().productId);
   const products = useResource(
-    () => commerce.listPublicProducts(merchantId).then((response) => response.products),
+    () => commerce.listPublicProducts(merchantId).then((response) => response.items),
     [merchantId],
   );
   if (!Number.isInteger(productId) || productId < 1)

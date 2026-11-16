@@ -103,7 +103,7 @@ function MerchantLoyaltySummary({ token }: { token: string }) {
 
 function MerchantCatalogPreview({ merchantId }: { merchantId: number }) {
   const catalog = useResource(
-    () => api.listPublicProducts(merchantId).then(({ products }) => products),
+    () => api.listPublicProducts(merchantId).then(({ items }) => items),
     [merchantId],
   );
   const products = catalog.data ?? [];

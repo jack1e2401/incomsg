@@ -81,6 +81,24 @@ export function useMemberCart(storageKey: string, merchantId: number) {
         return [...previous, { product, quantity: 1 }];
       });
     },
+    addQuantity(product: ProductDto, amount: number) {
+      if (!Number.isInteger(amount) || amount < 1) return;
+      setLines((previous) => {
+        if (product.merchantId !== merchantId) return previous;
+        const available = product.inventory?.availableQuantity ?? maxQuantity;
+        const cap = Math.min(maxQuantity, available);
+        if (cap < 1) return previous;
+        const existing = previous.find((line) => line.product.id === product.id);
+        if (!existing) {
+          if (previous.length >= maxLines) return previous;
+          return [...previous, { product, quantity: Math.min(cap, amount) }];
+        }
+        const nextQty = Math.min(cap, existing.quantity + amount);
+        return previous.map((line) =>
+          line.product.id === product.id ? { product, quantity: nextQty } : line,
+        );
+      });
+    },
     setQuantity(productId: number, quantity: number) {
       if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQuantity) return;
       setLines((previous) =>

@@ -17,10 +17,18 @@ import type {
   PaymentStatusDto,
   VnpayPaymentResponse,
   OwnMerchantResponse,
+  CategoriesResponse,
+  CategoryResponse,
+  DeleteCategoryResponse,
+  ProductCategoryInput,
+  ProductCategoryPatch,
   ProductInput,
+  ProductListQuery,
   ProductPatch,
   ProductResponse,
   ProductsResponse,
+  PublicProductListQuery,
+  PublicStoreProductsResponse,
   VoucherDefinitionInput,
   VoucherDefinitionPatch,
   VoucherDefinitionResponse,
@@ -77,6 +85,10 @@ export function translateApiError(code: string): string {
     INSUFFICIENT_AVAILABLE_INVENTORY: "Số lượng xuất vượt quá hàng hiện có, bao gồm hàng đã giữ chỗ.",
     ORDER_RESERVATION_EXPIRED: "Thời gian giữ hàng đã hết. Vui lòng tạo đơn mới.",
     IDEMPOTENCY_KEY_CONFLICT: "Mã yêu cầu đã được dùng cho thao tác khác. Hãy thử lại.",
+    CATEGORY_ALREADY_EXISTS: "Danh mục hoặc đường dẫn (slug) đã tồn tại.",
+    CATEGORY_NOT_FOUND: "Không tìm thấy danh mục.",
+    SKU_ALREADY_EXISTS: "Mã SKU đã tồn tại trong cửa hàng.",
+    PRODUCT_NOT_FOUND: "Không tìm thấy sản phẩm.",
   };
   return translations[code] ?? code;
 }
@@ -88,7 +100,7 @@ async function requestJson<T>(
   baseUrl: string,
   path: string,
   options: {
-    method?: "GET" | "POST" | "PATCH" | "PUT";
+    method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
     token?: string;
     body?: unknown;
     headers?: Record<string, string>;
@@ -127,6 +139,19 @@ function financePath(path: string, filters: PlatformFeeFilters) {
   return query.size ? `${path}?${query}` : path;
 }
 
+function productQueryPath(path: string, filters: ProductListQuery | PublicProductListQuery = {}) {
+  const query = new URLSearchParams();
+  if (filters.q) query.set("q", filters.q);
+  if (filters.categoryId !== undefined) query.set("categoryId", String(filters.categoryId));
+  if ("status" in filters && filters.status) query.set("status", filters.status);
+  if ("kind" in filters && filters.kind) query.set("kind", filters.kind);
+  if ("lowStock" in filters && filters.lowStock) query.set("lowStock", "true");
+  if (filters.sort) query.set("sort", filters.sort);
+  if (filters.page !== undefined) query.set("page", String(filters.page));
+  if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+  return query.size ? `${path}?${query}` : path;
+}
+
 export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
   return {
     listMerchants({ includeCover = false }: { includeCover?: boolean } = {}) {
@@ -150,8 +175,33 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
     getOwnMerchant(token: string) {
       return requestJson<OwnMerchantResponse>(fetcher, baseUrl, "/api/merchant/me", { token });
     },
-    listOwnProducts(token: string) {
-      return requestJson<ProductsResponse>(fetcher, baseUrl, "/api/merchant/products", { token });
+    listOwnCategories(token: string) {
+      return requestJson<CategoriesResponse>(fetcher, baseUrl, "/api/merchant/categories", { token });
+    },
+    createCategory(input: ProductCategoryInput, token: string) {
+      return requestJson<CategoryResponse>(fetcher, baseUrl, "/api/merchant/categories", {
+        method: "POST",
+        token,
+        body: input,
+      });
+    },
+    updateCategory(categoryId: number, patch: ProductCategoryPatch, token: string) {
+      return requestJson<CategoryResponse>(fetcher, baseUrl, `/api/merchant/categories/${categoryId}`, {
+        method: "PATCH",
+        token,
+        body: patch,
+      });
+    },
+    deleteCategory(categoryId: number, token: string) {
+      return requestJson<DeleteCategoryResponse>(fetcher, baseUrl, `/api/merchant/categories/${categoryId}`, {
+        method: "DELETE",
+        token,
+      });
+    },
+    listOwnProducts(token: string, query: ProductListQuery = {}) {
+      return requestJson<ProductsResponse>(fetcher, baseUrl, productQueryPath("/api/merchant/products", query), {
+        token,
+      });
     },
     createProduct(input: ProductInput, token: string) {
       return requestJson<ProductResponse>(fetcher, baseUrl, "/api/merchant/products", {
@@ -183,8 +233,26 @@ export function createCommerceClient(baseUrl = "", fetcher: FetchLike = fetch) {
         method: "POST", token, body, headers: { "Idempotency-Key": requestKey },
       });
     },
-    listPublicProducts(merchantId: number) {
-      return requestJson<ProductsResponse>(fetcher, baseUrl, `/api/merchants/${merchantId}/products`);
+    listPublicProducts(merchantId: number, query: PublicProductListQuery = {}) {
+      return requestJson<ProductsResponse>(
+        fetcher,
+        baseUrl,
+        productQueryPath(`/api/merchants/${merchantId}/products`, query),
+      );
+    },
+    listPublicStoreProducts(slug: string, query: PublicProductListQuery = {}) {
+      return requestJson<PublicStoreProductsResponse>(
+        fetcher,
+        baseUrl,
+        productQueryPath(`/api/public/stores/${encodeURIComponent(slug)}/products`, query),
+      );
+    },
+    getPublicStoreProduct(slug: string, productId: number) {
+      return requestJson<ProductResponse>(
+        fetcher,
+        baseUrl,
+        `/api/public/stores/${encodeURIComponent(slug)}/products/${productId}`,
+      );
     },
     createOrder(input: CreateOrderInput, token: string) {
       return requestJson<OrderResponse>(fetcher, baseUrl, "/api/orders", {
