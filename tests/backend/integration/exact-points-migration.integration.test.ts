@@ -19,7 +19,7 @@ async function withLegacyTables(run: (sql: SqlConnection, tables: Record<typeof 
   const url = new URL(env.databaseUrl);
   const database = decodeURIComponent(url.pathname.slice(1));
   assert.ok(["127.0.0.1", "localhost", "[::1]"].includes(url.hostname), "Migration fixtures require a local test database");
-  assert.match(database, /[-_]test$/i, "Migration fixtures require a database ending in -test or _test");
+  assert.match(database, /^([^/]+[-_]test|incomsg_testdb_[a-z0-9_]+)$/i, "Migration fixtures require a database ending in -test/_test or incomsg_testdb_*");
   const nonce = randomUUID().replaceAll("-", "").slice(0, 12);
   const tables = Object.fromEntries(logicalTables.map((name) => [name, `TestExact${nonce}${name}`])) as Record<typeof logicalTables[number], string>;
   const statements = logicalTables.reduce((text, name) => text.replaceAll(`\`${name}\``, `\`${tables[name]}\``), migration)
