@@ -1,3 +1,5 @@
+const ALLOWED_TEST_DB = /^(incomsg-test|incomsg_testdb_[a-z0-9_]+)$/;
+
 /** Resolve DB QA configuration before spawning any process that could write data. */
 export function testDatabaseUrl(environment) {
   const source = environment.TEST_DATABASE_URL ?? environment.DATABASE_URL;
@@ -7,8 +9,9 @@ export function testDatabaseUrl(environment) {
     throw new Error("DB tests require a local MySQL server");
   }
   if (!environment.TEST_DATABASE_URL) url.pathname = "/incomsg-test";
-  if (decodeURIComponent(url.pathname.slice(1)) !== "incomsg-test") {
-    throw new Error("DB tests must target incomsg-test; application databases are forbidden");
+  const dbName = decodeURIComponent(url.pathname.slice(1));
+  if (!ALLOWED_TEST_DB.test(dbName)) {
+    throw new Error("DB tests must target incomsg-test or incomsg_testdb_*; application databases are forbidden");
   }
   return url.toString();
 }

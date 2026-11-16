@@ -22,3 +22,9 @@ test("DB QA honors an explicit local test connection without using the app crede
   assert.equal(result.hostname, "127.0.0.1");
   assert.throws(() => testDatabaseUrl({}), /DATABASE_URL/);
 });
+
+test("DB QA supports isolated worktree test databases matching incomsg_testdb_*", () => {
+  const result = new URL(testDatabaseUrl({ TEST_DATABASE_URL: "mysql://test@127.0.0.1:3306/incomsg_testdb_feat01" }));
+  assert.equal(result.pathname, "/incomsg_testdb_feat01");
+  assert.throws(() => testDatabaseUrl({ TEST_DATABASE_URL: "mysql://127.0.0.1/incomsg_prod" }), /application databases are forbidden/);
+});

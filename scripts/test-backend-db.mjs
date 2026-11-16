@@ -11,13 +11,15 @@ const backend = resolve(root, "apps/backend");
 const require = createRequire(resolve(backend, "package.json"));
 const envPath = resolve(backend, ".env");
 const environment = { ...(existsSync(envPath) ? parseEnv(readFileSync(envPath, "utf8")) : {}), ...process.env };
-const testEnvironment = { ...environment, DATABASE_URL: testDatabaseUrl(environment), NODE_ENV: "test" };
+const targetUrl = testDatabaseUrl(environment);
+const testEnvironment = { ...environment, DATABASE_URL: targetUrl, NODE_ENV: "test" };
+const targetDbName = decodeURIComponent(new URL(targetUrl).pathname.slice(1));
 function run(args, cwd) {
   const result = spawnSync(process.execPath, args, { cwd, env: testEnvironment, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
-console.log("MySQL integration target: local incomsg-test");
+console.log(`MySQL integration target: local ${targetDbName}`);
 run([require.resolve("prisma/build/index.js"), "migrate", "deploy", "--config", "prisma7.config.ts"], backend);
 if (!process.argv.includes("--migrate-only")) {
   const fileIndex = process.argv.indexOf("--test-file");

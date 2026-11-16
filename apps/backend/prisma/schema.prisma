@@ -160,6 +160,8 @@ model User {
   abuseReportsReceived MerchantAbuseReport[] @relation("AbuseReportMember")
   publishedLoyaltyPolicies LoyaltyPolicyVersion[] @relation("LoyaltyPolicyPublisher")
   inventoryMovements InventoryMovement[] @relation("InventoryMovementActor")
+  updatedStorefrontDrafts StorefrontDraft[] @relation("StorefrontDraftUpdater")
+  publishedStorefrontVersions StorefrontConfigVersion[] @relation("StorefrontVersionPublisher")
 }
 
 model EmailBlacklistEntry {
@@ -214,6 +216,7 @@ model MerchantApplication {
   id           Int               @id @default(autoincrement())
   applicantId  Int               @unique
   storeName    String            @db.VarChar(191)
+  slug         String?           @unique @db.VarChar(191)
   status       ApplicationStatus @default(PENDING)
   reviewedById Int?
   reviewedAt   DateTime?
@@ -236,6 +239,17 @@ enum MerchantFeeType {
   FEE_REVERSAL
 }
 
+enum StorefrontVersionSource {
+  DEFAULT_INIT
+  PUBLISH
+  ROLLBACK
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+}
+
 model Merchant {
   id                 Int                  @id @default(autoincrement())
   ownerId            Int                  @unique
@@ -246,6 +260,8 @@ model Merchant {
   updatedAt          DateTime             @updatedAt
   owner              User                 @relation("MerchantOwner", fields: [ownerId], references: [id])
   products           Product[]
+  productCategories  ProductCategory[]
+  productImages      ProductImage[]
   orders             Order[]
   memberships        MerchantMembership[]
   tiers              LoyaltyTier[]
@@ -259,27 +275,124 @@ model Merchant {
   feeTierYear        Int?
   feeTierEvaluatedAt DateTime?
   feeTransactions    MerchantFeeTransaction[]
+  storefrontDraft    StorefrontDraft?
+  storefrontVersions StorefrontConfigVersion[]
+  events             MerchantEvent[]
+}
+
+model StorefrontDraft {
+  id          Int      @id @default(autoincrement())
+  merchantId  Int      @unique
+  config      Json
+  updatedById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  updatedBy   User?    @relation("StorefrontDraftUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+}
+
+model StorefrontConfigVersion {
+  id              Int                     @id @default(autoincrement())
+  merchantId      Int
+  version         Int
+  config          Json
+  isPublished     Boolean                 @default(false)
+  source          StorefrontVersionSource @default(PUBLISH)
+  sourceVersionId Int?
+  note            String?                 @db.VarChar(255)
+  publishedById   Int?
+  publishedAt     DateTime                @default(now())
+  merchant        Merchant                @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  publishedBy     User?                   @relation("StorefrontVersionPublisher", fields: [publishedById], references: [id], onDelete: SetNull)
+
+  @@unique([merchantId, version])
+  @@index([merchantId, isPublished])
+  @@index([merchantId, publishedAt])
+  @@index([publishedById])
+}
+
+model ProductCategory {
+  id          Int       @id @default(autoincrement())
+  merchantId  Int
+  name        String    @db.VarChar(100)
+  slug        String    @db.VarChar(120)
+  description String?   @db.VarChar(255)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  merchant    Merchant  @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  products    Product[]
+
+  @@unique([merchantId, slug])
+  @@unique([merchantId, name])
+  @@index([merchantId, sortOrder])
 }
 
 model Product {
-  id          Int           @id @default(autoincrement())
-  merchantId  Int
-  name        String        @db.VarChar(191)
-  description String?       @db.Text
-  price       Decimal       @db.Decimal(15, 0)
-  imageUrl    String?       @db.VarChar(2048)
-  status      ProductStatus @default(ACTIVE)
-  kind        ProductKind   @default(SALE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  merchant    Merchant      @relation(fields: [merchantId], references: [id])
-  orderItems  OrderItem[]
+  id                Int           @id @default(autoincrement())
+  merchantId        Int
+  categoryId        Int?
+  sku               String?       @db.VarChar(64)
+  name              String        @db.VarChar(191)
+  description       String?       @db.Text
+  richDescription   String?       @db.Text
+  price             Decimal       @db.Decimal(15, 0)
+  imageUrl          String?       @db.VarChar(2048)
+  lowStockThreshold Int           @default(5)
+  status            ProductStatus @default(ACTIVE)
+  kind              ProductKind   @default(SALE)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  merchant          Merchant      @relation(fields: [merchantId], references: [id])
+  category          ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images            ProductImage[]
+  orderItems        OrderItem[]
   rewardVoucherDefinitions VoucherDefinition[]
   rewardVoucherSnapshots MemberVoucher[] @relation("RewardProductSnapshot")
-  inventoryBalance InventoryBalance?
+  inventoryBalance  InventoryBalance?
   inventoryMovements InventoryMovement[] @relation("ProductInventoryMovements")
 
+  @@unique([merchantId, sku])
   @@index([merchantId, status])
+  @@index([merchantId, categoryId, status])
+}
+
+model ProductImage {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  merchantId Int
+  url        String   @db.VarChar(2048)
+  altText    String?  @db.VarChar(191)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+
+  @@index([productId, sortOrder])
+  @@index([merchantId, productId])
+}
+
+model MerchantEvent {
+  id              Int         @id @default(autoincrement())
+  merchantId      Int
+  title           String      @db.VarChar(191)
+  slug            String      @db.VarChar(191)
+  description     String      @db.Text
+  bannerUrl       String?     @db.VarChar(2048)
+  startAt         DateTime
+  endAt           DateTime
+  locationName    String      @db.VarChar(191)
+  locationAddress String?     @db.VarChar(500)
+  status          EventStatus @default(DRAFT)
+  publishedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  merchant        Merchant    @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+
+  @@unique([merchantId, slug])
+  @@index([merchantId, status, startAt])
 }
 
 model Order {
@@ -315,6 +428,7 @@ model Order {
 
   @@index([merchantId, status])
   @@index([merchantId, status, paidAt])
+  @@index([merchantId, memberId, status])
   @@index([memberId, createdAt])
   @@index([voucherId])
   @@index([merchantId, status, stockReservedUntil])
@@ -377,6 +491,7 @@ model OrderItem {
   product     Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
+  @@index([productId])
 }
 
 model MerchantMembership {
