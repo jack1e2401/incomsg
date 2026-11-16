@@ -18,7 +18,7 @@ import { releaseExpiredMockOrders } from "../../../apps/backend/src/modules/inve
 
 const target = new URL(env.databaseUrl ?? "http://invalid");
 assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(target.hostname), "inventory integration tests require local MySQL");
-assert.equal(decodeURIComponent(target.pathname.slice(1)), "incomsg-test", "inventory integration tests must never write to incomsg");
+assert.match(decodeURIComponent(target.pathname.slice(1)), /^(incomsg-test|incomsg_testdb_[a-z0-9_]+)$/, "inventory integration tests must never write to incomsg");
 
 before(start);
 after(cleanup);
