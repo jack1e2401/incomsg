@@ -52,7 +52,7 @@ export function createMilestone2Client(baseUrl = "", fetcher: FetchLike = fetch)
       });
     },
 
-    registerMerchant(input: Credentials & { storeName: string }) {
+    registerMerchant(input: Credentials & { storeName: string; slug?: string }) {
       return requestJson<MerchantRegistrationResponse>(fetcher, baseUrl, milestone2Paths.registerMerchant, {
         method: "POST",
         body: input,

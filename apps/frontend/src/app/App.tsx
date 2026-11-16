@@ -64,6 +64,9 @@ import {
   MemberWallet,
 } from "../features/member/BackendMemberPages";
 import { MemberLanding } from "../features/member/MemberLanding";
+import { MerchantStorefrontEditor } from "../features/storefront/MerchantStorefrontEditor";
+import { PublicStorefrontPage } from "../features/storefront/PublicStorefrontPage";
+import { SlugMemberLayout } from "../features/storefront/SlugMemberLayout";
 
 // Production and local development use real endpoints. Fixtures are opt-in only.
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
@@ -95,12 +98,23 @@ function BackendRoutes() {
         <Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}>
           <Route index element={<MerchantOverview />} />
           <Route path="store" element={<MerchantStore />} />
+          <Route path="storefront" element={<MerchantStorefrontEditor />} />
           <Route path="products" element={<MerchantProducts />} />
           <Route path="orders" element={<MerchantOrders />} />
           <Route path="loyalty" element={<MerchantLoyalty />} />
           <Route path="vouchers" element={<MerchantVouchers />} />
           <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
         </Route>
+      </Route>
+      <Route path="/s/:slug" element={<PublicStorefrontPage />} />
+      <Route path="/s/:slug" element={<SlugMemberLayout />}>
+        <Route path="cart" element={<MemberCart />} />
+        <Route path="checkout" element={<MemberCheckout />} />
+        <Route path="wallet" element={<MemberWallet />} />
+        <Route path="vouchers" element={<MemberVouchers />} />
+        <Route path="rewards" element={<MemberRewards />} />
+        <Route path="orders" element={<MemberOrders />} />
+        <Route path="orders/:orderId" element={<MemberOrderResult />} />
       </Route>
       <Route element={<RequireRole role="MEMBER" />}>
         <Route path="/member" element={<MemberLanding />} />

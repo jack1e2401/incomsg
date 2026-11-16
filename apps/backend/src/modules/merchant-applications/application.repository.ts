@@ -1,6 +1,8 @@
 import type { Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../lib/prisma.js";
 import type { ApplicationDto, MerchantDto } from "../auth/auth.types.js";
+import { initializeDefaultStorefrontTx } from "../storefront/storefront.repository.js";
+import { fallbackSlug } from "../storefront/storefront.slug.js";
 
 type ReviewFailure = { kind: "missing" } | { kind: "already_reviewed" };
 type ApprovalResult = ReviewFailure | { kind: "approved"; application: ApplicationDto; merchant: MerchantDto };
@@ -10,6 +12,7 @@ const applicationSelection = {
   id: true,
   applicantId: true,
   storeName: true,
+  slug: true,
   status: true,
   reviewedById: true,
   reviewedAt: true,
@@ -48,15 +51,21 @@ export const applicationRepository = {
       });
       if (claim.count !== 1) return { kind: "already_reviewed" };
 
+      const merchantSlug = application.slug ?? fallbackSlug(application.storeName, application.id);
       const merchant = await tx.merchant.create({
         data: {
           ownerId: application.applicantId,
           name: application.storeName,
-          slug: `store-${application.id}`,
+          slug: merchantSlug,
           isActive: true,
         },
         select: { id: true, name: true, slug: true, isActive: true },
       });
+      await initializeDefaultStorefrontTx(
+        tx,
+        { id: merchant.id, name: merchant.name, slug: merchant.slug },
+        reviewerId,
+      );
       await tx.user.updateMany({
         where: { id: application.applicantId, accountStatus: "PENDING_APPROVAL" },
         data: { accountStatus: "ACTIVE" },

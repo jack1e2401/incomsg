@@ -14,10 +14,17 @@ import { orderPaymentRoutes, vnpayRoutes } from "./modules/payments/payments.rou
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { merchantAbuseReportRoutes } from "./modules/abuse-reports/abuse-reports.routes.js";
 import { merchantInventoryRoutes } from "./modules/inventory/inventory.routes.js";
+import { merchantMediaRoutes } from "./modules/media/media.routes.js";
+import { resolveUploadRoot } from "./modules/media/media.service.js";
+import { merchantStorefrontRoutes, publicStorefrontRoutes } from "./modules/storefront/storefront.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
 app.use(express.json());
+app.use("/uploads", (request, response, next) => {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  express.static(resolveUploadRoot())(request, response, next);
+});
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -25,6 +32,9 @@ app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/merchant", merchantAbuseReportRoutes);
 app.use("/api/merchant", merchantInventoryRoutes);
+app.use("/api/merchant/media", merchantMediaRoutes);
+app.use("/api/merchant/storefront", merchantStorefrontRoutes);
+app.use("/api/public", publicStorefrontRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
 app.use("/api/member", memberLoyaltyRoutes);

@@ -21,6 +21,7 @@ const adminLinks = [
 const merchantLinks = [
   ["/merchant", "Tổng quan"],
   ["/merchant/store", "Cửa hàng"],
+  ["/merchant/storefront", "Giao diện cửa hàng"],
   ["/merchant/products", "Sản phẩm"],
   ["/merchant/orders", "Đơn hàng"],
   ["/merchant/loyalty", "Loyalty"],

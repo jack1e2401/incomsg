@@ -44,6 +44,15 @@ after(async () => {
     select: { id: true },
   });
   const userIds = users.map(({ id }) => id);
+  const merchants = await prisma.merchant.findMany({
+    where: { ownerId: { in: userIds } },
+    select: { id: true },
+  });
+  const merchantIds = merchants.map(({ id }) => id);
+  if (merchantIds.length > 0) {
+    await prisma.storefrontConfigVersion.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.storefrontDraft.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  }
   await prisma.merchant.deleteMany({ where: { ownerId: { in: userIds } } });
   await prisma.merchantApplication.deleteMany({ where: { applicantId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });

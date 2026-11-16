@@ -4,15 +4,27 @@ import { signAccessToken } from "../../lib/access-token.js";
 import { authRepository } from "./auth.repository.js";
 import type { ApplicationDto, Credentials, MerchantRegistration, UserDto } from "./auth.types.js";
 
-function isUniqueEmailError(error: unknown): boolean {
+function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
 }
 
-async function createWithUniqueEmail<T>(operation: () => Promise<T>): Promise<T> {
+function isSlugConflictError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const meta = "meta" in error && typeof error.meta === "object" && error.meta !== null ? error.meta : null;
+  const target = meta && "target" in meta ? meta.target : undefined;
+  if (typeof target === "string") return target.toLowerCase().includes("slug");
+  if (Array.isArray(target)) return target.some((item) => String(item).toLowerCase().includes("slug"));
+  return "message" in error && typeof error.message === "string" && error.message.includes("MerchantApplication_slug_key");
+}
+
+async function createWithUniqueFields<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (isUniqueEmailError(error)) throw new HttpError(409, "EMAIL_TAKEN");
+    if (isUniqueConstraintError(error)) {
+      if (isSlugConflictError(error)) throw new HttpError(409, "SLUG_TAKEN");
+      throw new HttpError(409, "EMAIL_TAKEN");
+    }
     throw error;
   }
 }
@@ -20,12 +32,14 @@ async function createWithUniqueEmail<T>(operation: () => Promise<T>): Promise<T>
 export const authService = {
   async registerMember(input: Credentials): Promise<UserDto> {
     const passwordHash = await hashPassword(input.password);
-    return createWithUniqueEmail(() => authRepository.createMember(input.email, passwordHash));
+    return createWithUniqueFields(() => authRepository.createMember(input.email, passwordHash));
   },
 
   async registerMerchant(input: MerchantRegistration) {
     const passwordHash = await hashPassword(input.password);
-    return createWithUniqueEmail(() => authRepository.createApplicant(input.email, passwordHash, input.storeName));
+    return createWithUniqueFields(() =>
+      authRepository.createApplicant(input.email, passwordHash, input.storeName, input.slug),
+    );
   },
 
   async login(input: Credentials): Promise<{ accessToken: string; user: UserDto }> {
