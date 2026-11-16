@@ -67,6 +67,7 @@ import { MemberLanding } from "../features/member/MemberLanding";
 import { MerchantStorefrontEditor } from "../features/storefront/MerchantStorefrontEditor";
 import { PublicStorefrontPage } from "../features/storefront/PublicStorefrontPage";
 import { SlugMemberLayout } from "../features/storefront/SlugMemberLayout";
+import { PublicProductDetail } from "../features/member/PublicProductDetail";
 
 // Production and local development use real endpoints. Fixtures are opt-in only.
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
@@ -82,6 +83,7 @@ function BackendRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/application/status" element={<ApplicationStatusPage />} />
+      <Route path="/s/:slug/products/:productId" element={<PublicProductDetail />} />
       <Route element={<RequireRole role="ADMIN" />}>
         <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
           <Route index element={<AdminOverview />} />

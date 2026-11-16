@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Package, Storefront } from "@phosphor-icons/react";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import type {
@@ -9,8 +8,6 @@ import type {
   MerchantLoyaltyPreviewResponse,
   OrderDto,
   OrderStatus,
-  ProductDto,
-  ProductPatch,
   TierLevel,
   VoucherDefinitionDto,
   VoucherDefinitionInput,
@@ -30,7 +27,6 @@ import {
   PageHeader,
   Select,
   StatCard,
-  Textarea,
 } from "../../components/ui";
 import { money } from "../../lib/utils";
 import { MerchantRevenueChart } from "./MerchantRevenueChart";
@@ -41,7 +37,6 @@ import { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 import { MerchantRefundDialog } from "./MerchantRefundDialog";
 import { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "./MerchantRewardQueue";
-import { MerchantProductTableRow } from "./MerchantProductTableRow";
 import { MerchantVoucherTableRow } from "./MerchantVoucherTableRow";
 import { MerchantLoyaltyHistory } from "./MerchantLoyaltyHistory";
 import { MerchantLoyaltyMembers } from "./MerchantLoyaltyMembers";
@@ -51,6 +46,7 @@ export { MerchantLoyaltyTransactions } from "./MerchantLoyaltyTransactions";
 export { MerchantRefundDialog } from "./MerchantRefundDialog";
 export { MerchantAbuseReportDialog } from "./MerchantAbuseReportDialog";
 export { MerchantRewardQueue } from "./MerchantRewardQueue";
+export { MerchantProducts } from "./MerchantProductsPage";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -145,11 +141,15 @@ export function MerchantOverview() {
         }
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard label="Sản phẩm" value={products.data?.products.length ?? 0} icon={<Package size={20} />} />
+        <StatCard
+          label="Sản phẩm"
+          value={products.data?.pagination.totalItems ?? products.data?.items.length ?? 0}
+          icon={<Package size={20} />}
+        />
         <StatCard
           label="Đang hiển thị"
           value={
-            products.data?.products.filter((item) => item.status === "ACTIVE" && item.kind !== "REWARD")
+            products.data?.items.filter((item) => item.status === "ACTIVE" && item.kind !== "REWARD")
               .length ?? 0
           }
           icon={<Storefront size={20} />}
@@ -184,274 +184,6 @@ export function MerchantStore() {
           title="Chưa có cửa hàng"
           description="Cửa hàng chỉ hoạt động sau khi Admin duyệt hồ sơ Merchant."
         />
-      )}
-    </>
-  );
-}
-
-type ProductForm = {
-  kind: ProductDto["kind"];
-  name: string;
-  price: string;
-  description: string;
-  imageUrl: string;
-  status: ProductDto["status"];
-  initialQuantity: string;
-};
-const emptyProduct: ProductForm = {
-  kind: "SALE",
-  name: "",
-  price: "",
-  description: "",
-  imageUrl: "",
-  status: "ACTIVE",
-  initialQuantity: "0",
-};
-
-export function MerchantProducts() {
-  const token = useToken();
-  const resource = useResource(() => api.listOwnProducts(token), [token]);
-  const [editing, setEditing] = useState<ProductDto | "new" | null>(null);
-  const [form, setForm] = useState<ProductForm>(emptyProduct);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-
-  function open(product?: ProductDto) {
-    setEditing(product ?? "new");
-    setForm(
-      product
-        ? {
-            kind: product.kind ?? "SALE",
-            name: product.name,
-            price: product.price,
-            description: product.description ?? "",
-            imageUrl: product.imageUrl ?? "",
-            status: product.status,
-            initialQuantity: "0",
-          }
-        : emptyProduct,
-    );
-    setError("");
-    setNotice("");
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || !editing) return;
-    setError("");
-    setBusy(true);
-    try {
-      const fields = {
-        name: form.name.trim(),
-        description: form.description || null,
-        imageUrl: form.imageUrl || null,
-      };
-      const result =
-        editing === "new"
-          ? await api.createProduct(
-              form.kind === "REWARD"
-                ? { ...fields, kind: "REWARD", initialQuantity: Number(form.initialQuantity) }
-                : { ...fields, price: form.price.trim(), initialQuantity: Number(form.initialQuantity) },
-              token,
-            )
-          : await api.updateProduct(
-              editing.id,
-              {
-                ...fields,
-                ...(form.kind === "SALE" ? { price: form.price.trim() } : {}),
-                status: form.status,
-              },
-              token,
-            );
-      resource.setData((previous) =>
-        previous
-          ? {
-              products:
-                editing === "new"
-                  ? [...previous.products, result.product]
-                  : previous.products.map((item) => (item.id === result.product.id ? result.product : item)),
-            }
-          : { products: [result.product] },
-      );
-      setNotice("Đã lưu sản phẩm.");
-      setEditing(null);
-    } catch (reason) {
-      setError(message(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function changeStatus(product: ProductDto) {
-    if (busy) return;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const patch: ProductPatch = { status: product.status === "ACTIVE" ? "HIDDEN" : "ACTIVE" };
-      const result = await api.updateProduct(product.id, patch, token);
-      resource.setData((previous) =>
-        previous
-          ? { products: previous.products.map((item) => (item.id === product.id ? result.product : item)) }
-          : previous,
-      );
-      setNotice("Đã cập nhật trạng thái sản phẩm.");
-    } catch (reason) {
-      setError(message(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <PageHeader title="Sản phẩm" action={<Button onClick={() => open()}>Thêm sản phẩm</Button>} />
-      {notice && (
-        <p role="status" className="mb-4 rounded-xl bg-[#e1f2df] p-4 text-sm text-[#357044]">
-          {notice}
-        </p>
-      )}
-      {error && !editing && (
-        <p role="alert" className="mb-4 rounded-xl bg-[#fae7e3] p-4 text-sm text-[#a4473a]">
-          {error}
-        </p>
-      )}
-      <Dialog.Root open={editing !== null} onOpenChange={(open) => !open && !busy && setEditing(null)}>
-        {editing && <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
-          <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl p-6 shadow-2xl outline-none sm:p-8">
-          <Dialog.Title className="text-lg font-extrabold">
-            {editing === "new" ? "Thêm sản phẩm" : `Sửa sản phẩm #${editing.id}`}
-          </Dialog.Title>
-          <Dialog.Description className="sr-only">Nhập thông tin sản phẩm và lưu thay đổi.</Dialog.Description>
-          <form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="Loại sản phẩm">
-              <Select
-                disabled={editing !== "new" || busy}
-                value={form.kind}
-                onChange={(event) => setForm({ ...form, kind: event.target.value as ProductDto["kind"] })}
-              >
-                <option value="SALE">Sản phẩm bán</option>
-                <option value="REWARD">Chỉ đổi thưởng</option>
-              </Select>
-            </Field>
-            <Field label="Tên sản phẩm">
-              <Input
-                required
-                maxLength={191}
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-              />
-            </Field>
-            {form.kind === "SALE" && (
-              <Field label="Giá (VND)">
-                <Input
-                  required
-                  inputMode="numeric"
-                  pattern="[1-9][0-9]{0,14}"
-                  value={form.price}
-                  onChange={(event) => setForm({ ...form, price: event.target.value })}
-                />
-              </Field>
-            )}
-            {editing === "new" && (
-              <Field label="Số lượng ban đầu">
-                <Input required type="number" min={0} max={2147483647} step={1} value={form.initialQuantity} onChange={(event) => setForm({ ...form, initialQuantity: event.target.value })} />
-              </Field>
-            )}
-            <div className="sm:col-span-2">
-              <Field label="Mô tả">
-                <Textarea
-                  maxLength={1000}
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                />
-              </Field>
-            </div>
-            <div className="sm:col-span-2">
-              <Field label="URL hình ảnh">
-                <Input
-                  type="url"
-                  maxLength={2048}
-                  value={form.imageUrl}
-                  onChange={(event) => setForm({ ...form, imageUrl: event.target.value })}
-                />
-              </Field>
-            </div>
-            {editing !== "new" && (
-              <Field label="Trạng thái">
-                <Select
-                  value={form.status}
-                  onChange={(event) =>
-                    setForm({ ...form, status: event.target.value as ProductDto["status"] })
-                  }
-                >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="HIDDEN">HIDDEN</option>
-                </Select>
-              </Field>
-            )}
-            {error && (
-              <p role="alert" className="sm:col-span-2 text-sm text-[#a4473a]">
-                {error}
-              </p>
-            )}
-            <div className="flex gap-3 sm:col-span-2">
-              <Button type="submit" disabled={busy}>
-                {busy ? <BusyLabel>Đang lưu</BusyLabel> : "Lưu sản phẩm"}
-              </Button>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => setEditing(null)}>
-                Hủy
-              </Button>
-            </div>
-          </form>
-          </Dialog.Content>
-        </Dialog.Portal>}
-      </Dialog.Root>
-      {resource.loading ? (
-        <LoadingState cards={3} />
-      ) : resource.error ? (
-        <ErrorState message={resource.error} retry={resource.reload} />
-      ) : !resource.data?.products.length ? (
-        <EmptyState
-          title="Chưa có sản phẩm"
-          description="Thêm sản phẩm để bán hoặc dùng làm quà đổi thưởng."
-        />
-      ) : (
-        <div className="surface overflow-x-auto rounded-3xl">
-          <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
-            <colgroup>
-              <col className="w-[25%]" />
-              <col className="w-[9%]" />
-              <col className="w-[12%]" />
-              <col className="w-[32%]" />
-              <col className="w-[14%]" />
-              <col className="w-[8%]" />
-            </colgroup>
-            <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
-              <tr>
-                <th scope="col" className="px-5 py-4">Sản phẩm</th>
-                <th scope="col" className="px-4 py-4">Nhóm</th>
-                <th scope="col" className="px-4 py-4">Giá</th>
-                <th scope="col" className="px-4 py-4">Tồn kho</th>
-                <th scope="col" className="px-4 py-4">Trạng thái</th>
-                <th scope="col" className="px-4 py-4"><span className="sr-only">Thao tác</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {resource.data.products.map((product) => (
-                <MerchantProductTableRow
-                  key={product.id}
-                  product={product}
-                  token={token}
-                  onEdit={() => open(product)}
-                  onStatusChange={() => void changeStatus(product)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
       )}
     </>
   );
@@ -667,8 +399,8 @@ export function MerchantVouchers() {
       isReward
         ? api
             .listOwnProducts(token)
-            .then(({ products }) =>
-              products.filter((product) => product.kind === "REWARD" && product.status === "ACTIVE"),
+            .then(({ items }) =>
+              items.filter((product) => product.kind === "REWARD" && product.status === "ACTIVE"),
             )
         : Promise.resolve([]),
     [token, isReward],

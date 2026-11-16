@@ -200,7 +200,10 @@ test("login takes role from API response and sends protected Merchant request wi
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ products: [] }),
+      body: JSON.stringify({
+        items: [],
+        pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 0 },
+      }),
     });
   });
 

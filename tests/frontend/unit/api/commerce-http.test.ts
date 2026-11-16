@@ -41,6 +41,48 @@ describe("commerce HTTP contract", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/merchants/22/products");
   });
 
+  it("connects V4 category CRUD, filtered products, and public slug store catalog routes", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ categories: [] }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { category: { id: 1, merchantId: 7, name: "Trà", slug: "tra", description: null, sortOrder: 0 } },
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ category: { id: 1, merchantId: 7, name: "Trà sữa", slug: "tra", description: null, sortOrder: 1 } }),
+      )
+      .mockResolvedValueOnce(Response.json({ deleted: true }))
+      .mockResolvedValueOnce(
+        Response.json({ items: [], pagination: { page: 2, limit: 20, totalItems: 0, totalPages: 0 } }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ items: [], categories: [], pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 0 } }),
+      )
+      .mockResolvedValueOnce(Response.json({ product: { id: 9, name: "Ô long" } }));
+    const client = createCommerceClient("", fetcher);
+
+    await client.listOwnCategories("merchant-token");
+    await client.createCategory({ name: "Trà" }, "merchant-token");
+    await client.updateCategory(1, { name: "Trà sữa", sortOrder: 1 }, "merchant-token");
+    await client.deleteCategory(1, "merchant-token");
+    await client.listOwnProducts("merchant-token", { q: "latte", lowStock: true, sort: "price_asc", page: 2 });
+    await client.listPublicStoreProducts("moc-studio", { categoryId: 1, sort: "name_asc" });
+    await client.getPublicStoreProduct("moc-studio", 9);
+
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method ?? "GET"])).toEqual([
+      ["/api/merchant/categories", "GET"],
+      ["/api/merchant/categories", "POST"],
+      ["/api/merchant/categories/1", "PATCH"],
+      ["/api/merchant/categories/1", "DELETE"],
+      ["/api/merchant/products?q=latte&lowStock=true&sort=price_asc&page=2", "GET"],
+      ["/api/public/stores/moc-studio/products?categoryId=1&sort=name_asc", "GET"],
+      ["/api/public/stores/moc-studio/products/9", "GET"],
+    ]);
+  });
+
   it("connects wallet, voucher catalog, owned voucher, and merchant definition routes", async () => {
     const fetcher = vi.fn<typeof fetch>();
     fetcher

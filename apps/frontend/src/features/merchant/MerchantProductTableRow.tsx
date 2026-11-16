@@ -94,13 +94,43 @@ export function MerchantProductTableRow({ product, token, onEdit, onStatusChange
 
   const movements = resource.data?.movements ?? [];
   const dateTime = (value: string) => new Date(value).toLocaleString("vi-VN");
+  const availableQuantity =
+    resource.data?.inventory?.availableQuantity ?? product.inventory?.availableQuantity ?? 0;
+  const threshold = product.lowStockThreshold ?? 5;
+  const isLowStock = resource.data
+    ? availableQuantity <= threshold
+    : (product.isLowStock ?? availableQuantity <= threshold);
 
   return (
     <>
       <tr className="border-t border-[#edf1ea] align-middle">
         <td className="px-5 py-4">
-          <p className="font-bold text-[#20392a]">{product.name}</p>
-          <p className="mt-1 text-xs muted">Mã sản phẩm #{product.id}</p>
+          <div className="flex items-start gap-3">
+            {product.imageUrl && (
+              <img
+                src={product.imageUrl}
+                alt={product.name}
+                className="h-11 w-11 shrink-0 rounded-xl border border-[#e5ece3] object-cover"
+              />
+            )}
+            <div className="min-w-0">
+              <p className="font-bold text-[#20392a] break-words">{product.name}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs muted">
+                <span>#{product.id}</span>
+                {product.sku && <span className="font-mono text-[#355541]">SKU: {product.sku}</span>}
+                {product.category && (
+                  <span className="rounded-md bg-[#edf4e9] px-2 py-0.5 font-semibold text-[#335e3d]">
+                    {product.category.name}
+                  </span>
+                )}
+                {isLowStock && (
+                  <span className="rounded-md bg-[#fae7e3] px-2 py-0.5 font-semibold text-[#a4473a]">
+                    Sắp hết hàng (≤ {threshold})
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </td>
         <td className="px-4 py-4 text-sm">{product.kind === "REWARD" ? "Đổi thưởng" : "Bán"}</td>
         <td className="px-4 py-4 text-sm font-semibold whitespace-nowrap">

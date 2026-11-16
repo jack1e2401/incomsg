@@ -41,7 +41,14 @@ test("repeated adds and different products checkout as one pending order", async
       { productId: 13, productName: "Demo Cake", unitPrice: "25000", quantity: 1, lineTotal: "25000" },
     ],
   };
-  await page.route("**/api/merchants/7/products", (route) => route.fulfill({ json: { products } }));
+  await page.route("**/api/merchants/7/products", (route) =>
+    route.fulfill({
+      json: {
+        items: products,
+        pagination: { page: 1, limit: 20, totalItems: products.length, totalPages: 1 },
+      },
+    }),
+  );
   await page.route("**/api/member/merchants/7/vouchers", (route) => route.fulfill({ json: { vouchers: [] } }));
   await page.route("**/api/member/orders/41", (route) => route.fulfill({ json: { order } }));
   await page.route("**/api/orders", (route) => route.fulfill({ status: 201, json: { order } }));
@@ -87,7 +94,7 @@ test("Member discovers a real merchant and catalog from HTTP", async ({ page }) 
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        products: [
+        items: [
           {
             id: 12,
             merchantId: 7,
@@ -98,6 +105,7 @@ test("Member discovers a real merchant and catalog from HTTP", async ({ page }) 
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
       }),
     }),
   );
@@ -124,7 +132,7 @@ test("Member cart quantity survives reload and stays separate by account and sto
   await page.route("**/api/merchants/7/products", (route) =>
     route.fulfill({
       json: {
-        products: [
+        items: [
           {
             id: 12,
             merchantId: 7,
@@ -135,6 +143,7 @@ test("Member cart quantity survives reload and stays separate by account and sto
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
       },
     }),
   );
@@ -187,7 +196,7 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        products: [
+        items: [
           {
             id: 12,
             merchantId: 7,
@@ -198,6 +207,7 @@ test("checkout stays pending until the mock payment endpoint confirms PAID", asy
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
       }),
     }),
   );
@@ -269,7 +279,7 @@ test("a discount voucher reserved by a pending order is not selectable at checko
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        products: [
+        items: [
           {
             id: 12,
             merchantId: 7,
@@ -280,6 +290,7 @@ test("a discount voucher reserved by a pending order is not selectable at checko
             status: "ACTIVE",
           },
         ],
+        pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
       }),
     }),
   );
@@ -450,7 +461,11 @@ test("Merchant chart groups net paid totals by Vietnam calendar day", async ({ p
   await page.route("**/api/merchant/me", (route) =>
     route.fulfill({ json: { merchant: { id: 7, name: "Mộc Studio", slug: "moc-studio", isActive: true } } }),
   );
-  await page.route("**/api/merchant/products", (route) => route.fulfill({ json: { products: [] } }));
+  await page.route("**/api/merchant/products", (route) =>
+    route.fulfill({
+      json: { items: [], pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 0 } },
+    }),
+  );
   const paid = { ...pendingOrder, status: "PAID", earnedPoints: 15 };
   await page.route("**/api/merchant/orders", (route) =>
     route.fulfill({
@@ -554,11 +569,12 @@ test("Merchant creates a reward product and selects it in the gift voucher form"
     }
     await route.fulfill({
       json: {
-        products: [
+        items: [
           { ...product, id: 51, name: "Cà phê bán", kind: "SALE", price: "15000" },
           { ...product, id: 52, name: "Quà đã ẩn", status: "HIDDEN" },
           ...(productInput ? [product] : []),
         ],
+        pagination: { page: 1, limit: 20, totalItems: productInput ? 3 : 2, totalPages: 1 },
       },
     });
   });

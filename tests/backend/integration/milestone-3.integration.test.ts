@@ -178,16 +178,16 @@ test("public catalog filters hidden products", async () => {
   const productId = created.json.product.id as number;
 
   const visible = await request(`/api/merchants/${merchantAId}/products`, "GET");
-  assert.ok(visible.json.products.some((product: { id: number }) => product.id === productId));
+  assert.ok(visible.json.items.some((product: { id: number }) => product.id === productId));
 
   const hidden = await request(`/api/merchant/products/${productId}`, "PATCH", merchantAToken, { status: "HIDDEN" });
   assert.equal(hidden.response.status, 200);
 
   const publicList = await request(`/api/merchants/${merchantAId}/products`, "GET");
-  assert.equal(publicList.json.products.some((product: { id: number }) => product.id === productId), false);
+  assert.equal(publicList.json.items.some((product: { id: number }) => product.id === productId), false);
 
   const ownList = await request("/api/merchant/products", "GET", merchantAToken);
-  assert.equal(ownList.json.products.find((product: { id: number }) => product.id === productId).status, "HIDDEN");
+  assert.equal(ownList.json.items.find((product: { id: number }) => product.id === productId).status, "HIDDEN");
 
   const inactiveStore = await request(`/api/merchants/${inactiveMerchantId}/products`, "GET");
   assert.equal(inactiveStore.response.status, 404);
@@ -215,11 +215,11 @@ test("reward products are visible to the owning merchant and cannot be purchased
     request("/api/orders", "POST", memberToken, { productId, quantity: 1 }),
   ]);
   assert.equal(own.response.status, 200);
-  assert.equal(own.json.products.find((product: { id: number }) => product.id === productId)?.kind, "REWARD");
+  assert.equal(own.json.items.find((product: { id: number }) => product.id === productId)?.kind, "REWARD");
   assert.equal(foreign.response.status, 200);
-  assert.equal(foreign.json.products.some((product: { id: number }) => product.id === productId), false);
+  assert.equal(foreign.json.items.some((product: { id: number }) => product.id === productId), false);
   assert.equal(publicCatalog.response.status, 200);
-  assert.equal(publicCatalog.json.products.some((product: { id: number }) => product.id === productId), false);
+  assert.equal(publicCatalog.json.items.some((product: { id: number }) => product.id === productId), false);
   assert.equal(checkout.response.status, 404);
   assert.equal(checkout.json.error, "PRODUCT_NOT_FOUND");
 });
