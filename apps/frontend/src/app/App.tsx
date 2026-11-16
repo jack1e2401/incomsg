@@ -64,6 +64,9 @@ import {
   MemberWallet,
 } from "../features/member/BackendMemberPages";
 import { MemberLanding } from "../features/member/MemberLanding";
+import { MerchantEventsPage } from "../features/events/MerchantEventsPage";
+import { PublicEventsPage } from "../features/events/PublicEventsPage";
+import { PublicEventDetailPage } from "../features/events/PublicEventDetailPage";
 
 // Production and local development use real endpoints. Fixtures are opt-in only.
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
@@ -79,6 +82,8 @@ function BackendRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/application/status" element={<ApplicationStatusPage />} />
+      <Route path="/s/:slug/events" element={<PublicEventsPage />} />
+      <Route path="/s/:slug/events/:eventSlug" element={<PublicEventDetailPage />} />
       <Route element={<RequireRole role="ADMIN" />}>
         <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
           <Route index element={<AdminOverview />} />
@@ -96,6 +101,7 @@ function BackendRoutes() {
           <Route index element={<MerchantOverview />} />
           <Route path="store" element={<MerchantStore />} />
           <Route path="products" element={<MerchantProducts />} />
+          <Route path="events" element={<MerchantEventsPage />} />
           <Route path="orders" element={<MerchantOrders />} />
           <Route path="loyalty" element={<MerchantLoyalty />} />
           <Route path="vouchers" element={<MerchantVouchers />} />

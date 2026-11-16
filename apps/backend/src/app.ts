@@ -14,6 +14,7 @@ import { orderPaymentRoutes, vnpayRoutes } from "./modules/payments/payments.rou
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import { merchantAbuseReportRoutes } from "./modules/abuse-reports/abuse-reports.routes.js";
 import { merchantInventoryRoutes } from "./modules/inventory/inventory.routes.js";
+import { merchantEventRoutes, publicStoreEventRoutes } from "./modules/events/events.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
@@ -25,6 +26,7 @@ app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/merchant", merchantAbuseReportRoutes);
 app.use("/api/merchant", merchantInventoryRoutes);
+app.use("/api/merchant/events", merchantEventRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
 app.use("/api/member", memberLoyaltyRoutes);
@@ -32,6 +34,7 @@ app.use("/api/member/orders", memberOrderReadRoutes);
 app.use("/api/merchant/products", merchantProductRoutes);
 app.use("/api/merchants", publicProductRoutes);
 app.use("/api/merchants", publicVoucherRoutes);
+app.use("/api/public/stores", publicStoreEventRoutes);
 app.use("/api/merchant/vouchers", merchantVoucherRoutes);
 app.use("/api/merchant/rewards", merchantRewardRoutes);
 app.use("/api/member/merchants", memberVoucherRoutes);

@@ -22,6 +22,7 @@ const merchantLinks = [
   ["/merchant", "Tổng quan"],
   ["/merchant/store", "Cửa hàng"],
   ["/merchant/products", "Sản phẩm"],
+  ["/merchant/events", "Sự kiện"],
   ["/merchant/orders", "Đơn hàng"],
   ["/merchant/loyalty", "Loyalty"],
   ["/merchant/vouchers", "Voucher"],
