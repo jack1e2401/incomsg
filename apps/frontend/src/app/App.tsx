@@ -80,6 +80,7 @@ import { ChallengesPage } from "../features/challenges/ChallengesPage";
 import { ChallengeDetailPage } from "../features/challenges/ChallengeDetailPage";
 import { MerchantChallengesPage } from "../features/merchant/challenges/MerchantChallengesPage";
 import { MerchantChallengeDetailPage } from "../features/merchant/challenges/MerchantChallengeDetailPage";
+import { MerchantChallengeEditorPage } from "../features/merchant/challenges/MerchantChallengeEditorPage";
 import { MerchantRefundRequestsPage } from "../features/merchant/refunds/MerchantRefundRequestsPage";
 import { RewardsHubLayout } from "../features/storefront/RewardsHubLayout";
 
@@ -118,6 +119,8 @@ function BackendRoutes() {
           <Route path="products" element={<MerchantProducts />} />
           <Route path="events" element={<MerchantEventsPage />} />
           <Route path="challenges" element={<MerchantChallengesPage />} />
+          <Route path="challenges/new" element={<MerchantChallengeEditorPage />} />
+          <Route path="challenges/:challengeId/edit" element={<MerchantChallengeEditorPage />} />
           <Route path="challenges/:challengeId" element={<MerchantChallengeDetailPage />} />
           <Route path="refund-requests" element={<MerchantRefundRequestsPage />} />
           <Route path="orders" element={<MerchantOrders />} />
