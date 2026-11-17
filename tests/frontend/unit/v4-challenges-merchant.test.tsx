@@ -21,6 +21,19 @@ describe("merchant challenge CMS", () => {
   expect(["IN_PROGRESS", "WAITING_BUDGET", "REWARDED"].map((value) => challengeRewardStateLabel(value as never))).toEqual(["Đang thực hiện", "Chờ ngân sách", "Đã nhận thưởng"]);
   expect(["GRANTED", "REVERSED"].map((value) => challengeGrantStatusLabel(value as never))).toEqual(["Đã phát", "Đã thu hồi"]);
  });
+ it("renders localized campaign cards and a compact action menu without a wide table", async () => {
+  const { container } = renderMerchant();
+  await screen.findByText("Đơn đầu tiên");
+  expect(screen.getByRole("option", { name: "Số đơn hàng" })).toBeInTheDocument();
+  expect(screen.getAllByText("Số đơn hàng").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getAllByText("Đang hoạt động").length).toBeGreaterThanOrEqual(2);
+  expect(screen.getByRole("link", { name: "Xem chi tiết nhiệm vụ Đơn đầu tiên" })).toHaveAttribute("href", "/merchant/challenges/6");
+  expect(container.querySelector("table")).not.toBeInTheDocument();
+  expect(container.querySelector(".min-w-\\[1050px\\]")).not.toBeInTheDocument();
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Thao tác nhiệm vụ Đơn đầu tiên" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Tạm dừng" }));
+  await waitFor(() => expect(mocks.pause).toHaveBeenCalledWith(6, "merchant-token"));
+ });
  it("lists challenges and enforces activation budget validation on create", async () => { renderMerchant(); await screen.findByText("Đơn đầu tiên"); fireEvent.click(screen.getByRole("button", { name: "Tạo nhiệm vụ" })); fireEvent.change(screen.getByLabelText("Tiêu đề"), { target: { value: "Challenge" } }); fireEvent.change(screen.getByLabelText("Ngày bắt đầu"), { target: { value: "2026-11-01T00:00" } }); fireEvent.change(screen.getByLabelText("Ngày kết thúc"), { target: { value: "2026-12-01T00:00" } }); fireEvent.change(screen.getByLabelText("Tổng ngân sách"), { target: { value: "2" } }); fireEvent.change(screen.getByLabelText("Điểm thưởng"), { target: { value: "5" } }); fireEvent.change(screen.getByLabelText("Trạng thái ban đầu"), { target: { value: "ACTIVE" } }); fireEvent.click(screen.getByRole("button", { name: "Lưu" })); expect(await screen.findByText(/Ngân sách phải lớn hơn/)).toBeInTheDocument(); expect(mocks.create).not.toHaveBeenCalled(); });
  it("locks immutable fields and shows paginated challenge statistics", async () => { renderMerchant("/merchant/challenges/6"); expect(await screen.findByText("member@test.local")).toBeInTheDocument(); expect(screen.getByText("5")).toBeInTheDocument(); });
  it("disables locked fields in edit form", async () => { renderMerchant(); await screen.findByText("Đơn đầu tiên"); fireEvent.click(screen.getByRole("button", { name: "Sửa" })); await waitFor(() => expect(screen.getByLabelText("Loại nhiệm vụ")).toBeDisabled()); expect(screen.getByLabelText("Mục tiêu")).toBeDisabled(); });
