@@ -19,10 +19,8 @@ vi.mock("../../../apps/frontend/src/api/commerce-http", async (importOriginal) =
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
-import {
-  MemberOrderResult,
-  MemberWallet,
-} from "../../../apps/frontend/src/features/member/BackendMemberPages";
+import { MemberOrderResult } from "../../../apps/frontend/src/features/member/MemberOrderResult";
+import { MemberWallet } from "../../../apps/frontend/src/features/member/MemberLoyaltyPages";
 import type { OrderDto, WalletDto } from "../../../apps/frontend/src/api/commerce-types";
 
 function MemberContextLayout({ merchantId }: { merchantId: number }) {

@@ -45,7 +45,7 @@ vi.mock("../../../apps/frontend/src/api/analytics-client", async (importOriginal
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
-import { MemberVouchers } from "../../../apps/frontend/src/features/member/BackendMemberPages";
+import { MemberVouchers } from "../../../apps/frontend/src/features/member/MemberLoyaltyPages";
 import { PublicProductDetail } from "../../../apps/frontend/src/features/member/PublicProductDetail";
 import { LegacyMemberRedirect } from "../../../apps/frontend/src/features/storefront/LegacyMemberRedirect";
 import { PublicStorefrontPage } from "../../../apps/frontend/src/features/storefront/PublicStorefrontPage";
