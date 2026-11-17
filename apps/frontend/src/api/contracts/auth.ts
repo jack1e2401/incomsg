@@ -73,6 +73,8 @@ export const authPaths = {
   registerMerchant: "/api/auth/register/merchant",
   applicationStatus: "/api/auth/application-status",
   login: "/api/auth/login",
+  refresh: "/api/auth/refresh",
+  logout: "/api/auth/logout",
   pendingApplications: "/api/admin/merchants/pending",
   applicationHistory: "/api/admin/merchants/history",
   approveApplication: (id: number) => `/api/admin/merchants/${id}/approve`,

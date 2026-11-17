@@ -10,9 +10,11 @@ const [{ app }, { prisma }, { hashPassword }] = await Promise.all([
   import("../../../apps/backend/src/lib/prisma.js"),
   import("../../../apps/backend/src/lib/password.js"),
 ]);
+const { hashRefreshToken } = await import("../../../apps/backend/src/modules/auth/refresh-session.js");
 
 const suffix = randomUUID();
 const memberEmail = `m2-member-${suffix}@test.local`;
+const refreshEmail = `m2-refresh-${suffix}@test.local`;
 const merchantEmail = `m2-merchant-${suffix}@test.local`;
 const rejectedMerchantEmail = `m2-rejected-${suffix}@test.local`;
 const adminEmail = `m2-admin-${suffix}@test.local`;
@@ -30,6 +32,14 @@ before(async () => {
       accountStatus: "ACTIVE",
     },
   });
+  await prisma.user.create({
+    data: {
+      email: refreshEmail,
+      passwordHash: await hashPassword("refresh-session-password"),
+      role: "MEMBER",
+      accountStatus: "ACTIVE",
+    },
+  });
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -40,7 +50,7 @@ before(async () => {
 after(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   const users = await prisma.user.findMany({
-    where: { email: { in: [memberEmail, merchantEmail, rejectedMerchantEmail, adminEmail] } },
+    where: { email: { in: [memberEmail, refreshEmail, merchantEmail, rejectedMerchantEmail, adminEmail] } },
     select: { id: true },
   });
   const userIds = users.map(({ id }) => id);
@@ -83,6 +93,95 @@ test("member registers and logs in", async () => {
   assert.equal(login.status, 200);
   assert.equal(typeof authenticated.accessToken, "string");
   assert.equal(authenticated.user.role, "MEMBER");
+});
+
+test("login rotates refresh sessions and rejects token reuse", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: refreshEmail, password: "refresh-session-password" }),
+  });
+  assert.equal(login.status, 200);
+  const loginCookie = login.headers.get("set-cookie") ?? "";
+  assert.match(loginCookie, /incomsg_refresh=/);
+  assert.match(loginCookie, /HttpOnly/i);
+  assert.match(loginCookie, /SameSite=Lax/i);
+  assert.match(loginCookie, /Path=\/api\/auth/i);
+
+  const originalToken = loginCookie.match(/incomsg_refresh=([^;]+)/)?.[1];
+  assert.ok(originalToken);
+  const firstRefresh = await fetch(`${baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${originalToken}` },
+  });
+  assert.equal(firstRefresh.status, 200);
+  const firstRefreshBody = await firstRefresh.json();
+  assert.equal(typeof firstRefreshBody.accessToken, "string");
+  const rotatedCookie = firstRefresh.headers.get("set-cookie") ?? "";
+  const rotatedToken = rotatedCookie.match(/incomsg_refresh=([^;]+)/)?.[1];
+  assert.ok(rotatedToken);
+  assert.notEqual(rotatedToken, originalToken);
+
+  const replay = await fetch(`${baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${originalToken}` },
+  });
+  assert.equal(replay.status, 401);
+
+  const revokedSuccessor = await fetch(`${baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${rotatedToken}` },
+  });
+  assert.equal(revokedSuccessor.status, 401);
+});
+
+test("logout revokes the refresh session and clears its cookie", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: refreshEmail, password: "refresh-session-password" }),
+  });
+  const cookie = login.headers.get("set-cookie") ?? "";
+  const token = cookie.match(/incomsg_refresh=([^;]+)/)?.[1];
+  assert.ok(token);
+
+  const logout = await fetch(`${baseUrl}/api/auth/logout`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${token}` },
+  });
+  assert.equal(logout.status, 204);
+  assert.match(logout.headers.get("set-cookie") ?? "", /incomsg_refresh=;/);
+  assert.match(logout.headers.get("set-cookie") ?? "", /Expires=Thu, 01 Jan 1970/i);
+
+  const refresh = await fetch(`${baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${token}` },
+  });
+  assert.equal(refresh.status, 401);
+});
+
+test("expired refresh sessions are rejected and revoked", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: refreshEmail, password: "refresh-session-password" }),
+  });
+  const cookie = login.headers.get("set-cookie") ?? "";
+  const token = cookie.match(/incomsg_refresh=([^;]+)/)?.[1];
+  assert.ok(token);
+
+  await prisma.refreshSession.update({
+    where: { tokenHash: hashRefreshToken(token) },
+    data: { expiresAt: new Date(Date.now() - 1000) },
+  });
+  const response = await fetch(`${baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Cookie: `incomsg_refresh=${token}` },
+  });
+  assert.equal(response.status, 401);
+
+  const session = await prisma.refreshSession.findUnique({ where: { tokenHash: hashRefreshToken(token) } });
+  assert.ok(session?.revokedAt);
 });
 
 test("merchant applies and cannot log in before approval", async () => {

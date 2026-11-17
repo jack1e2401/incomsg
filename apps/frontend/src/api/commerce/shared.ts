@@ -1,5 +1,6 @@
 import type { PlatformFeeFilters } from "../contracts/finance";
 import type { ProductListQuery, PublicProductListQuery } from "../contracts/catalog";
+import { fetchWithSessionRefresh } from "../session-http";
 
 type FetchLike = typeof fetch;
 
@@ -46,11 +47,11 @@ export async function requestJson<T>(
       headers.set(key, value);
     }
   }
-  const response = await fetcher(`${baseUrl.replace(/\/$/, "")}${path}`, {
+  const response = await fetchWithSessionRefresh(fetcher, baseUrl, path, {
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  }, options.token);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error =

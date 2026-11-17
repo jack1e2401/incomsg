@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   BackendRole,
   BackendUserDto,
@@ -8,9 +8,17 @@ import type {
   ApplicationStatusResponse,
 } from "./contracts/auth";
 import { createAuthClient } from "./auth-client";
+import {
+  clearStoredAuthSession,
+  isAccessTokenNearExpiry,
+  persistAuthSession,
+  readStoredAuthSession,
+  refreshStoredAuthSession,
+  subscribeToAuthSessionChanges,
+} from "./session-http";
 
-const SESSION_KEY = "loyalty.m2.session";
-const authApi = createAuthClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
+const authApi = createAuthClient(API_BASE_URL);
 
 interface AuthSessionValue {
   user: BackendUserDto | null;
@@ -29,36 +37,23 @@ interface AuthSessionValue {
 
 const AuthSessionContext = createContext<AuthSessionValue | null>(null);
 
-function readSession(): LoginResponse | null {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY) ?? sessionStorage.getItem("loyalty.auth.session");
-    const value: unknown = JSON.parse(raw ?? "null");
-    if (!value || typeof value !== "object") return null;
-    const session = value as Partial<LoginResponse>;
-    if (
-      typeof session.accessToken !== "string" ||
-      !session.user ||
-      typeof session.user.id !== "number" ||
-      typeof session.user.email !== "string" ||
-      !["ADMIN", "MERCHANT", "MEMBER"].includes(session.user.role) ||
-      typeof session.user.isActive !== "boolean"
-    )
-      return null;
-    return session as LoginResponse;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<LoginResponse | null>(readSession);
+  const [session, setSession] = useState<LoginResponse | null>(readStoredAuthSession);
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthSessionChanges(() => setSession(readStoredAuthSession()));
+    if (session && isAccessTokenNearExpiry(session.accessToken)) {
+      void refreshStoredAuthSession(fetch, API_BASE_URL).catch(() => undefined);
+    }
+    return unsubscribe;
+  }, [session]);
+
   const value = useMemo<AuthSessionValue>(
     () => ({
       user: session?.user ?? null,
       accessToken: session?.accessToken ?? null,
       async login(input) {
         const result = await authApi.login(input);
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
+        persistAuthSession(result);
         setSession(result);
         return result;
       },
@@ -66,8 +61,9 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       registerMerchant: (input) => authApi.registerMerchant(input),
       checkApplicationStatus: (input) => authApi.checkApplicationStatus(input),
       logout() {
-        sessionStorage.removeItem(SESSION_KEY);
+        clearStoredAuthSession();
         setSession(null);
+        void authApi.logout().catch(() => undefined);
       },
     }),
     [session],

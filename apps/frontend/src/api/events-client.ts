@@ -1,4 +1,5 @@
 import { translateApiError } from "./commerce-http";
+import { fetchWithSessionRefresh } from "./session-http";
 import type {
   CreateEventInput,
   DeleteEventResponse,
@@ -38,11 +39,11 @@ async function requestJson<T>(
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
 
-  const response = await fetcher(`${baseUrl.replace(/\/$/, "")}${path}`, {
+  const response = await fetchWithSessionRefresh(fetcher, baseUrl, path, {
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  }, options.token);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error =

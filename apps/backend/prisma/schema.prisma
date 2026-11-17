@@ -167,6 +167,24 @@ model User {
   refundRequestsAsMember RefundRequest[] @relation("RefundMember")
   refundRequestsAsMerchantReviewer RefundRequest[] @relation("RefundMerchantReviewer")
   refundRequestsAsAdminReviewer RefundRequest[] @relation("RefundAdminReviewer")
+  refreshSessions                  RefreshSession[]
+}
+
+model RefreshSession {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  familyId     String          @db.Char(36)
+  tokenHash    String          @unique @db.Char(64)
+  createdAt    DateTime        @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById Int?            @unique
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy   RefreshSession? @relation("RefreshSessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces     RefreshSession? @relation("RefreshSessionRotation")
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId, revokedAt])
 }
 
 model EmailBlacklistEntry {
