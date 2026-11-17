@@ -39,11 +39,11 @@
 
 **Interfaces:** Existing `Tab` values and filter behavior remain unchanged.
 
-- [ ] Add a test that the three status tabs have compact, non-wrapping mobile styling while preserving `aria-selected` and filtering.
-- [ ] Run the member challenge unit file and confirm the styling assertion fails against the wrapping buttons.
-- [ ] Set a single-row, non-shrinking tab layout with compact mobile padding/type; retain a usable horizontal overflow fallback at narrow widths.
-- [ ] Re-run the member challenge unit file and confirm the filter test passes.
-- [ ] Commit as `style(member): compact challenge status tabs`.
+- [x] Add a test that the three status tabs have compact, non-wrapping mobile styling while preserving `aria-selected` and filtering.
+- [x] Run the member challenge unit file and confirm the styling assertion fails against the wrapping buttons.
+- [x] Set a single-row, non-shrinking tab layout with compact mobile padding/type; retain a usable horizontal overflow fallback at narrow widths.
+- [x] Re-run the member challenge unit file and confirm the filter test passes.
+- [x] Commit as `style(member): compact challenge status tabs`.
 
 ### Task 1: Add milestone defaults and persistence model
 

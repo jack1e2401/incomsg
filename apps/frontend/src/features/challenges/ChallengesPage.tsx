@@ -32,8 +32,8 @@ export function ChallengesPage() {
   const tabs: Array<[Tab, string]> = [["active", "Đang thực hiện"], ["completed", "Đã hoàn thành"], ["ended", "Hết hạn"]];
   return <section className="space-y-5">
     <PageHeader title="Nhiệm vụ" description={resource.data.merchant.name} />
-    <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Trạng thái nhiệm vụ">
-      {tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`rounded-full px-4 py-2 text-sm font-semibold ${tab === key ? "bg-[#335e3d] text-white" : "bg-[#edf2eb] text-[#425349]"}`}>{label}</button>)}
+    <div className="flex min-w-0 flex-nowrap gap-1.5 overflow-x-auto" role="tablist" aria-label="Trạng thái nhiệm vụ">
+      {tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold sm:px-4 sm:py-2 sm:text-sm ${tab === key ? "bg-[#335e3d] text-white" : "bg-[#edf2eb] text-[#425349]"}`}>{label}</button>)}
     </div>
     {!visible.length ? <EmptyState title="Chưa có nhiệm vụ" description="Nhiệm vụ phù hợp sẽ xuất hiện tại đây." /> : <div className="grid gap-4 md:grid-cols-2">
       {visible.map((challenge) => {

@@ -153,7 +153,16 @@ describe("V4 member challenges and public discovery", () => {
   it("filters challenges through status tabs and handles daily check-in", async () => {
     tree("/s/coffee/challenges", <ChallengesPage />, member);
     expect(await screen.findByText("Mua cà phê")).toBeInTheDocument();
+    const tablist = screen.getByRole("tablist", { name: "Trạng thái nhiệm vụ" });
+    expect(tablist).toHaveClass("flex-nowrap");
+    const statusTabs = within(tablist).getAllByRole("tab");
+    expect(statusTabs).toHaveLength(3);
+    for (const statusTab of statusTabs) {
+      expect(statusTab).toHaveClass("shrink-0", "whitespace-nowrap", "px-3", "text-xs");
+    }
+    expect(screen.getByRole("tab", { name: "Đang thực hiện" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Đã hoàn thành" }));
+    expect(screen.getByRole("tab", { name: "Đã hoàn thành" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Chưa có nhiệm vụ")).toBeInTheDocument();
     cleanup();
     memberDetail.mockResolvedValueOnce({ ...memberList, challenge: { ...challenge, type: "DAILY_CHECKIN", progress }, recentEntries: [] });
