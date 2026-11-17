@@ -20,10 +20,8 @@ vi.mock("../../../apps/frontend/src/api/commerce-http", async (importOriginal) =
 import { cleanup, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
-import {
-  MerchantLoyalty,
-  MerchantOrders,
-} from "../../../apps/frontend/src/features/merchant/BackendMerchantPages";
+import { MerchantLoyalty } from "../../../apps/frontend/src/features/merchant/backend/BackendMerchantLoyaltyPage";
+import { MerchantOrders } from "../../../apps/frontend/src/features/merchant/backend/BackendMerchantOrdersPage";
 
 function renderMerchantPage(initialEntry: string, element: React.ReactNode) {
   const sessionData = JSON.stringify({
@@ -402,7 +400,10 @@ describe("M7 Merchant Experience", () => {
     expect(detail.getByText("Điểm khả dụng").nextElementSibling).toHaveTextContent("24");
     expect(detail.getByText("Điểm lẻ").nextElementSibling).toHaveTextContent("0.800000000000");
     expect(detail.getByText("Nợ điểm").nextElementSibling).toHaveTextContent("0");
-    expect(detail.getByRole("link", { name: "Đơn hàng #77" })).toHaveAttribute("href", "/merchant/orders?orderId=77");
+    expect(detail.getByRole("link", { name: "Đơn hàng #77" })).toHaveAttribute(
+      "href",
+      "/merchant/orders?orderId=77",
+    );
     fireEvent.click(detail.getByRole("button", { name: "Đóng" }));
 
     fireEvent.click(screen.getByRole("button", { name: /xem thêm giao dịch/i }));

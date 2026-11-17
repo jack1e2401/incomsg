@@ -13,15 +13,13 @@ import {
   AdminMerchants as DemoAdminMerchants,
   AdminOverview as DemoAdminOverview,
 } from "../features/admin/AdminPages";
-import {
-  MerchantLoyalty as DemoMerchantLoyalty,
-  MerchantOrders as DemoMerchantOrders,
-  MerchantOverview as DemoMerchantOverview,
-  MerchantProducts as DemoMerchantProducts,
-  MerchantRewards as DemoMerchantRewards,
-  MerchantStore as DemoMerchantStore,
-  MerchantVouchers as DemoMerchantVouchers,
-} from "../features/merchant/MerchantPages";
+import { MerchantLoyalty as DemoMerchantLoyalty } from "../features/merchant/legacy/MerchantLoyaltyPage";
+import { MerchantOrders as DemoMerchantOrders } from "../features/merchant/legacy/MerchantOrdersPage";
+import { MerchantOverview as DemoMerchantOverview } from "../features/merchant/legacy/MerchantOverviewPage";
+import { MerchantProducts as DemoMerchantProducts } from "../features/merchant/legacy/MerchantProductsPage";
+import { MerchantRewards as DemoMerchantRewards } from "../features/merchant/legacy/MerchantRewardsPage";
+import { MerchantStore as DemoMerchantStore } from "../features/merchant/legacy/MerchantStorePage";
+import { MerchantVouchers as DemoMerchantVouchers } from "../features/merchant/legacy/MerchantVouchersPage";
 import {
   MemberCart as DemoMemberCart,
   MemberCheckout as DemoMemberCheckout,
@@ -166,7 +164,14 @@ function BackendRoutes() {
 function LegacyMerchantLoyaltyRedirect() {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get("tab");
-  const route = tab === "ledger" ? "transactions" : tab === "history" ? "history" : tab === "members" ? "members" : "config";
+  const route =
+    tab === "ledger"
+      ? "transactions"
+      : tab === "history"
+        ? "history"
+        : tab === "members"
+          ? "members"
+          : "config";
   const queryParams = new URLSearchParams(searchParams);
   queryParams.delete("tab");
   const query = queryParams.size ? `?${queryParams.toString()}` : "";
