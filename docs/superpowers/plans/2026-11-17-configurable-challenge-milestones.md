@@ -83,10 +83,10 @@
 - [x] Add unit tests for valid arrays and rejection of empty, missing-title, non-integer, duplicate, descending, over-target, non-final-target, and over-10 milestone arrays.
 - [x] Add integration tests proving merchant create persists custom milestones and merchant/public/member reads return the same ordered list.
 - [x] Add integration tests proving a progress-only intermediate threshold does not create a reward grant, plus locked structure/copy-edit behavior after activation.
-- [ ] Run those unit and integration tests and confirm the expected failures before implementation. Unit validation failures were observed; the integration database is unavailable at `localhost:3306`.
+- [x] Run the unit tests and confirm expected validation failures before implementation; integration execution was initially blocked while MySQL was unavailable.
 - [x] Validate milestone arrays in `readChallengeInput`; write parent and child rows atomically in merchant create/update; reject structural changes when `activatedAt` or progress exists while allowing copy-only edits on unchanged structure.
 - [x] Include deterministic defaults for legacy rows with no milestone children in every campaign DTO; keep campaign reward, budget, progress, and refund accounting unchanged.
-- [ ] Re-run the targeted backend unit and MySQL integration tests and confirm they pass. Backend unit suite passed; integration verification is blocked because no local MySQL server is listening on port 3306.
+- [x] Re-run the backend unit and MySQL integration tests. Backend unit suite passed 77/77; the guarded integration suite later passed 128/128 on `incomsg-test`.
 - [x] Commit as `feat(challenges): persist display milestones`.
 
 ### Task 3: Make Merchant editor step 4 configure milestones
@@ -107,7 +107,7 @@
 - [x] When type changes, reset to type-appropriate defaults with a notice; when the target changes, keep valid intermediate thresholds, update the final threshold, and explain any dropped out-of-range stage.
 - [x] Initialize edit state from API milestones; disable structure controls for locked campaigns but allow copy edits; include milestones in create/update requests.
 - [x] Re-run merchant tests and confirm create/edit and locked-field tests pass without opening a modal.
-- [ ] Commit as `feat(merchant): configure challenge milestones`.
+- [x] Commit as `feat(merchant): configure challenge milestones` (`24007f0`).
 
 ### Task 4: Render configured milestones in the client mission experience
 
@@ -129,7 +129,7 @@
 - [x] Map path states from configured thresholds against server-confirmed `currentValue` and final `rewardState`; keep animations transition-based and reduced-motion safe.
 - [x] Redesign member challenge detail using the supplied campaign-summary hierarchy, configured milestone path, existing store-wallet response and recent challenge activity; keep the store palette and bottom navigation.
 - [x] Re-run member milestone/navigation tests and confirm list, home preview, detail, and status filters remain functional.
-- [ ] Commit as `feat(member): render configured challenge journey`.
+- [x] Commit as `feat(member): render configured challenge journey` (`c3f1423`).
 
 ### Task 5: Verify the complete milestone flow
 
@@ -137,11 +137,21 @@
 
 - Verify: backend/frontend work from Tasks 0–4.
 
-- [ ] Run backend unit tests and frontend unit tests; confirm no existing unit suite regresses.
-- [ ] Run `npm run test:db` only against the configured local test MySQL database; confirm the milestone migration and integration cases pass. If the local DB is unavailable, report that blocker and retain unit/typecheck evidence without claiming integration passed.
-- [ ] Run `npm run build --workspace apps/backend` and `npm run build --workspace apps/frontend`.
-- [ ] Run `git diff --check`, inspect the staged diff, and ensure no E2E changes or unrelated dirty files enter commits.
-- [ ] Record final verification and update all task checkboxes in this plan.
+- [x] Run backend unit tests (77/77) and the full frontend unit suite (173/176); record three failures in untouched loyalty/catalog tests below.
+- [x] Run `node scripts/test-backend-db.mjs` through the guarded wrapper against local `incomsg-test`; all integration cases pass (128/128).
+- [x] Run backend and frontend builds; both pass.
+- [x] Run `git diff --check`, inspect staged diffs, and keep unrelated dirty files out of feature commits.
+- [x] Record final verification and update all task checkboxes in this plan.
+
+## Final verification and runtime repair
+
+- Backend unit: 77 passed / 77.
+- Backend integration: 128 passed / 128 using only `incomsg-test` through `scripts/test-backend-db.mjs`.
+- Backend typecheck/build and frontend production build passed.
+- Focused challenge/editor frontend tests: 31 passed / 31.
+- Full frontend unit suite: 173 passed / 176; the three failures are in untouched `m7-merchant-experience.test.tsx` (two loyalty policy/ledger assertions) and `v4-catalog.test.tsx` (category-management button assertion).
+- Runtime API investigation found `20261117180000_configurable_challenge_milestones` pending and `ChallengeMilestone` missing in the local app database. After explicit user approval, `prisma migrate deploy --config prisma7.config.ts` applied only that additive migration. Migration status is up to date; public challenges, authenticated member challenges, merchant challenge listing, the Vite detail module, and `/s/ca-phe-moc/challenges` all returned HTTP 200.
+- The initial Vite module 404 happened during replacement of `ChallengeDetailPage.tsx`; the stable file now serves HTTP 200. No browser/E2E test was run.
 
 ## Acceptance
 
