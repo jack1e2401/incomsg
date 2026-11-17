@@ -59,12 +59,12 @@
 - Produce `ChallengeMilestoneInput = { thresholdValue: string; title: string; description: string }`.
 - Produce `buildDefaultChallengeMilestones(type: ChallengeType, targetValue: string): ChallengeMilestoneInput[]` using integer `bigint` math.
 
-- [ ] Add tests for five-or-fewer evenly distributed count milestones, 25/50/75/100% spend defaults, deduplication for low spend targets, and exact final target.
-- [ ] Run the new backend unit file and confirm it fails because the helper/module does not exist.
-- [ ] Add the pure default helper and Prisma `ChallengeMilestone` model with `(challengeId, position)` and `(challengeId, thresholdValue)` uniqueness; cascade child cleanup when a progress-free campaign is deleted.
-- [ ] Add the MySQL migration for the child table and indexes without rewriting existing migration history.
-- [ ] Run the new backend unit file and `npm run db:generate --workspace apps/backend`; confirm both pass.
-- [ ] Commit as `feat(challenges): model configurable milestones`.
+- [x] Add tests for five-or-fewer evenly distributed count milestones, 25/50/75/100% spend defaults, deduplication for low spend targets, and exact final target.
+- [x] Run the new backend unit file and confirm it fails because the helper/module does not exist.
+- [x] Add the pure default helper and Prisma `ChallengeMilestone` model with `(challengeId, position)` and `(challengeId, thresholdValue)` uniqueness; cascade child cleanup when a progress-free campaign is deleted.
+- [x] Add the MySQL migration for the child table and indexes without rewriting existing migration history.
+- [x] Run the new backend unit file and `npm run db:generate --workspace apps/backend`; confirm both pass.
+- [x] Commit as `feat(challenges): model configurable milestones`.
 
 ### Task 2: Validate and persist milestone configuration in challenge APIs
 

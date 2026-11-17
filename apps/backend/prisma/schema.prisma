@@ -825,8 +825,20 @@ model Challenge {
  updatedAt DateTime @updatedAt
  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
  progresses ChallengeProgress[]
+ milestones ChallengeMilestone[]
  @@index([merchantId, status, startsAt])
  @@index([merchantId, type])
+}
+model ChallengeMilestone {
+ id Int @id @default(autoincrement())
+ challengeId Int
+ position Int
+ thresholdValue Decimal @db.Decimal(15,0)
+ title String @db.VarChar(80)
+ description String @db.VarChar(240)
+ challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+ @@unique([challengeId, position])
+ @@unique([challengeId, thresholdValue])
 }
 model MemberActivity {
  id Int @id @default(autoincrement())
