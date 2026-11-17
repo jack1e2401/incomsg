@@ -22,7 +22,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
 import { MerchantProducts } from "../../../apps/frontend/src/features/merchant/MerchantProductsPage";
 import { PublicProductDetail } from "../../../apps/frontend/src/features/member/PublicProductDetail";
-import type { ProductCategoryDto, ProductDto } from "../../../apps/frontend/src/api/commerce-types";
+import type { ProductCategoryDto, ProductDto } from "../../../apps/frontend/src/api/contracts/catalog";
 
 function LocationEcho() {
   const location = useLocation();
