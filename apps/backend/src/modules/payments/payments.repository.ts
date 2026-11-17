@@ -63,7 +63,7 @@ export const paymentsRepository = {
   },
 
   async findForReturn(txnRef: string) {
-    return prisma.paymentAttempt.findUnique({ where: { txnRef }, include: { order: { select: { id: true, merchantId: true } } } });
+    return prisma.paymentAttempt.findUnique({ where: { txnRef }, include: { order: { select: { id: true, merchant: { select: { slug: true } } } } } });
   },
 
   async processIpn(input: {

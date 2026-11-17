@@ -23,7 +23,8 @@ const merchantAEmail = `m34-merchant-a-${suffix}@test.local`;
 const merchantBEmail = `m34-merchant-b-${suffix}@test.local`;
 const memberAEmail = `m34-member-a-${suffix}@test.local`;
 const memberBEmail = `m34-member-b-${suffix}@test.local`;
-const fixtureEmails = [merchantAEmail, merchantBEmail, memberAEmail, memberBEmail];
+const adminEmail = `m34-admin-${suffix}@test.local`;
+const fixtureEmails = [merchantAEmail, merchantBEmail, memberAEmail, memberBEmail, adminEmail];
 
 let server: Server | undefined;
 let baseUrl: string;
@@ -33,10 +34,12 @@ let merchantAOwnerId: number;
 let merchantBOwnerId: number;
 let memberAId: number;
 let memberBId: number;
+let adminId: number;
 let merchantAToken: string;
 let merchantBToken: string;
 let memberAToken: string;
 let memberBToken: string;
+let adminToken: string;
 let productAId: number;
 
 function signedIpn(txnRef: string, amount: string, overrides: Record<string, string> = {}) {
@@ -66,16 +69,18 @@ function signedIpn(txnRef: string, amount: string, overrides: Record<string, str
 }
 
 before(async () => {
-  const [ownerA, ownerB, memberA, memberB] = await Promise.all([
+  const [ownerA, ownerB, memberA, memberB, admin] = await Promise.all([
     prisma.user.create({ data: { email: merchantAEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: merchantBEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: memberAEmail, passwordHash: "fixture", role: "MEMBER" } }),
     prisma.user.create({ data: { email: memberBEmail, passwordHash: "fixture", role: "MEMBER" } }),
+    prisma.user.create({ data: { email: adminEmail, passwordHash: "fixture", role: "ADMIN" } }),
   ]);
   merchantAOwnerId = ownerA.id;
   merchantBOwnerId = ownerB.id;
   memberAId = memberA.id;
   memberBId = memberB.id;
+  adminId = admin.id;
 
   const [merchantA, merchantB] = await Promise.all([
     prisma.merchant.create({ data: { ownerId: ownerA.id, name: "Merchant A", slug: `m34-a-${suffix}` } }),
@@ -142,6 +147,7 @@ before(async () => {
   merchantBToken = await signAccessToken(ownerB.id);
   memberAToken = await signAccessToken(memberA.id);
   memberBToken = await signAccessToken(memberB.id);
+  adminToken = await signAccessToken(admin.id);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server!.once("listening", resolve));
@@ -158,6 +164,11 @@ after(async () => {
   const merchantIds = merchants.map((m) => m.id);
 
   await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.refundRequest.deleteMany({ where: { merchantId: { in: merchantIds } } });
+  await prisma.challengeProgressEntry.deleteMany({ where: { progress: { challenge: { merchantId: { in: merchantIds } } } } });
+  await prisma.challengeRewardGrant.deleteMany({ where: { progress: { challenge: { merchantId: { in: merchantIds } } } } });
+  await prisma.challengeProgress.deleteMany({ where: { challenge: { merchantId: { in: merchantIds } } } });
+  await prisma.memberActivity.deleteMany({ where: { membership: { merchantId: { in: merchantIds } } } });
   await prisma.orderRefund.deleteMany({ where: { requestedById: { in: userIds } } });
   await prisma.orderVoucherReservation.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
   await prisma.pointTransaction.deleteMany({ where: { wallet: { membership: { merchantId: { in: merchantIds } } } } });
@@ -194,6 +205,15 @@ async function request(path: string, method = "GET", token?: string, body?: unkn
   } catch {
     return { response, text };
   }
+}
+
+async function approveRefund(orderId: number, reason: string) {
+  const submitted = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason });
+  if (submitted.response.status !== 201) return submitted;
+  const requestId = submitted.json.refundRequest.id as number;
+  const merchantApproval = await request(`/api/merchant/refund-requests/${requestId}/approve`, "POST", merchantAToken, {});
+  assert.equal(merchantApproval.response.status, 200, JSON.stringify(merchantApproval.json));
+  return request(`/api/admin/refund-requests/${requestId}/approve`, "POST", adminToken, {});
 }
 
 test("1. cancel paid rejection: cannot cancel a paid order", async () => {
@@ -504,9 +524,7 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
   assert.equal(preview.json.providerConfirmationRequired, false);
 
   // Merchant executes refund
-  const refundRes = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, {
-    reason: "Defective item returned",
-  });
+  const refundRes = await approveRefund(orderId, "Defective item returned");
   assert.equal(refundRes.response.status, 200);
   assert.equal(refundRes.json.refund.status, "COMPLETED");
   assert.equal(refundRes.json.order.status, "REFUNDED");
@@ -523,7 +541,7 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
   });
   assert.equal(reversalTx.delta.toString(), "-1.5");
   assert.equal(reversalTx.source, "MERCHANT_REFUND");
-  assert.equal(reversalTx.actorId, merchantAOwnerId);
+  assert.equal(reversalTx.actorId, adminId);
   assert.equal(reversalTx.eventRef, `order-earn-reversal-${orderId}`);
 
   // Verify USED discount voucher was restored to AVAILABLE
@@ -539,7 +557,7 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
   assert.equal(reusedOrder.response.status, 201);
 });
 
-test("8. concurrent duplicate refund: reverses once and returns idempotent result", async () => {
+test("8. duplicate refund request is rejected and approved refund reverses once", async () => {
   env.paymentMode = "mock";
   const orderRes = await request("/api/orders", "POST", memberAToken, {
     items: [{ productId: productAId, quantity: 1 }],
@@ -548,12 +566,11 @@ test("8. concurrent duplicate refund: reverses once and returns idempotent resul
   await request(`/api/orders/${orderId}/pay`, "POST", memberAToken);
 
   // Run two concurrent refund requests
-  const [res1, res2] = await Promise.all([
-    request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, { reason: "Concurrent 1" }),
-    request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, { reason: "Concurrent 2" }),
-  ]);
+  const res1 = await approveRefund(orderId, "Concurrent request");
+  const res2 = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "Duplicate request" });
   assert.equal(res1.response.status, 200);
-  assert.equal(res2.response.status, 200);
+  assert.equal(res2.response.status, 409);
+  assert.equal(res2.json.error, "REFUND_REQUEST_ALREADY_EXISTS");
 
   // Only one EARN_REVERSAL transaction exists
   const reversals = await prisma.pointTransaction.findMany({
@@ -563,8 +580,8 @@ test("8. concurrent duplicate refund: reverses once and returns idempotent resul
 
   // Subsequent refund call returns existing refund record
   const res3 = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, { reason: "Third try" });
-  assert.equal(res3.response.status, 200);
-  assert.equal(res3.json.refund.status, "COMPLETED");
+  assert.equal(res3.response.status, 409);
+  assert.equal(res3.json.error, "USE_REFUND_APPROVAL_WORKFLOW");
 });
 
 test("9. wrong merchant 403: Merchant B cannot preview or refund Merchant A's order", async () => {
@@ -578,11 +595,11 @@ test("9. wrong merchant 403: Merchant B cannot preview or refund Merchant A's or
   assert.equal(preview.json.error, "FORBIDDEN");
 
   const refund = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantBToken, { reason: "Steal" });
-  assert.equal(refund.response.status, 403);
-  assert.equal(refund.json.error, "FORBIDDEN");
+  assert.equal(refund.response.status, 409);
+  assert.equal(refund.json.error, "USE_REFUND_APPROVAL_WORKFLOW");
 });
 
-test("10. VNPay refund pending: order becomes REFUND_PENDING and no EARN_REVERSAL is posted", async () => {
+test("10. VNPay refund request is rejected without changing paid state", async () => {
   env.paymentMode = "vnpay";
   const orderRes = await request("/api/orders", "POST", memberAToken, {
     items: [{ productId: productAId, quantity: 1 }],
@@ -597,13 +614,10 @@ test("10. VNPay refund pending: order becomes REFUND_PENDING and no EARN_REVERSA
   assert.equal(paidOrder.status, "PAID");
 
   // Merchant initiates refund for VNPay order
-  const refundRes = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, {
-    reason: "VNPay cancellation",
-  });
-  assert.equal(refundRes.response.status, 200);
-  assert.equal(refundRes.json.refund.status, "PENDING_PROVIDER");
-  assert.equal(refundRes.json.order.status, "REFUND_PENDING");
-  assert.equal(refundRes.json.walletImpact, null);
+  const refundRes = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "VNPay cancellation" });
+  assert.equal(refundRes.response.status, 409);
+  assert.equal(refundRes.json.error, "VNPAY_REFUND_NOT_SUPPORTED");
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
 
   // Verify NO EARN_REVERSAL transaction is created
   const reversals = await prisma.pointTransaction.findMany({
@@ -665,7 +679,7 @@ test("pending orders cannot be refunded, including an unresolved CREATED provide
       assert.equal(attempt.response.status, 201);
     }
     const preview = await request(`/api/merchant/orders/${orderId}/refund-preview`, "GET", merchantAToken);
-    const refund = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantAToken, { reason: "Cannot refund unpaid money" });
+    const refund = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "Cannot refund unpaid money" });
     assert.equal(preview.response.status, 409);
     assert.equal(refund.response.status, 409);
     assert.equal(refund.json.error, "ORDER_NOT_REFUNDABLE");

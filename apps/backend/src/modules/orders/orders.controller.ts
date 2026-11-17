@@ -66,8 +66,7 @@ export const getRefundPreview: RequestHandler = async (request, response) => {
 };
 
 export const refundOrder: RequestHandler = async (request, response) => {
-  const orderId = readRouteId(request.params.orderId);
-  const reason = request.body?.reason;
-  const result = await ordersService.refundOrder(response.locals.user.id, orderId, reason);
-  response.json(result);
+  void request;
+  void response;
+  throw new HttpError(409, "USE_REFUND_APPROVAL_WORKFLOW");
 };

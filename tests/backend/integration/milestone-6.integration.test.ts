@@ -55,6 +55,7 @@ after(async () => {
   await prisma.paymentAttempt.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
   const memberships = await prisma.merchantMembership.findMany({ where: { memberId: { in: fixtureUserIds } }, select: { id: true } });
   const membershipIds = memberships.map((item) => item.id);
+  await prisma.memberActivity.deleteMany({ where: { membershipId: { in: membershipIds } } });
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
   await prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
   await prisma.pointTransaction.deleteMany({ where: { walletId: { in: wallets.map((item) => item.id) } } });
@@ -184,7 +185,7 @@ test("creates a server-priced sandbox URL and keeps status scoped to the member"
   const signedReturnQuery = signedIpn(created.json.txnRef, "12000000");
   const beforeIpn = await request(`/api/payments/vnpay/return?${signedReturnQuery}`);
   assert.equal(beforeIpn.response.status, 302);
-  assert.equal(beforeIpn.response.headers.get("location"), `${env.frontendOrigin}/member/${merchantId}/orders/${order.id}`);
+  assert.equal(beforeIpn.response.headers.get("location"), `${env.frontendOrigin}/s/m6-${suffix}/orders/${order.id}`);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "PENDING");
 });
 

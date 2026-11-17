@@ -288,6 +288,15 @@ export const ordersRepository = {
       const isVnpay = Boolean(
         order.paymentAttempt && order.paymentAttempt.status === "SUCCEEDED",
       );
+      const challengeEntries = await tx.challengeProgressEntry.findMany({
+        where: { activity: { orderId: order.id, type: "ORDER_PAID" }, deltaValue: { gt: 0 } },
+        include: { progress: { include: { challenge: true, grants: { where: { status: "GRANTED" }, orderBy: { cycle: "desc" }, take: 1 } } } },
+      });
+      const challenges = challengeEntries.map((entry) => {
+        const progress = entry.progress; const challenge = progress.challenge; const grant = progress.grants[0] ?? null;
+        const after = progress.currentValue.minus(entry.deltaValue); const belowTarget = after.lessThan(challenge.targetValue); const revoke = Boolean(grant && belowTarget);
+        return { challengeId: challenge.id, title: challenge.title, type: challenge.type, targetValue: challenge.targetValue.toFixed(0), currentValueBefore: progress.currentValue.toFixed(0), currentValueAfter: after.toFixed(0), rewardStateBefore: progress.rewardState, rewardStateAfter: belowTarget ? "IN_PROGRESS" : progress.rewardState, grantStatusBefore: grant ? "GRANTED" as const : null, grantStatusAfter: revoke ? "REVERSED" as const : grant ? "GRANTED" as const : null, pointsToReverseExact: revoke && grant ? grant.pointsGranted.toFixed(12) : "0", budgetSpentBefore: challenge.budgetSpent.toFixed(12), budgetSpentAfter: revoke && grant ? challenge.budgetSpent.minus(grant.pointsGranted).toFixed(12) : challenge.budgetSpent.toFixed(12) };
+      });
 
       return {
         orderId: order.id,
@@ -302,6 +311,7 @@ export const ordersRepository = {
           order.voucherId && order.voucher?.status === "USED",
         ),
         providerConfirmationRequired: isVnpay,
+        challenges,
       };
     });
   },
@@ -313,6 +323,7 @@ export const ordersRepository = {
     ownerId: number,
     orderId: number,
     reason: string,
+    onCompleted?: (tx: Prisma.TransactionClient) => Promise<number>,
   ): Promise<RefundResponseDto> {
     return withTransactionRetry(() =>
       prisma.$transaction(
@@ -336,6 +347,7 @@ export const ordersRepository = {
             const wallet = await tx.loyaltyWallet.findFirst({
               where: { membership: { memberId: order.memberId, merchantId } },
             });
+            const challengeReversals = existingRefund.status === "COMPLETED" ? await onCompleted?.(tx) ?? 0 : 0;
             return {
               refund: {
                 id: existingRefund.id,
@@ -352,6 +364,7 @@ export const ordersRepository = {
                 existingRefund.status === "COMPLETED"
                   ? describeWallet(wallet)
                   : null,
+              challengeReversals,
             };
           }
 
@@ -501,6 +514,7 @@ export const ordersRepository = {
           }
 
           await reverseMerchantFee(tx, merchantId, order.id, completedAt);
+          const challengeReversals = await onCompleted?.(tx) ?? 0;
 
           return {
             refund: {
@@ -515,6 +529,7 @@ export const ordersRepository = {
             },
             order: toOrderDto({ ...updatedOrder, refund }),
             walletImpact: describeWallet(updatedWalletRecord),
+            challengeReversals,
           };
         },
         { isolationLevel: "Serializable" },

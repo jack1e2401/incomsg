@@ -8,6 +8,7 @@ type OrderReadRecord = Prisma.OrderGetPayload<{
     pointTransactions: true;
     paymentAttempt: true;
     refund: true;
+    refundRequest: true;
   };
 }>;
 
@@ -24,6 +25,7 @@ export const orderReadRepository = {
         pointTransactions: true,
         paymentAttempt: true,
         refund: true,
+        refundRequest: true,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -38,6 +40,7 @@ export const orderReadRepository = {
         pointTransactions: true,
         paymentAttempt: true,
         refund: true,
+        refundRequest: true,
       },
     });
     if (!order) return null;
@@ -56,6 +59,7 @@ export const orderReadRepository = {
         pointTransactions: true,
         paymentAttempt: true,
         refund: true,
+        refundRequest: true,
         member: { select: { email: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -74,6 +78,7 @@ export const orderReadRepository = {
         pointTransactions: true,
         paymentAttempt: true,
         refund: true,
+        refundRequest: true,
       },
     });
     return order ? toOrderReadDto(order) : null;

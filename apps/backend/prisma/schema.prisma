@@ -97,6 +97,8 @@ enum PointTransactionSource {
   ADMIN_ADJUSTMENT
   LEGACY_BACKFILL
   SYSTEM
+  CHALLENGE_REWARD
+  CHALLENGE_REFUND
 }
 
 enum VoucherType {
@@ -162,6 +164,9 @@ model User {
   inventoryMovements InventoryMovement[] @relation("InventoryMovementActor")
   updatedStorefrontDrafts StorefrontDraft[] @relation("StorefrontDraftUpdater")
   publishedStorefrontVersions StorefrontConfigVersion[] @relation("StorefrontVersionPublisher")
+  refundRequestsAsMember RefundRequest[] @relation("RefundMember")
+  refundRequestsAsMerchantReviewer RefundRequest[] @relation("RefundMerchantReviewer")
+  refundRequestsAsAdminReviewer RefundRequest[] @relation("RefundAdminReviewer")
 }
 
 model EmailBlacklistEntry {
@@ -278,6 +283,8 @@ model Merchant {
   storefrontDraft    StorefrontDraft?
   storefrontVersions StorefrontConfigVersion[]
   events             MerchantEvent[]
+  challenges         Challenge[]
+  refundRequests     RefundRequest[]
 }
 
 model StorefrontDraft {
@@ -422,9 +429,11 @@ model Order {
   voucherReservation OrderVoucherReservation?
   refund           OrderRefund?
   abuseReports     MerchantAbuseReport[]
+  activities MemberActivity[]
   loyaltyPolicyVersion LoyaltyPolicyVersion? @relation(fields: [loyaltyPolicyVersionId], references: [id], onDelete: Restrict)
   inventoryMovements InventoryMovement[]
   feeTransactions MerchantFeeTransaction[]
+  refundRequest RefundRequest?
 
   @@index([merchantId, status])
   @@index([merchantId, status, paidAt])
@@ -506,6 +515,8 @@ model MerchantMembership {
   tier       LoyaltyTier?    @relation(fields: [tierId], references: [id])
   wallet     LoyaltyWallet?
   vouchers   MemberVoucher[]
+  activities MemberActivity[]
+  challengeProgress ChallengeProgress[]
 
   @@unique([memberId, merchantId])
   @@index([merchantId])
@@ -582,6 +593,8 @@ model PointTransaction {
   createdAt       DateTime               @default(now())
   wallet          LoyaltyWallet          @relation(fields: [walletId], references: [id])
   order           Order?                 @relation(fields: [orderId], references: [id])
+  challengeGrant ChallengeRewardGrant? @relation("ChallengeGrantEarn")
+  challengeReversal ChallengeRewardGrant? @relation("ChallengeGrantReversal")
   memberVoucher   MemberVoucher?         @relation(fields: [memberVoucherId], references: [id])
 
   @@index([walletId, createdAt])
@@ -756,4 +769,144 @@ model RewardCancellation {
   cancelledBy   User          @relation("RewardCanceller", fields: [cancelledById], references: [id])
 
   @@index([cancelledById])
+}
+
+enum ChallengeType {
+  ORDER_COUNT
+  DAILY_CHECKIN
+  SPEND_TOTAL
+}
+enum ChallengeStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+enum MemberActivityType {
+  ORDER_PAID
+  DAILY_CHECKIN
+  ORDER_REFUNDED
+}
+enum ChallengeRewardState {
+  IN_PROGRESS
+  WAITING_BUDGET
+  REWARDED
+}
+enum ChallengeRewardGrantStatus {
+  GRANTED
+  REVERSED
+}
+enum RefundRequestStatus {
+  PENDING_MERCHANT
+  PENDING_ADMIN
+  REJECTED
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Challenge {
+ id Int @id @default(autoincrement())
+ merchantId Int
+ title String @db.VarChar(191)
+ description String @db.Text
+ type ChallengeType
+ status ChallengeStatus @default(DRAFT)
+ targetValue Decimal @db.Decimal(15,0)
+ rewardPoints Decimal @db.Decimal(38,12)
+ budgetTotal Decimal @db.Decimal(38,12)
+ budgetSpent Decimal @default(0) @db.Decimal(38,12)
+ startsAt DateTime
+ endsAt DateTime
+ isFeatured Boolean @default(false)
+ activatedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+ progresses ChallengeProgress[]
+ @@index([merchantId, status, startsAt])
+ @@index([merchantId, type])
+}
+model MemberActivity {
+ id Int @id @default(autoincrement())
+ membershipId Int
+ type MemberActivityType
+ eventKey String @unique @db.VarChar(191)
+ orderId Int?
+ amountVnd Decimal? @db.Decimal(15,0)
+ occurredAt DateTime
+ createdAt DateTime @default(now())
+ membership MerchantMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+ order Order? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+ entries ChallengeProgressEntry[]
+ @@index([membershipId, type, occurredAt])
+ @@index([orderId])
+}
+model ChallengeProgress {
+ id Int @id @default(autoincrement())
+ challengeId Int
+ membershipId Int
+ currentValue Decimal @default(0) @db.Decimal(15,0)
+ rewardState ChallengeRewardState @default(IN_PROGRESS)
+ rewardCycle Int @default(1)
+ completedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+ membership MerchantMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+ entries ChallengeProgressEntry[]
+ grants ChallengeRewardGrant[]
+ @@unique([challengeId, membershipId])
+ @@index([challengeId, rewardState, completedAt])
+}
+model ChallengeProgressEntry {
+ id Int @id @default(autoincrement())
+ progressId Int
+ activityId Int
+ deltaValue Decimal @db.Decimal(15,0)
+ createdAt DateTime @default(now())
+ progress ChallengeProgress @relation(fields: [progressId], references: [id], onDelete: Restrict)
+ activity MemberActivity @relation(fields: [activityId], references: [id], onDelete: Restrict)
+ @@unique([progressId, activityId])
+ @@index([activityId])
+}
+model ChallengeRewardGrant {
+ id Int @id @default(autoincrement())
+ progressId Int
+ cycle Int
+ status ChallengeRewardGrantStatus @default(GRANTED)
+ pointsGranted Decimal @db.Decimal(38,12)
+ earnTransactionId Int @unique
+ reversalTransactionId Int? @unique
+ grantedAt DateTime @default(now())
+ reversedAt DateTime?
+ progress ChallengeProgress @relation(fields: [progressId], references: [id], onDelete: Restrict)
+ earnTransaction PointTransaction @relation("ChallengeGrantEarn", fields: [earnTransactionId], references: [id], onDelete: Restrict)
+ reversalTransaction PointTransaction? @relation("ChallengeGrantReversal", fields: [reversalTransactionId], references: [id], onDelete: Restrict)
+ @@unique([progressId, cycle])
+}
+model RefundRequest {
+ id Int @id @default(autoincrement())
+ orderId Int @unique
+ memberId Int
+ merchantId Int
+ reason String @db.VarChar(255)
+ status RefundRequestStatus @default(PENDING_MERCHANT)
+ requestedAt DateTime @default(now())
+ merchantReviewedById Int?
+ merchantReviewedAt DateTime?
+ merchantDecisionReason String? @db.VarChar(255)
+ adminReviewedById Int?
+ adminReviewedAt DateTime?
+ adminDecisionReason String? @db.VarChar(255)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+ member User @relation("RefundMember", fields: [memberId], references: [id], onDelete: Restrict)
+ merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+ merchantReviewer User? @relation("RefundMerchantReviewer", fields: [merchantReviewedById], references: [id], onDelete: SetNull)
+ adminReviewer User? @relation("RefundAdminReviewer", fields: [adminReviewedById], references: [id], onDelete: SetNull)
+ @@index([merchantId, status, requestedAt])
+ @@index([status, requestedAt])
 }

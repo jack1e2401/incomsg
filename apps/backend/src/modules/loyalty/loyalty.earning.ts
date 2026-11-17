@@ -8,6 +8,7 @@ import { toOrderDto } from "../orders/orders.serialization.js";
 import type { OrderDto } from "../orders/orders.types.js";
 import { consumeOrderInventory } from "../inventory/inventory.order.js";
 import { recordMerchantFee } from "../merchant/merchant.finance.js";
+import { processPaidOrderChallenges } from "../challenges/challenges.engine.js";
 
 export interface EarningSnapshot {
   vndPerPoint: number;
@@ -109,5 +110,6 @@ export async function completePaidOrder(
   });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
   await recordMerchantFee(tx, { ...order, paidAt: order.paidAt! });
+  await processPaidOrderChallenges(tx, { ...order, paidAt: order.paidAt! });
   return { ...toOrderDto(paid), promotedToTier };
 }
