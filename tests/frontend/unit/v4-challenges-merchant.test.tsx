@@ -10,7 +10,7 @@ import { MerchantChallengeEditorPage } from "../../../apps/frontend/src/features
 import { challengeGrantStatusLabel, challengeRewardStateLabel, challengeStatusLabel, challengeTypeLabel } from "../../../apps/frontend/src/features/merchant/challenges/challenge-labels";
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), get: vi.fn(), update: vi.fn(), activate: vi.fn(), pause: vi.fn(), archive: vi.fn(), remove: vi.fn() }));
-vi.mock("../../../apps/frontend/src/api/challenges-client", () => ({ createChallengesClient: () => ({ listMerchantChallenges: mocks.list, createMerchantChallenge: mocks.create, getMerchantChallenge: mocks.get, updateMerchantChallenge: mocks.update, activateMerchantChallenge: mocks.activate, pauseMerchantChallenge: mocks.pause, archiveMerchantChallenge: mocks.archive, deleteMerchantChallenge: mocks.remove }), translateChallengeError: (s: string) => s }));
+vi.mock("../../../apps/frontend/src/api/challenges-client", async (importOriginal) => ({ ...(await importOriginal<typeof import("../../../apps/frontend/src/api/challenges-client")>()), createChallengesClient: () => ({ listMerchantChallenges: mocks.list, createMerchantChallenge: mocks.create, getMerchantChallenge: mocks.get, updateMerchantChallenge: mocks.update, activateMerchantChallenge: mocks.activate, pauseMerchantChallenge: mocks.pause, archiveMerchantChallenge: mocks.archive, deleteMerchantChallenge: mocks.remove }) }));
 const challenge = { id: 6, merchantId: 3, title: "Đơn đầu tiên", description: "Mô tả", type: "ORDER_COUNT" as const, status: "ACTIVE" as const, effectiveStatus: "ACTIVE" as const, targetValue: "3", rewardPoints: "20.0000000000", budgetTotal: "100.0000000000", budgetSpent: "20.0000000000", budgetRemaining: "80.0000000000", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z", isFeatured: true, hasProgress: true, lockedFields: true, inProgressCount: 5, completedCount: 2, waitingBudgetCount: 1, createdAt: "", updatedAt: "" };
 function renderMerchant(path = "/merchant/challenges") { const session = JSON.stringify({ accessToken: "merchant-token", user: { id: 2, email: "merchant@test.local", role: "MERCHANT", isActive: true } }); sessionStorage.setItem("loyalty.m2.session", session); sessionStorage.setItem("loyalty.auth.session", session); return render(<AuthSessionProvider><MemoryRouter initialEntries={[path]}><Routes><Route path="/merchant/challenges" element={<MerchantChallengesPage />} /><Route path="/merchant/challenges/new" element={<MerchantChallengeEditorPage />} /><Route path="/merchant/challenges/:challengeId/edit" element={<MerchantChallengeEditorPage />} /><Route path="/merchant/challenges/:challengeId" element={<MerchantChallengeDetailPage />} /></Routes></MemoryRouter></AuthSessionProvider>); }
 describe("merchant challenge CMS", () => {
@@ -34,6 +34,16 @@ describe("merchant challenge CMS", () => {
   fireEvent.pointerDown(screen.getByRole("button", { name: "Thao tác nhiệm vụ Đơn đầu tiên" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
   fireEvent.click(await screen.findByRole("menuitem", { name: "Tạm dừng" }));
   await waitFor(() => expect(mocks.pause).toHaveBeenCalledWith(6, "merchant-token"));
+ });
+ it("shows a translated message when a challenge cannot be activated", async () => {
+  mocks.list.mockResolvedValueOnce({ items: [{ ...challenge, status: "DRAFT" as const, effectiveStatus: "DRAFT" as const }], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } });
+  mocks.activate.mockRejectedValueOnce(new Error("INVALID_CHALLENGE_CONFIGURATION"));
+  renderMerchant();
+  await screen.findByText("Đơn đầu tiên");
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Thao tác nhiệm vụ Đơn đầu tiên" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Kích hoạt" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Cấu hình nhiệm vụ chưa hợp lệ hoặc ngân sách thấp hơn điểm thưởng.");
+  expect(screen.queryByText("INVALID_CHALLENGE_CONFIGURATION")).not.toBeInTheDocument();
  });
  it("validates the date range on the editor page without opening a dialog", async () => {
   renderMerchant("/merchant/challenges/new");
@@ -87,6 +97,8 @@ describe("merchant challenge CMS", () => {
   expect(screen.getAllByText("Đang thực hiện").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("Đã phát")).toBeInTheDocument();
   expect(screen.getByText("Đã thu hồi")).toBeInTheDocument();
+  expect(screen.getByText("Điểm thưởng ròng đã cấp")).toBeInTheDocument();
+  expect(screen.queryByText("Tổng điểm đã phát")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Chỉnh sửa nhiệm vụ" })).toHaveAttribute("href", "/merchant/challenges/6/edit");
   expect(container.querySelector(".min-w-\\[700px\\]")).not.toBeInTheDocument();
   expect(container.querySelector(".overflow-x-auto")).not.toBeInTheDocument();
@@ -114,7 +126,7 @@ describe("merchant challenge CMS", () => {
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
   fireEvent.change(screen.getByLabelText("Ngân sách tổng (điểm)"), { target: { value: "10" } });
   fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
-  expect(await screen.findByText("Ngân sách không được thấp hơn số điểm đã phát.")).toBeInTheDocument();
+  expect(await screen.findByText("Ngân sách không được thấp hơn số điểm ngân sách đã sử dụng.")).toBeInTheDocument();
   expect(mocks.update).not.toHaveBeenCalled();
  });
 });

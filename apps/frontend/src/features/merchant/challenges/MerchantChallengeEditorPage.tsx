@@ -60,7 +60,7 @@ function validate(step: number, form: Form, existing?: MerchantChallengeDto): st
       return "Ngày kết thúc phải lớn hơn ngày bắt đầu.";
     }
     if (!Number.isFinite(Number(form.budgetTotal)) || Number(form.budgetTotal) < 0) return "Ngân sách phải là số không âm.";
-    if (existing && !decimalAtLeast(form.budgetTotal, existing.budgetSpent)) return "Ngân sách không được thấp hơn số điểm đã phát.";
+    if (existing && !decimalAtLeast(form.budgetTotal, existing.budgetSpent)) return "Ngân sách không được thấp hơn số điểm ngân sách đã sử dụng.";
   }
   return "";
 }

@@ -54,6 +54,19 @@ describe("V4 navigation UX", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Marketing/ })).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByRole("link", { name: "Sự kiện" })).toHaveAttribute("href", "/merchant/events");
     expect(screen.getByRole("link", { name: "Nhiệm vụ" })).toHaveAttribute("href", "/merchant/challenges");
+    expect(screen.getByRole("navigation", { name: "Điều hướng chính" })).toHaveClass("merchant-sidebar-scroll");
+  });
+
+  it.each([
+    ["/merchant/challenges/new", "Tạo nhiệm vụ"],
+    ["/merchant/challenges/12/edit", "Chỉnh sửa nhiệm vụ"],
+    ["/merchant/challenges/12", "Chi tiết nhiệm vụ"],
+  ])("shows the correct console title for %s", async (path, expectedTitle) => {
+    sessionStorage.setItem("loyalty.m2.session", JSON.stringify({ accessToken: "token", user: { id: 2, email: "merchant@example.com", role: "MERCHANT", isActive: true } }));
+    commerceClient.getOwnMerchant.mockResolvedValue({ merchant: { id: 5, isActive: true } });
+    render(<AuthSessionProvider><MemoryRouter initialEntries={[path]}><Routes><Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}><Route path="challenges/new" element={<p>Editor page</p>} /><Route path="challenges/:challengeId/edit" element={<p>Editor page</p>} /><Route path="challenges/:challengeId" element={<p>Detail page</p>} /></Route></Routes></MemoryRouter></AuthSessionProvider>);
+    await screen.findByText(/(Editor|Detail) page/);
+    expect(screen.getByRole("banner")).toHaveTextContent(expectedTitle);
   });
 
   it("resets merchant content to the top after navigating to a new management page", async () => {

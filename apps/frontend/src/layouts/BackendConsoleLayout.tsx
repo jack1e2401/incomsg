@@ -62,10 +62,17 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
     document.body.scrollTop = 0;
   }, [location.pathname, role]);
   const routeLabels = role === "admin" ? adminLinks : merchantGroups.flatMap((group) => group.links);
+  const challengePageTitle = role === "merchant"
+    ? location.pathname === "/merchant/challenges/new"
+      ? "Tạo nhiệm vụ"
+      : /^\/merchant\/challenges\/\d+\/edit\/?$/.test(location.pathname)
+        ? "Chỉnh sửa nhiệm vụ"
+        : /^\/merchant\/challenges\/\d+\/?$/.test(location.pathname)
+          ? "Chi tiết nhiệm vụ"
+          : undefined
+    : undefined;
   const pageTitle = location.pathname.split("/").filter(Boolean).length > 1
-    ? location.pathname.includes("/challenges/")
-      ? "Chi tiết nhiệm vụ"
-      : routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
+    ? challengePageTitle ?? routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
     : role === "admin" ? "Quản trị hệ thống" : "Cửa hàng";
   return (
     <div className="min-h-dvh bg-[#f7f8f4] lg:pl-[17rem]">
@@ -99,7 +106,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
             <span className="mt-0.5 block text-xs text-white/55">{role === "merchant" ? "Quản lý hoạt động" : "Quản lý hệ thống"}</span>
           </span>
         </div>
-        <nav aria-label="Điều hướng chính" className="mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3 pr-1">
+        <nav aria-label="Điều hướng chính" className={cn("mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3 pr-1", role === "merchant" && "merchant-sidebar-scroll")}>
           {role === "admin" ? links.map(([to, label]) => (
             <NavLink
               key={to}

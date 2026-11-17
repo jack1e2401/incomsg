@@ -116,7 +116,7 @@ export function MerchantChallengeDetailPage() {
         <Metric icon={UsersThree} label="Đang tham gia" value={challenge.inProgressCount.toLocaleString("vi-VN")} />
         <Metric icon={CheckCircle} label="Đã hoàn thành" value={challenge.completedCount.toLocaleString("vi-VN")} />
         <Metric icon={Gift} label="Chờ ngân sách" value={challenge.waitingBudgetCount.toLocaleString("vi-VN")} detail="Mục tiêu xong, đang chờ cấp thưởng." />
-        <Metric icon={Coins} label="Tổng điểm đã phát" value={`${formatPts(challenge.budgetSpent)} điểm`} />
+        <Metric icon={Coins} label="Điểm thưởng ròng đã cấp" value={`${formatPts(challenge.budgetSpent)} điểm`} />
       </div>
 
       <Card className="overflow-hidden p-0">

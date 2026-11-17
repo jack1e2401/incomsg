@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { createChallengesClient } from "../../../api/challenges-client";
+import { createChallengesClient, translateChallengeError } from "../../../api/challenges-client";
 import type { ChallengeEffectiveStatus, ChallengeType, ListMerchantChallengesParams, MerchantChallengeDto } from "../../../api/challenges-types";
 import { useResource } from "../../../api/useResource";
 import { useToken } from "../merchant-page-support";
@@ -40,7 +40,7 @@ export function MerchantChallengesPage() {
       if (operation === "delete") await api.deleteMerchantChallenge(challenge.id, token);
       setRevision((current) => current + 1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể cập nhật nhiệm vụ.");
+      setError(translateChallengeError(reason instanceof Error ? reason.message : "INVALID_INPUT"));
     }
   }
 
