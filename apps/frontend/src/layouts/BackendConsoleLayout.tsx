@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CaretDown, ChartBar, Gauge, List, Megaphone, Package, SignOut, Storefront, UsersThree, X } from "@phosphor-icons/react";
 import { useAuthSession } from "../api/auth-session";
@@ -55,6 +55,11 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
     if (role !== "merchant") return;
     const active = merchantGroups.find((group) => group.links.some(([to]) => location.pathname === to || (to !== "/merchant" && location.pathname.startsWith(`${to}/`))));
     if (active) setExpandedGroups((current) => ({ ...current, [active.label]: true }));
+  }, [location.pathname, role]);
+  useLayoutEffect(() => {
+    if (role !== "merchant") return;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }, [location.pathname, role]);
   const routeLabels = role === "admin" ? adminLinks : merchantGroups.flatMap((group) => group.links);
   const pageTitle = location.pathname.split("/").filter(Boolean).length > 1

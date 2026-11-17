@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 const { storeClient, analyticsClient, commerceClient } = vi.hoisted(() => ({ storeClient: { getPublicStorefront: vi.fn(), getPreview: vi.fn() }, analyticsClient: { ensureStoreMembershipBySlug: vi.fn() }, commerceClient: { getOwnMerchant: vi.fn() } }));
@@ -54,5 +54,16 @@ describe("V4 navigation UX", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Marketing/ })).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByRole("link", { name: "Sự kiện" })).toHaveAttribute("href", "/merchant/events");
     expect(screen.getByRole("link", { name: "Nhiệm vụ" })).toHaveAttribute("href", "/merchant/challenges");
+  });
+
+  it("resets merchant content to the top after navigating to a new management page", async () => {
+    sessionStorage.setItem("loyalty.m2.session", JSON.stringify({ accessToken: "token", user: { id: 2, email: "merchant@example.com", role: "MERCHANT", isActive: true } }));
+    commerceClient.getOwnMerchant.mockResolvedValue({ merchant: { id: 5, isActive: true } });
+    render(<AuthSessionProvider><MemoryRouter initialEntries={["/merchant/challenges/12"]}><Routes><Route path="/merchant" element={<BackendConsoleLayout role="merchant" />}><Route path="challenges" element={<p>Danh sách nhiệm vụ</p>} /><Route path="challenges/:challengeId" element={<p>Chi tiết nhiệm vụ</p>} /></Route></Routes></MemoryRouter></AuthSessionProvider>);
+    expect(await screen.findByText("Chi tiết nhiệm vụ")).toBeInTheDocument();
+    document.documentElement.scrollTop = 480;
+    fireEvent.click(screen.getByRole("link", { name: "Nhiệm vụ" }));
+    expect(await screen.findByText("Danh sách nhiệm vụ")).toBeInTheDocument();
+    expect(document.documentElement.scrollTop).toBe(0);
   });
 });
