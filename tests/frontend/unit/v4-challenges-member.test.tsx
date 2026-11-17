@@ -46,7 +46,7 @@ describe("V4 member challenges and public discovery", () => {
     publicDetail.mockResolvedValue({ merchant: memberList.merchant, challenge });
     memberDetail.mockResolvedValue({ merchant: memberList.merchant, checkedInToday: false, todayDateKey: "2026-11-17", challenge: { ...challenge, progress }, recentEntries: [] });
     publicVouchers.mockResolvedValue({ definitions: [{ id: 2, title: "Quà", type: "REWARD", rewardDescription: "Ly nước", pointsCost: 100, discountAmount: null, availableQuantity: 5 }] });
-    memberVouchers.mockResolvedValue({ vouchers: [] }); wallet.mockResolvedValue({ wallet: { availablePoints: 500, netLifetimeEarned: 1840 } });
+    memberVouchers.mockResolvedValue({ vouchers: [] }); wallet.mockResolvedValue({ wallet: { availablePoints: 500, netLifetimeEarned: "1840.000000000000" } });
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -135,17 +135,40 @@ describe("V4 member challenges and public discovery", () => {
     expect(within(detailPath).getByText("2 đơn")).toBeInTheDocument();
   });
 
+  it("shows a zero progress journey for a member who has not started the challenge", async () => {
+    const unstarted = { ...challenge, progress: null };
+    const unstartedList = { ...memberList, heroChallenge: unstarted, challenges: [unstarted] };
+    memberChallenges.mockResolvedValue(unstartedList);
+    memberDetail.mockResolvedValue({ merchant: memberList.merchant, checkedInToday: false, todayDateKey: "2026-11-17", challenge: unstarted, recentEntries: [] });
+
+    tree("/s/coffee", <ChallengeHeroCard slug="coffee" storeBase="/s/coffee" />, member);
+    const homePath = await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(screen.getByText("0/3 đơn hàng")).toBeInTheDocument();
+    expect(within(homePath).getByText("1 đơn").closest("li")).toHaveAttribute("aria-current", "step");
+
+    cleanup();
+    tree("/s/coffee/challenges", <ChallengesPage />, member);
+    await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(screen.getByText("0/3 đơn hàng")).toBeInTheDocument();
+
+    cleanup();
+    tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
+    await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(screen.getByText("0/3 đơn hàng")).toBeInTheDocument();
+  });
+
   it("shows the store scoped points summary on member challenge detail", async () => {
     memberDetail.mockResolvedValueOnce({
       merchant: memberList.merchant,
       checkedInToday: false,
       todayDateKey: "2026-11-17",
-      challenge: { ...challenge, progress },
+      challenge: { ...challenge, rewardPoints: "150.000000000000", progress },
       recentEntries: [{ id: 88, activityType: "ORDER_PAID", deltaValue: "2", orderId: 77, occurredAt: "2026-11-16T10:00:00Z" }],
     });
     tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
 
     expect(await screen.findByRole("heading", { name: "Mua cà phê" })).toBeInTheDocument();
+    expect(screen.getByText("+150 điểm")).toBeInTheDocument();
     expect(screen.getByText(/Kết thúc/)).toBeInTheDocument();
     expect(screen.getByText(/Còn \d+ ngày/)).toBeInTheDocument();
     expect(await screen.findByText("Điểm khả dụng")).toBeInTheDocument();

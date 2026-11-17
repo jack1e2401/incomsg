@@ -6,7 +6,7 @@ import type { MemberChallengeDto } from "../../api/challenges-types";
 import { useResource } from "../../api/useResource";
 import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusText } from "../../components/ui";
 import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
-import { challengeStatusLabel, formatChallengeGoal } from "./challenge-ui";
+import { challengeStatusLabel, emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
 
 const api = createChallengesClient();
 type Tab = "active" | "completed" | "ended";
@@ -38,13 +38,14 @@ export function ChallengesPage() {
     {!visible.length ? <EmptyState title="Chưa có nhiệm vụ" description="Nhiệm vụ phù hợp sẽ xuất hiện tại đây." /> : <div className="grid gap-4 md:grid-cols-2">
       {visible.map((challenge) => {
         const progress = member ? (challenge as MemberChallengeDto).progress : null;
+        const journeyProgress = member ? progress ?? emptyChallengeProgress(challenge) : null;
         const status = challengeStatusLabel(progress, challenge.effectiveStatus);
         return <Card key={challenge.id} className="p-5">
           <div className="flex items-start justify-between gap-3"><h2 className="font-extrabold">{challenge.title}</h2><StatusText tone={status === "Hết hạn" ? "neutral" : status === "Chờ ngân sách" ? "amber" : status === "Đã nhận thưởng" ? "green" : "neutral"}>{status}</StatusText></div>
           <p className="mt-2 text-sm muted">{challenge.description}</p>
           <p className="mt-3 text-sm font-bold text-[#357044]">+{Number(challenge.rewardPoints).toLocaleString("vi-VN")} điểm</p>
           <p className="mt-1 text-xs muted">{new Date(challenge.endsAt).toLocaleDateString("vi-VN")}</p>
-          {progress ? <ChallengeMilestonePath challenge={challenge} progress={progress} compact /> : <p className="mt-3 text-sm">{formatChallengeGoal(challenge)}</p>}
+          {journeyProgress ? <ChallengeMilestonePath challenge={challenge} progress={journeyProgress} compact /> : <p className="mt-3 text-sm">{formatChallengeGoal(challenge)}</p>}
           <div className="mt-4">{member ? <Button asChild variant="outline"><Link to={`/s/${slug}/challenges/${challenge.id}`}>Xem nhiệm vụ</Link></Button> : <Button asChild><Link to={`/login?returnTo=${encodeURIComponent(`/s/${slug}/challenges/${challenge.id}`)}`}>Đăng nhập để bắt đầu</Link></Button>}</div>
         </Card>;
       })}

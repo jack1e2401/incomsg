@@ -1,5 +1,18 @@
 import type { PublicChallengeDto, ChallengeProgressDto } from "../../api/challenges-types";
 
+export function emptyChallengeProgress(challenge: PublicChallengeDto): ChallengeProgressDto {
+  return {
+    currentValue: "0",
+    targetValue: challenge.targetValue,
+    remainingValue: challenge.targetValue,
+    percent: 0,
+    rewardState: "IN_PROGRESS",
+    rewardCycle: 1,
+    completedAt: null,
+    grantedAt: null,
+  };
+}
+
 export const formatChallengeGoal = (challenge: PublicChallengeDto) => {
   const target = Number(challenge.targetValue);
   if (challenge.type === "ORDER_COUNT") return `Mua ${target.toLocaleString("vi-VN")} đơn hàng`;

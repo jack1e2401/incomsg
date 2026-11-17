@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChallengeProgressDto, PublicChallengeDto } from "../../../apps/frontend/src/api/challenges-types";
-import { buildChallengeMilestones } from "../../../apps/frontend/src/features/challenges/challenge-milestones";
+import { buildChallengeMilestones, getChallengeMilestonePathProgress } from "../../../apps/frontend/src/features/challenges/challenge-milestones";
 
 const challenge = (overrides: Partial<PublicChallengeDto> = {}): PublicChallengeDto => ({
   id: 9,
@@ -101,5 +101,23 @@ describe("buildChallengeMilestones", () => {
     expect(result.at(-1)).toEqual(
       expect.objectContaining({ label: "3 đơn", state: "rewarded" }),
     );
+  });
+
+  it("fills the path to the configured stage when milestone thresholds are uneven", () => {
+    const configured = challenge({
+      type: "SPEND_TOTAL",
+      targetValue: "100",
+      milestones: [
+        { position: 1, thresholdValue: "10", title: "Mốc 1", description: "" },
+        { position: 2, thresholdValue: "20", title: "Mốc 2", description: "" },
+        { position: 3, thresholdValue: "80", title: "Mốc 3", description: "" },
+        { position: 4, thresholdValue: "100", title: "Mốc 4", description: "" },
+      ],
+    });
+    const currentProgress = progress({ currentValue: "20", targetValue: "100", remainingValue: "80", percent: 20 });
+    const milestones = buildChallengeMilestones(configured, currentProgress);
+
+    expect(milestones[1].state).toBe("reached");
+    expect(getChallengeMilestonePathProgress(configured, currentProgress, milestones)).toBeCloseTo(100 / 3, 4);
   });
 });

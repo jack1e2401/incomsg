@@ -7,7 +7,7 @@ import { useResource } from "../../api/useResource";
 import { Button, Card, StatusText } from "../../components/ui";
 import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
 import { useChallengeProgressAnimation } from "./useChallengeProgressAnimation";
-import { formatChallengeGoal } from "./challenge-ui";
+import { emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
 
 const challengesApi = createChallengesClient();
 const rewardText = (points: string) => `+${Number(points).toLocaleString("vi-VN")} điểm`;
@@ -26,8 +26,9 @@ export function ChallengeHeroCard({ slug, storeBase }: { slug: string; storeBase
   const [error, setError] = useState("");
   const data = resource.data;
   const hero = data?.heroChallenge;
-  const progress = member && hero ? (hero as MemberChallengeDto).progress : null;
-  const animateReached = useChallengeProgressAnimation(hero?.id ?? 0, progress);
+  const confirmedProgress = member && hero ? (hero as MemberChallengeDto).progress : null;
+  const progress = member && hero ? confirmedProgress ?? emptyChallengeProgress(hero) : null;
+  const animateReached = useChallengeProgressAnimation(hero?.id ?? 0, confirmedProgress);
   if ((resource.loading && !data) || resource.error || !hero) return null;
   const todayDone = member && (data as import("../../api/challenges-types").MemberStoreChallengesResponse).checkedInToday;
   const loginTo = `/login?returnTo=${encodeURIComponent(`${storeBase}/challenges/${hero.id}`)}`;

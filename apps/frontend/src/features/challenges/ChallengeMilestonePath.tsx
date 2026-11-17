@@ -1,7 +1,7 @@
 import { Check, Lock, Star, Trophy } from "@phosphor-icons/react";
 import type { ChallengeProgressDto, PublicChallengeDto } from "../../api/challenges-types";
 import { cn } from "../../lib/utils";
-import { buildChallengeMilestones, type ChallengeMilestoneState } from "./challenge-milestones";
+import { buildChallengeMilestones, getChallengeMilestonePathProgress, type ChallengeMilestoneState } from "./challenge-milestones";
 import { formatChallengeProgress, formatChallengeRemaining } from "./challenge-ui";
 
 const NODE_SPACING = 144;
@@ -47,7 +47,7 @@ export function ChallengeMilestonePath({
     (latest, milestone, index) => ["reached", "reward-pending", "rewarded"].includes(milestone.state) ? index : latest,
     -1,
   );
-  const progressPercent = Number.isFinite(progress.percent) ? Math.min(100, Math.max(0, progress.percent)) : 0;
+  const progressPercent = getChallengeMilestonePathProgress(challenge, progress, milestones);
 
   return (
     <section className="mt-5 rounded-[1.75rem] border border-[#e4ecdf] bg-[#f8faf6] px-4 py-5 sm:px-6">

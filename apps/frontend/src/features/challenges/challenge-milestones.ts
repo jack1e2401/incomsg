@@ -150,3 +150,50 @@ export function buildChallengeMilestones(
     ? buildSpendMilestones(progress)
     : buildCountMilestones(challenge, progress);
 }
+
+export function getChallengeMilestonePathProgress(
+  challenge: PublicChallengeDto,
+  progress: ChallengeProgressDto,
+  milestones: ChallengeMilestone[],
+): number {
+  if (milestones.length < 2) {
+    if (milestones.length === 0) return 0;
+    const final = milestones[0];
+    if (challenge.type === "SPEND_TOTAL" && !(challenge.milestones?.length)) {
+      return progress.percent >= final.percent ? 100 : 0;
+    }
+    return positiveInteger(progress.currentValue) >= positiveInteger(final.threshold) ? 100 : 0;
+  }
+
+  const isFallbackSpend = challenge.type === "SPEND_TOTAL" && !(challenge.milestones?.length);
+  const scale = 1_000_000n;
+  const current = isFallbackSpend
+    ? BigInt(Math.round(boundedPercent(progress.percent) * Number(scale)))
+    : positiveInteger(progress.currentValue);
+  const target = positiveInteger(progress.targetValue || challenge.targetValue);
+  const thresholds = milestones.map((milestone) => {
+    if (isFallbackSpend) return BigInt(Math.round(milestone.percent * Number(scale)));
+    if (challenge.type === "SPEND_TOTAL" && milestone.threshold.endsWith("%")) {
+      const percentage = positiveInteger(milestone.threshold.slice(0, -1));
+      return target * percentage / 100n;
+    }
+    return positiveInteger(milestone.threshold);
+  });
+
+  let lastReached = -1;
+  for (const [index, threshold] of thresholds.entries()) {
+    if (current < threshold) break;
+    lastReached = index;
+  }
+  if (lastReached < 0) return 0;
+  if (lastReached >= milestones.length - 1) return 100;
+
+  const low = thresholds[lastReached];
+  const high = thresholds[lastReached + 1];
+  const ratio = high > low
+    ? ((current - low) * scale) / (high - low)
+    : 0n;
+  const boundedRatio = ratio < 0n ? 0n : ratio > scale ? scale : ratio;
+  const position = BigInt(lastReached) * scale + boundedRatio;
+  return Number(position * 100n / BigInt(milestones.length - 1)) / Number(scale);
+}

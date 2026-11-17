@@ -9,14 +9,20 @@ import { useResource } from "../../api/useResource";
 import { Button, Card, ErrorState, LoadingState, StatusText } from "../../components/ui";
 import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
 import { useChallengeProgressAnimation } from "./useChallengeProgressAnimation";
-import { challengeStatusLabel, formatChallengeGoal } from "./challenge-ui";
+import { challengeStatusLabel, emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
 import { useStorefrontShell } from "../storefront/storefront-context";
 
 const api = createChallengesClient();
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 const formatPoints = (value: string | number) => {
+  const raw = String(value);
+  const [integerPart, fractionPart = ""] = raw.split(".", 2);
+  if (!/^-?\d+$/.test(integerPart)) return "0";
   try {
-    return BigInt(value).toLocaleString("vi-VN");
+    const whole = BigInt(integerPart);
+    const fraction = fractionPart.replace(/0+$/, "");
+    const sign = integerPart.startsWith("-") && whole === 0n ? "-" : "";
+    return `${sign}${whole.toLocaleString("vi-VN")}${fraction ? `,${fraction}` : ""}`;
   } catch {
     return "0";
   }
@@ -53,16 +59,7 @@ export function ChallengeDetailPage() {
 
   const currentChallenge = resource.data.challenge as MemberChallengeDto;
   const currentProgress = member ? currentChallenge.progress : null;
-  const journeyProgress = currentProgress ?? (member ? null : {
-    currentValue: "0",
-    targetValue: currentChallenge.targetValue,
-    remainingValue: currentChallenge.targetValue,
-    percent: 0,
-    rewardState: "IN_PROGRESS" as const,
-    rewardCycle: 1,
-    completedAt: null,
-    grantedAt: null,
-  });
+  const journeyProgress = currentProgress ?? emptyChallengeProgress(currentChallenge);
   const detail = member ? resource.data as MemberStoreChallengeDetailResponse : null;
   const checkedInToday = detail?.checkedInToday ?? false;
   const wallet = walletResource.data;
