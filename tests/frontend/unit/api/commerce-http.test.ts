@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCommerceClient } from "../../../../apps/frontend/src/api/commerce-http";
+import { createCatalogClient } from "../../../../apps/frontend/src/api/commerce/catalog";
 
 describe("commerce HTTP contract", () => {
+  it("keeps public catalog requests in the catalog client", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ items: [], pagination: {} }));
+    const client = createCatalogClient("", fetcher);
+
+    await client.listPublicStoreProducts("tiem-moc", { page: 2, limit: 8 });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/public/stores/tiem-moc/products?page=2&limit=8");
+  });
+
   it("creates a single-product pending order with Bearer auth and keeps response status", async () => {
     const backendOrder = {
       id: 41,
