@@ -135,7 +135,7 @@ export const paymentsRepository = {
         if (paid === "missing") return { code: "01", message: "Order not found" };
         if (paid === "already_paid") return { code: "02", message: "Order already confirmed" };
         return { code: "00", message: "Confirm Success" };
-      }, { isolationLevel: "Serializable" }));
+      }, { isolationLevel: "Serializable" }), 6);
     } catch {
       return { code: "99", message: "Unknown error" };
     }

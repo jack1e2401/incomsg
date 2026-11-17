@@ -161,6 +161,7 @@ export const ordersRepository = {
         },
         { isolationLevel: "Serializable" },
       ),
+      6,
     );
   },
 
