@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMilestone2Client } from "../../../../apps/frontend/src/api/milestone2-client";
+import { createAuthClient } from "../../../../apps/frontend/src/api/auth-client";
 
 describe("Milestone 2 HTTP client", () => {
   it("sends Member registration to the backend contract", async () => {
@@ -13,7 +13,7 @@ describe("Milestone 2 HTTP client", () => {
         { status: 201 },
       );
     };
-    const client = createMilestone2Client("http://localhost:3000", fetcher);
+    const client = createAuthClient("http://localhost:3000", fetcher);
 
     await client.registerMember({ email: "member@example.com", password: "a-long-password" });
 
@@ -32,7 +32,7 @@ describe("Milestone 2 HTTP client", () => {
       authorization = new Headers(init?.headers).get("Authorization") ?? "";
       return Response.json({ merchant: { id: 12, name: "Demo", slug: "store-1", isActive: true } });
     };
-    const client = createMilestone2Client("", fetcher);
+    const client = createAuthClient("", fetcher);
 
     await client.getOwnMerchant("signed-token");
 
@@ -41,7 +41,7 @@ describe("Milestone 2 HTTP client", () => {
 
   it("preserves backend error codes for UI mapping", async () => {
     const fetcher: typeof fetch = async () => Response.json({ error: "MERCHANT_PENDING" }, { status: 403 });
-    const client = createMilestone2Client("", fetcher);
+    const client = createAuthClient("", fetcher);
 
     await expect(client.login({ email: "merchant@example.com", password: "password" })).rejects.toThrow(
       "MERCHANT_PENDING",
@@ -65,7 +65,7 @@ describe("Milestone 2 HTTP client", () => {
         },
       });
     };
-    const client = createMilestone2Client("http://localhost:3000", fetcher);
+    const client = createAuthClient("http://localhost:3000", fetcher);
 
     const result = await client.checkApplicationStatus({
       email: "shop@example.com",

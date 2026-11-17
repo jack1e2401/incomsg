@@ -30,12 +30,12 @@ vi.mock("../../../apps/frontend/src/api/commerce-http", async (importOriginal) =
   };
 });
 
-vi.mock("../../../apps/frontend/src/api/milestone2-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../apps/frontend/src/api/milestone2-client")>();
+vi.mock("../../../apps/frontend/src/api/auth-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../apps/frontend/src/api/auth-client")>();
   return {
     ...actual,
-    createMilestone2Client: (baseUrl: string, fetcher?: typeof fetch) =>
-      actual.createMilestone2Client(baseUrl, (input, init) => {
+    createAuthClient: (baseUrl: string, fetcher?: typeof fetch) =>
+      actual.createAuthClient(baseUrl, (input, init) => {
         if (milestone2FetchHandler) return milestone2FetchHandler(input, init);
         return (fetcher ?? fetch)(input, init);
       }),

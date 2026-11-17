@@ -3,7 +3,7 @@ import { ArrowUpRight, Package, Storefront } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { ProductDto, TierLevel } from "../../api/commerce-types";
-import type { BackendMerchantDto } from "../../api/contracts/milestone2";
+import type { BackendMerchantDto } from "../../api/contracts/auth";
 import { useResource } from "../../api/useResource";
 import { Button, Card, Skeleton, StatusText } from "../../components/ui";
 import { money, number } from "../../lib/utils";

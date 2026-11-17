@@ -3,7 +3,7 @@ import { AuthSessionProvider, useAuthSession } from "../api/auth-session";
 import { Button } from "../components/ui";
 import { ApplicationStatusPage, LoginPage, RegisterPage } from "../features/auth/AuthPages";
 import { EditorialArtPanel } from "../components/EditorialArtPanel";
-import { AdminApplicationsM2, RequireRole } from "../features/auth/Milestone2Pages";
+import { AdminApplicationsPage, RequireRole } from "../features/auth/AdminApplicationsPage";
 import { BackendConsoleLayout } from "../layouts/BackendConsoleLayout";
 import { ApiProvider } from "../api/client";
 import { ConsoleLayout as DemoConsoleLayout } from "../layouts/ConsoleLayout";
@@ -95,7 +95,7 @@ function BackendRoutes() {
       <Route element={<RequireRole role="ADMIN" />}>
         <Route path="/admin" element={<BackendConsoleLayout role="admin" />}>
           <Route index element={<AdminOverview />} />
-          <Route path="applications" element={<AdminApplicationsM2 />} />
+          <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="merchants" element={<AdminMerchants />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="blacklist" element={<AdminBlacklist />} />

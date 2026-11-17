@@ -1,4 +1,4 @@
-import type { BackendMerchantDto } from "./contracts/milestone2";
+import type { BackendMerchantDto } from "./contracts/auth";
 
 /** Exact JSON DTOs returned by the implemented backend commerce routes. */
 export type ProductKind = "SALE" | "REWARD";

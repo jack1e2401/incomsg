@@ -6,11 +6,11 @@ import type {
   MemberRegistrationResponse,
   MerchantRegistrationResponse,
   ApplicationStatusResponse,
-} from "./contracts/milestone2";
-import { createMilestone2Client } from "./milestone2-client";
+} from "./contracts/auth";
+import { createAuthClient } from "./auth-client";
 
 const SESSION_KEY = "loyalty.m2.session";
-const authApi = createMilestone2Client(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
+const authApi = createAuthClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
 interface AuthSessionValue {
   user: BackendUserDto | null;

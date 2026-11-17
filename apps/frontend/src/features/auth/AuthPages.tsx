@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react
 import { ArrowLeft, ArrowRight, CheckCircle, Storefront, UserCircle } from "@phosphor-icons/react";
 import { useAuthSession, routeForRole } from "../../api/auth-session";
 import { Button, BusyLabel, Card, Field, Input, StatusText } from "../../components/ui";
-import type { BackendApplicationDto } from "../../api/contracts/milestone2";
+import type { BackendApplicationDto } from "../../api/contracts/auth";
 
 function resolveSafeReturnTo(raw: string | null): string | null {
   if (!raw) return null;
