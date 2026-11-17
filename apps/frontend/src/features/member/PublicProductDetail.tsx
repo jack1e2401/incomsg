@@ -66,7 +66,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
   }
 
   const detailBody = (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${shell ? "pb-32 lg:pb-0" : ""}`}>
       <Link
         to={catalogBackPath}
         className="inline-flex items-center gap-1.5 text-xs font-bold hover:underline sm:text-sm"
@@ -117,9 +117,6 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
 
         <div className="flex flex-col justify-center">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${stockDisplay.badgeClass}`} role="status">
-              {stockDisplay.label}
-            </span>
             {product.category && (
               <span
                 className="rounded-full bg-[#edf4e9] px-3 py-1 text-xs font-semibold"
@@ -140,7 +137,9 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
           <p className="mt-2 text-xl font-extrabold tabular-nums sm:mt-4 sm:text-2xl" style={{ color: accent }}>
             {money(Number(product.price))}
           </p>
-
+          <p className={`mt-1 text-xs font-medium ${stockDisplay.textClass}`} role="status">
+            {stockDisplay.label}
+          </p>
 
           {product.description && (
             <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#3f5345] break-words">
@@ -179,6 +178,7 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
 
             <Button
               type="button"
+              className={shell ? "hidden lg:inline-flex" : undefined}
               disabled={available <= 0 || (user !== null && user.role !== "MEMBER")}
               style={available > 0 ? { backgroundColor: accent } : undefined}
               onClick={handleAddToCart}
@@ -214,7 +214,28 @@ function ProductDetailContent({ slug, product }: { slug: string; product: Produc
   );
 
   if (shell) {
-    return detailBody;
+    return (
+      <>
+        {detailBody}
+        <div
+          className="fixed inset-x-0 z-40 border-t border-[#e5ece3] bg-[#fcfcf8]/95 px-3 py-2.5 shadow-[0_-8px_24px_rgba(36,69,47,0.08)] backdrop-blur sm:px-6 lg:hidden"
+          style={{ bottom: "calc(58px + max(env(safe-area-inset-bottom), 6px))" }}
+        >
+          <div className="mx-auto max-w-6xl">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={available <= 0 || (user !== null && user.role !== "MEMBER")}
+              style={available > 0 ? { backgroundColor: accent } : undefined}
+              onClick={handleAddToCart}
+            >
+              <ShoppingCart aria-hidden="true" size={18} />
+              {available > 0 ? "Thêm vào giỏ" : "Hết hàng"}
+            </Button>
+          </div>
+        </div>
+      </>
+    );
   }
 
   return (
