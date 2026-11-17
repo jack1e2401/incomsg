@@ -100,13 +100,13 @@
 
 **Consumes:** API milestone types and locked-state behavior from Task 2.
 
-- [ ] Add tests for editing threshold/title/description, adding/removing intermediate milestones, final-threshold lock, validation messages, locked challenge structure, and save payloads.
-- [ ] Add default-input tests matching the backend's count/spend fixtures; keep this helper limited to the editor's initial form state, with backend validation as authority.
-- [ ] Run the merchant unit file and confirm the new step-4 assertions fail against the four-step review-only editor.
-- [ ] Move review to step 5 and implement step 4 with default stages, add/remove controls, inline preview, and UI validation matching backend invariants.
-- [ ] When type changes, reset to type-appropriate defaults with a notice; when the target changes, keep valid intermediate thresholds, update the final threshold, and explain any dropped out-of-range stage.
-- [ ] Initialize edit state from API milestones; disable structure controls for locked campaigns but allow copy edits; include milestones in create/update requests.
-- [ ] Re-run merchant tests and confirm create/edit and locked-field tests pass without opening a modal.
+- [x] Add tests for editing threshold/title/description, adding/removing intermediate milestones, final-threshold lock, validation messages, locked challenge structure, and save payloads.
+- [x] Add default-input tests matching the backend's count/spend fixtures; keep this helper limited to the editor's initial form state, with backend validation as authority.
+- [x] Run the merchant unit file and confirm the new step-4 assertions fail against the four-step review-only editor.
+- [x] Move review to step 5 and implement step 4 with default stages, add/remove controls, inline preview, and UI validation matching backend invariants.
+- [x] When type changes, reset to type-appropriate defaults with a notice; when the target changes, keep valid intermediate thresholds, update the final threshold, and explain any dropped out-of-range stage.
+- [x] Initialize edit state from API milestones; disable structure controls for locked campaigns but allow copy edits; include milestones in create/update requests.
+- [x] Re-run merchant tests and confirm create/edit and locked-field tests pass without opening a modal.
 - [ ] Commit as `feat(merchant): configure challenge milestones`.
 
 ### Task 4: Render configured milestones in the client mission experience

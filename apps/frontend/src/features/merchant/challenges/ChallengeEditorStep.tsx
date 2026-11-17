@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 
 export const challengeEditorSteps = [
   { title: "Thông tin", hint: "Tên và mô tả" },
-  { title: "Mục tiêu & điểm", hint: "Điều kiện hoàn thành" },
+  { title: "Mục tiêu & điểm cuối", hint: "Điều kiện và thưởng cuối" },
   { title: "Thời hạn & ngân sách", hint: "Lịch chạy chiến dịch" },
+  { title: "Các mốc", hint: "Hành trình tiến độ" },
   { title: "Rà soát", hint: "Kiểm tra trước khi lưu" },
 ] as const;
 
@@ -21,7 +22,7 @@ export function ChallengeEditorStep({
   return (
     <>
       <nav aria-label="Các bước tạo nhiệm vụ" className="surface rounded-3xl p-4 sm:p-5">
-        <ol className="grid grid-cols-4 gap-2 sm:gap-4">
+        <ol className="grid grid-cols-5 gap-2 sm:gap-4">
           {challengeEditorSteps.map((step, index) => (
             <li key={step.title} aria-label={`Bước ${index + 1}: ${step.title}`} aria-current={activeStep === index ? "step" : undefined} className="min-w-0">
               <div className={`flex items-center gap-2 ${index < activeStep ? "text-[#397347]" : activeStep === index ? "text-[#20392a]" : "text-[#87948a]"}`}>
