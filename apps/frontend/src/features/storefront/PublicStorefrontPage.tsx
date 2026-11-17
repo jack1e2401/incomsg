@@ -11,6 +11,7 @@ import { Card, ErrorState, LoadingState } from "../../components/ui";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { memberTierLabel } from "../member/MemberLoyaltyPolicyDialog";
 import { useMemberCart } from "../member/useMemberCart";
+import { ChallengeHeroCard } from "../challenges/ChallengeHeroCard";
 import { StorefrontSectionRenderer } from "./StorefrontSections";
 import { StorefrontStoreInfoCard } from "./StorefrontStoreInfoCard";
 import { useStorefrontShell, type StorefrontShellData } from "./storefront-context";
@@ -175,6 +176,10 @@ function StorefrontHomeContent({
             }
             onBuy={handleBuy}
           />
+
+          {section.key === "hero" && !data.isDraftPreview && (
+            <ChallengeHeroCard slug={data.merchant.slug} storeBase={storeBase} />
+          )}
 
           {section.key === "hero" && memberWallet.data && (
             <Card className="flex items-center justify-between gap-3 px-4 py-3">
