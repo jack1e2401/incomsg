@@ -80,6 +80,7 @@ after(async () => {
   const merchants = [merchantAId, merchantBId].filter(Boolean);
   if (merchants.length) {
     await prisma.merchantFeeTransaction.deleteMany({ where: { order: { merchantId: { in: merchants } } } });
+    await prisma.memberActivity.deleteMany({ where: { membership: { merchantId: { in: merchants } } } });
     await prisma.order.deleteMany({ where: { merchantId: { in: merchants } } });
     await prisma.merchantMembership.deleteMany({ where: { merchantId: { in: merchants } } });
     await prisma.merchant.deleteMany({ where: { id: { in: merchants } } });

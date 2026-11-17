@@ -603,6 +603,23 @@ async function enrichV4Catalogs(mocId: number, mocOwnerId: number, gomId: number
     for (const item of gomProducts) {
       await ensureCatalogProduct(tx, gomId, gomOwnerId, gomCats[item.categorySlug as keyof typeof gomCats], item);
     }
+    const now = new Date();
+    const startsAt = new Date(now.getTime() - 14 * 86400000);
+    const endsAt = new Date(now.getTime() + 30 * 86400000);
+    const ensureChallenge = async (merchantId: number, data: { title: string; type: "ORDER_COUNT" | "DAILY_CHECKIN" | "SPEND_TOTAL"; target: string; reward: string; budget: string; featured?: boolean }) => {
+      const existing = await tx.challenge.findFirst({ where: { merchantId, title: data.title } });
+      if (data.featured) await tx.challenge.updateMany({ where: { merchantId, isFeatured: true, ...(existing ? { id: { not: existing.id } } : {}) }, data: { isFeatured: false } });
+      return existing ?? tx.challenge.create({ data: { merchantId, title: data.title, description: data.title, type: data.type, status: "ACTIVE", targetValue: data.target, rewardPoints: data.reward, budgetTotal: data.budget, startsAt, endsAt, isFeatured: data.featured ?? false, activatedAt: now } });
+    };
+    const orderChallenge = await ensureChallenge(mocId, { title: "Mộc thân quen: 3 đơn hàng", type: "ORDER_COUNT", target: "3", reward: "15", budget: "1500", featured: true });
+    await ensureChallenge(mocId, { title: "Check-in mỗi ngày", type: "DAILY_CHECKIN", target: "5", reward: "10", budget: "1000" });
+    await ensureChallenge(mocId, { title: "Chi tiêu tại Mộc", type: "SPEND_TOTAL", target: "500000", reward: "25", budget: "2500" });
+    await ensureChallenge(gomId, { title: "Ghé xưởng gốm", type: "ORDER_COUNT", target: "2", reward: "20", budget: "1000" });
+    const memberLan = await tx.user.findUnique({ where: { email: "member.lan@incomsg.local" }, select: { id: true } });
+    if (memberLan) {
+      const membership = await tx.merchantMembership.upsert({ where: { memberId_merchantId: { memberId: memberLan.id, merchantId: mocId } }, create: { memberId: memberLan.id, merchantId: mocId }, update: {} });
+      await tx.challengeProgress.upsert({ where: { challengeId_membershipId: { challengeId: orderChallenge.id, membershipId: membership.id } }, create: { challengeId: orderChallenge.id, membershipId: membership.id, currentValue: "2" }, update: {} });
+    }
   });
 }
 

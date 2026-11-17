@@ -63,6 +63,11 @@ export async function cleanup() {
     await prisma.orderItem.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
     await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.merchantFeeTransaction.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
+    await prisma.refundRequest.deleteMany({ where: { order: { memberId: { in: fixtureUserIds } } } });
+    await prisma.challengeProgressEntry.deleteMany({ where: { progress: { membership: { memberId: { in: fixtureUserIds } } } } });
+    await prisma.challengeRewardGrant.deleteMany({ where: { progress: { membership: { memberId: { in: fixtureUserIds } } } } });
+    await prisma.challengeProgress.deleteMany({ where: { membership: { memberId: { in: fixtureUserIds } } } });
+    await prisma.memberActivity.deleteMany({ where: { membership: { memberId: { in: fixtureUserIds } } } });
     await prisma.order.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
     await prisma.redemptionIdempotency.deleteMany({ where: { memberId: { in: fixtureUserIds } } });
     await prisma.memberVoucher.deleteMany({ where: { membershipId: { in: membershipIds } } });
@@ -98,6 +103,18 @@ export async function createUser(role: "MEMBER" | "MERCHANT" | "ADMIN") {
   const user = await prisma.user.create({ data: { email: `exact-${randomUUID()}@test.local`, passwordHash: "fixture", role } });
   fixtureUserIds.push(user.id);
   return { id: user.id, token: await signAccessToken(user.id) };
+}
+
+export async function completeRefundApproval(shop: Shop, orderId: number, reason = "Approved test refund") {
+  const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: { paymentAttempt: true } });
+  const memberToken = await signAccessToken(order.memberId);
+  const submitted = await request<{ refundRequest?: { id: number } }>(`/api/orders/${orderId}/refund-request`, "POST", memberToken, { reason });
+  if (submitted.status !== 201) return submitted;
+  const requestId = submitted.json.refundRequest!.id;
+  const merchantApproval = await request(`/api/merchant/refund-requests/${requestId}/approve`, "POST", shop.token, {});
+  if (merchantApproval.status !== 200) return merchantApproval;
+  const admin = await createUser("ADMIN");
+  return request(`/api/admin/refund-requests/${requestId}/approve`, "POST", admin.token, {});
 }
 
 export const createMember = () => createUser("MEMBER");

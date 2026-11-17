@@ -30,6 +30,7 @@ type OrderRecord = {
   earnedPointsExact?: Prisma.Decimal | null;
   paymentAttempt?: { status: PaymentAttemptStatus; createdAt: Date } | null;
   refund?: { status: RefundStatus } | null;
+  refundRequest?: { id: number; status: import("../../generated/prisma/enums.js").RefundRequestStatus; requestedAt: Date } | null;
   pointTransactions?: {
     id: number;
     type: PointTransactionType;
@@ -84,6 +85,8 @@ export function computeOrderActions(
   status: OrderStatus,
   attempt: { status: PaymentAttemptStatus; createdAt: Date } | null | undefined,
   refund: { status: RefundStatus } | null | undefined,
+  refundRequest?: { status: string } | null,
+  paymentAttempt?: { status: PaymentAttemptStatus } | null,
 ): OrderActionsDto {
   const requiresReconciliation = isStalePaymentAttempt(attempt);
   const canCancel = status === "PENDING" && (!attempt || attempt.status === "FAILED");
@@ -92,6 +95,7 @@ export function computeOrderActions(
     canCancel,
     canRefund,
     requiresReconciliation,
+    canRequestRefund: status === "PAID" && !refund && !refundRequest && paymentAttempt?.status !== "SUCCEEDED",
   };
 }
 
@@ -100,6 +104,7 @@ export function toOrderDto(order: OrderRecord): OrderDto {
   const earned = isPaidOrRefunded ? order.earnedPointsExact : null;
   const paymentAttempt = order.paymentAttempt ?? null;
   const refund = order.refund ?? null;
+  const refundRequest = order.refundRequest ?? null;
   const pointTransactions = order.pointTransactions;
 
   const loyaltyEvents: OrderLoyaltyEventDto[] = (pointTransactions ?? [])
@@ -136,7 +141,8 @@ export function toOrderDto(order: OrderRecord): OrderDto {
     })),
     paymentStatus: paymentAttempt?.status ?? null,
     refundStatus: refund?.status ?? null,
+    refundRequest: refundRequest ? { id: refundRequest.id, status: refundRequest.status, requestedAt: refundRequest.requestedAt.toISOString() } : null,
     loyaltyEvents,
-    actions: computeOrderActions(order.status, paymentAttempt, refund),
+    actions: computeOrderActions(order.status, paymentAttempt, refund, refundRequest, paymentAttempt),
   };
 }

@@ -244,23 +244,8 @@ describe("M7 Merchant Experience", () => {
       expect(screen.getByText("Đã thanh toán")).toBeInTheDocument();
     });
 
-    const refundBtn = screen.getByRole("button", { name: /hoàn tiền/i });
-    fireEvent.click(refundBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText(/xem trước hoàn tiền đơn #77/i)).toBeInTheDocument();
-      expect(screen.getByText("10.0")).toBeInTheDocument(); // Earning reversal exact
-    });
-
-    const reasonInput = screen.getByLabelText(/lý do hoàn tiền/i);
-    fireEvent.change(reasonInput, { target: { value: "Khách đổi trả sản phẩm lỗi" } });
-
-    const confirmRefundBtn = screen.getByRole("button", { name: /xác nhận hoàn tiền/i });
-    fireEvent.click(confirmRefundBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText("Đã hoàn tiền")).toBeInTheDocument();
-    });
+    const refundLink = screen.getByRole("link", { name: /xử lý yêu cầu hoàn tiền/i });
+    expect(refundLink).toHaveAttribute("href", "/merchant/refund-requests");
   });
 
   it("allows merchant to cancel unfulfilled reward voucher with reason", async () => {
@@ -630,22 +615,19 @@ describe("M7 Merchant Experience", () => {
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
 
     await waitFor(() => expect(screen.getByText("Đơn #99")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^hoàn tiền$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/điểm nợ sau hoàn/i)).toBeInTheDocument();
-      expect(screen.getByText("0.4")).toBeInTheDocument();
-      expect(screen.getByText("SILVER → BRONZE")).toBeInTheDocument();
-    });
+    expect(screen.getByRole("link", { name: /xử lý yêu cầu hoàn tiền/i })).toHaveAttribute(
+      "href",
+      "/merchant/refund-requests",
+    );
   });
 
-  it("reports a provider refund as pending until the backend confirms completion", async () => {
-    const paidOrder = {
+  it("reports a provider refund as pending without inferring completed status", async () => {
+    const pendingOrder = {
       id: 88,
       merchantId: 7,
       memberId: 9,
       memberEmail: "member@test.local",
-      status: "PAID",
+      status: "REFUND_PENDING",
       subtotal: "200000",
       discountAmount: "0",
       total: "200000",
@@ -656,49 +638,13 @@ describe("M7 Merchant Experience", () => {
       earnedPoints: 20,
       earnedPointsExact: "20",
       paymentStatus: "SUCCEEDED",
-      refundStatus: null,
-      actions: { canCancel: false, canRefund: true, requiresReconciliation: false },
-    };
-    const pendingOrder = {
-      ...paidOrder,
-      status: "REFUND_PENDING",
       refundStatus: "PENDING_PROVIDER",
       actions: { canCancel: false, canRefund: false, requiresReconciliation: false },
     };
     mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/api/merchant/orders/88/refund-preview")) {
-        return Response.json({
-          orderId: 88,
-          refundAmountVnd: "200000",
-          refundStatus: null,
-          earningReversalExact: "20",
-          walletBefore: { availablePoints: 20, fractionalCarry: "0", pointDebt: "0" },
-          walletAfter: { availablePoints: 0, fractionalCarry: "0", pointDebt: "0" },
-          tierBefore: "BRONZE",
-          tierAfter: "UNRANKED",
-          discountVoucherRestorable: false,
-          providerConfirmationRequired: true,
-        });
-      }
-      if (url.includes("/api/merchant/orders/88/refund") && init?.method === "POST") {
-        return Response.json({
-          refund: {
-            id: 99,
-            status: "PENDING_PROVIDER",
-            amountVnd: "200000",
-            reason: "Khách yêu cầu hoàn tiền",
-            requestedById: 2,
-            requestedAt: "2026-11-11T12:00:00.000Z",
-            completedAt: null,
-            providerReference: null,
-          },
-          order: pendingOrder,
-          walletImpact: null,
-        });
-      }
       if (url.includes("/api/merchant/orders") && (!init || init.method === "GET")) {
-        return Response.json({ orders: [paidOrder] });
+        return Response.json({ orders: [pendingOrder] });
       }
       if (url.includes("/api/merchant/rewards")) return Response.json({ rewards: [] });
       return Response.json({ error: "Not found" }, { status: 404 });
@@ -706,18 +652,7 @@ describe("M7 Merchant Experience", () => {
 
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
     await waitFor(() => expect(screen.getByText("Đơn #88")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^hoàn tiền$/i }));
-    fireEvent.change(await screen.findByLabelText(/lý do hoàn tiền/i), {
-      target: { value: "Khách yêu cầu hoàn tiền" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /xác nhận hoàn tiền/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "Yêu cầu hoàn tiền đang chờ cổng thanh toán xác nhận.",
-      );
-      expect(screen.getByText("Chờ cổng xác nhận hoàn tiền")).toBeInTheDocument();
-      expect(screen.queryByText(/^Đã hoàn tiền$/i)).not.toBeInTheDocument();
-    });
+    expect(screen.getByText("Chờ cổng xác nhận hoàn tiền")).toBeInTheDocument();
+    expect(screen.queryByText(/^Đã hoàn tiền$/i)).not.toBeInTheDocument();
   });
 });

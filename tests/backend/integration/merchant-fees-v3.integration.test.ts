@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import {
   beginVnpay, cleanup, confirmVnpay, createMember, createOrder, createShop, createUser, env,
-  pay, prisma, request, start, wallet, type Member, type Shop,
+  pay, prisma, request, start, wallet, completeRefundApproval, type Member, type Shop,
 } from "./exact-points.fixtures.js";
 
 type Tier = "BRONZE" | "SILVER" | "GOLD";
@@ -37,7 +37,7 @@ async function legacyOrder(shop: Shop, member: Member, total: string, paidAt = y
 }
 
 function refund(shop: Shop, orderId: number) {
-  return request<{ refund: { status: string } }>(`/api/merchant/orders/${orderId}/refund`, "POST", shop.token, { reason: "Fee ledger integration test" });
+  return completeRefundApproval(shop, orderId, "Fee ledger integration test") as Promise<{ status: number; json: { refund: { status: string } } }>;
 }
 
 function feeRows(orderId: number) {
@@ -104,11 +104,12 @@ test("crossing order uses the prior tier, next order uses the new tier, and refu
   assert.equal(silverFee.amountVnd.toFixed(0), "8000");
   assert.equal((await wallet(shop, member)).exactBalance, "40");
 
-  const refunds = await Promise.all([refund(shop, crossing.id), refund(shop, crossing.id)]);
-  for (const result of refunds) {
-    assert.equal(result.status, 200);
-    assert.equal(result.json.refund.status, "COMPLETED");
-  }
+  const completed = await refund(shop, crossing.id);
+  assert.equal(completed.status, 200);
+  assert.equal(completed.json.refund.status, "COMPLETED");
+  const duplicate = await request<{ error: string }>(`/api/orders/${crossing.id}/refund-request`, "POST", member.token, { reason: "Duplicate" });
+  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.json.error, "REFUND_REQUEST_ALREADY_EXISTS");
   const entries = await feeRows(crossing.id);
   assert.deepEqual(entries.map(({ type, amountVnd, tier, feeRate }) => [type, amountVnd.toFixed(0), tier, feeRate.toNumber()]), [
     ["FEE_CHARGE", "10000", "BRONZE", 0.05], ["FEE_REVERSAL", "-10000", "BRONZE", 0.05],
@@ -163,7 +164,7 @@ test("Gold fee and half-up rounding are persisted, and fee reads are limited to 
   assert.equal(afterFees.netVnd, beforeFees.netVnd);
 });
 
-test("a signed VNPay success records one fee while a pending provider refund records no reversal", async () => {
+test("a signed VNPay success records one fee while refund requests are rejected", async () => {
   env.paymentMode = "vnpay";
   try {
     const shop = await createShop("200000");
@@ -173,9 +174,9 @@ test("a signed VNPay success records one fee while a pending provider refund rec
     assert.deepEqual(await feeRows(payment.order.id), []);
     assert.equal(await confirmVnpay(payment), "00");
     assert.equal(await confirmVnpay(payment), "02");
-    const result = await refund(shop, payment.order.id);
-    assert.equal(result.status, 200);
-    assert.equal(result.json.refund.status, "PENDING_PROVIDER");
+    const result = await request<{ error: string }>(`/api/orders/${payment.order.id}/refund-request`, "POST", member.token, { reason: "VNPay refund unsupported" });
+    assert.equal(result.status, 409);
+    assert.equal(result.json.error, "VNPAY_REFUND_NOT_SUPPORTED");
     assert.deepEqual((await feeRows(payment.order.id)).map(({ type }) => type), ["FEE_CHARGE"]);
     const report = await finance(shop);
     assert.equal(report.tier.level, "SILVER");

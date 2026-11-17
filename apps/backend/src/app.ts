@@ -21,6 +21,8 @@ import { merchantStorefrontRoutes, publicStorefrontRoutes } from "./modules/stor
 import { merchantEventRoutes, publicStoreEventRoutes } from "./modules/events/events.routes.js";
 import { merchantCustomerRoutes } from "./modules/customers/customers.routes.js";
 import { merchantAnalyticsRoutes } from "./modules/analytics/analytics.routes.js";
+import { merchantChallengeRoutes, publicChallengeRoutes, memberChallengeRoutes } from "./modules/challenges/challenges.routes.js";
+import { memberRefundRequestRoutes, orderRefundRequestRoutes, merchantRefundRequestRoutes, adminRefundRequestRoutes } from "./modules/refunds/refunds.routes.js";
 
 export const app = express();
 app.use(cors({ origin: env.frontendOrigin }));
@@ -32,6 +34,7 @@ app.use("/uploads", (request, response, next) => {
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin/refund-requests", adminRefundRequestRoutes);
 app.use("/api/admin/merchants", applicationRoutes);
 app.use("/api/merchant", merchantRoutes);
 app.use("/api/merchant", merchantAbuseReportRoutes);
@@ -42,10 +45,15 @@ app.use("/api/public", publicStorefrontRoutes);
 app.use("/api/merchant/events", merchantEventRoutes);
 app.use("/api/merchant/customers", merchantCustomerRoutes);
 app.use("/api/merchant/analytics", merchantAnalyticsRoutes);
+app.use("/api/merchant/challenges", merchantChallengeRoutes);
+app.use("/api/merchant/refund-requests", merchantRefundRequestRoutes);
+app.use("/api/public/stores", publicChallengeRoutes);
+app.use("/api/member", memberChallengeRoutes);
 app.use("/api/merchant/orders", merchantOrderReadRoutes);
 app.use("/api/merchant/loyalty", merchantLoyaltyRoutes);
 app.use("/api/member", memberLoyaltyRoutes);
 app.use("/api/member/orders", memberOrderReadRoutes);
+app.use("/api/member/orders", memberRefundRequestRoutes);
 app.use("/api/merchant/categories", merchantCategoryRoutes);
 app.use("/api/merchant/products", merchantProductRoutes);
 app.use("/api/merchants", publicProductRoutes);
@@ -57,6 +65,7 @@ app.use("/api/merchant/rewards", merchantRewardRoutes);
 app.use("/api/member/merchants", memberVoucherRoutes);
 app.use("/api/member/vouchers", memberRedemptionRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/orders", orderRefundRequestRoutes);
 app.use("/api/orders", orderPaymentRoutes);
 app.use("/api/payments/vnpay", vnpayRoutes);
 app.use((_request, response) => {

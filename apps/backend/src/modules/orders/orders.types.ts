@@ -57,7 +57,9 @@ export type OrderActionsDto = {
   canCancel: boolean;
   canRefund: boolean;
   requiresReconciliation: boolean;
+  canRequestRefund?: boolean;
 };
+export type RefundRequestSummaryDto = { id: number; status: import("../../generated/prisma/enums.js").RefundRequestStatus; requestedAt: string };
 
 export type OrderLoyaltyEventDto = {
   id: number;
@@ -90,6 +92,7 @@ export type OrderDto = {
   promotedToTier?: TierLevel | null;
   paymentStatus?: PaymentAttemptStatus | null;
   refundStatus?: RefundStatus | null;
+  refundRequest?: RefundRequestSummaryDto | null;
   loyaltyEvents?: OrderLoyaltyEventDto[];
   actions?: OrderActionsDto;
 };
@@ -123,6 +126,12 @@ export type RefundPreviewDto = {
   tierAfter: string;
   discountVoucherRestorable: boolean;
   providerConfirmationRequired: boolean;
+  challenges: ChallengeRefundImpactDto[];
+};
+export type ChallengeRefundImpactDto = {
+  challengeId: number; title: string; type: string; targetValue: string; currentValueBefore: string; currentValueAfter: string;
+  rewardStateBefore: string; rewardStateAfter: string; grantStatusBefore: "GRANTED" | null; grantStatusAfter: "REVERSED" | "GRANTED" | null;
+  pointsToReverseExact: string; budgetSpentBefore: string; budgetSpentAfter: string;
 };
 
 export type RefundResponseDto = {

@@ -47,6 +47,11 @@ async function cleanup() {
     await prisma.rewardFulfillment.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
     await prisma.rewardCancellation.deleteMany({ where: { voucher: { membershipId: { in: membershipIds } } } });
     await prisma.pointTransaction.deleteMany({ where: { wallet: { membershipId: { in: membershipIds } } } });
+    await prisma.refundRequest.deleteMany({ where: { merchantId: { in: merchantIds } } });
+    await prisma.challengeProgressEntry.deleteMany({ where: { progress: { membership: { id: { in: membershipIds } } } } });
+    await prisma.challengeRewardGrant.deleteMany({ where: { progress: { membership: { id: { in: membershipIds } } } } });
+    await prisma.challengeProgress.deleteMany({ where: { membershipId: { in: membershipIds } } });
+    await prisma.memberActivity.deleteMany({ where: { membershipId: { in: membershipIds } } });
     await prisma.orderItem.deleteMany({ where: { order: { merchantId: { in: merchantIds } } } });
     await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
     await prisma.merchantFeeTransaction.deleteMany({ where: { merchantId: { in: merchantIds } } });
@@ -219,9 +224,11 @@ test("Customer 360 lists 0-order members, handles REFUND_PENDING/REFUNDED, and e
     quantity: 1, // 50,000
   });
   await request(`/api/orders/${order3.json.order.id}/pay`, "POST", buyerMember.token);
-  await request(`/api/merchant/orders/${order3.json.order.id}/refund`, "POST", storeA.ownerToken, {
-    reason: "Test refund",
-  });
+  const refundRequest = await prisma.refundRequest.create({ data: { orderId: order3.json.order.id, memberId: buyerMember.id, merchantId: storeA.id, reason: "Test refund" } });
+  await request(`/api/merchant/refund-requests/${refundRequest.id}/approve`, "POST", storeA.ownerToken, {});
+  const refundAdmin = await prisma.user.create({ data: { email: `customer-analytics-admin-${randomUUID()}@test.local`, passwordHash: "fixture", role: "ADMIN" } });
+  fixtureUserIds.push(refundAdmin.id);
+  await request(`/api/admin/refund-requests/${refundRequest.id}/approve`, "POST", await signAccessToken(refundAdmin.id), {});
 
   // List all customers for Store A
   const listAll = await request<{

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Gift } from "@phosphor-icons/react";
 import { useAuthSession } from "../../api/auth-session";
 import { translateApiError } from "../../api/commerce-http";
@@ -61,7 +61,10 @@ export function MemberWallet() {
 
 export function MemberVouchers() {
   const { merchantId, basePath } = useMerchantContext();
-  const { accessToken } = useAuthSession();
+  const { accessToken, user } = useAuthSession();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isMember = user?.role === "MEMBER" && Boolean(accessToken);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
@@ -71,15 +74,19 @@ export function MemberVouchers() {
     [merchantId],
   );
   const owned = useResource(
-    () => commerce.listMemberVouchers(merchantId, accessToken!).then((response) => response.vouchers),
-    [merchantId, accessToken],
+    () => isMember && accessToken ? commerce.listMemberVouchers(merchantId, accessToken).then((response) => response.vouchers) : Promise.resolve([]),
+    [merchantId, isMember, accessToken],
   );
   const wallet = useResource(
-    () => commerce.getMemberWallet(merchantId, accessToken!).then((response) => response.wallet),
-    [merchantId, accessToken],
+    () => isMember && accessToken ? commerce.getMemberWallet(merchantId, accessToken).then((response) => response.wallet) : Promise.resolve(null),
+    [merchantId, isMember, accessToken],
   );
 
   async function redeem(definition: VoucherDefinitionDto) {
+    if (!isMember || !accessToken) {
+      navigate(`/login?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+      return;
+    }
     if (!accessToken || busyId !== null) return;
     setBusyId(definition.id);
     setActionError("");
@@ -117,11 +124,11 @@ export function MemberVouchers() {
     }
   }
 
-  if (catalog.loading || owned.loading || wallet.loading) return <LoadingState cards={2} />;
-  if (catalog.error || owned.error || wallet.error)
+  if (catalog.loading || (isMember && (owned.loading || wallet.loading))) return <LoadingState cards={2} />;
+  if (catalog.error || (isMember && (owned.error || wallet.error)))
     return (
       <ErrorState
-        message={catalog.error ?? owned.error ?? wallet.error ?? "Không tải được voucher"}
+          message={catalog.error ?? owned.error ?? wallet.error ?? "Không tải được voucher"}
         retry={() => {
           catalog.reload();
           owned.reload();
@@ -152,7 +159,7 @@ export function MemberVouchers() {
           <p className="break-words">{notice}</p>
         </div>
       )}
-      {wallet.data && (
+      {isMember && wallet.data && (
         <p className="mb-5 text-sm font-semibold break-words">
           Điểm khả dụng tại cửa hàng này:{" "}
           <span className="tabular-nums">{wallet.data.availablePoints.toLocaleString("vi-VN")}</span>
@@ -182,7 +189,7 @@ export function MemberVouchers() {
                   key={voucher.id}
                   voucher={voucher}
                   busy={busyId === voucher.id}
-                  disabled={busyId !== null || !canRedeem}
+                  disabled={busyId !== null || (isMember && !canRedeem)}
                   canRedeem={canRedeem}
                   onRedeem={() => void redeem(voucher)}
                 />
@@ -191,7 +198,7 @@ export function MemberVouchers() {
           </div>
         )}
       </section>
-      <section>
+      {isMember && <section>
         <h2 className="mb-3 text-lg font-extrabold">Voucher của bạn</h2>
         {!owned.data?.length ? (
           <EmptyState
@@ -216,20 +223,22 @@ export function MemberVouchers() {
             ))}
           </div>
         )}
-      </section>
+      </section>}
     </>
   );
 }
 
 export function MemberRewards() {
   const { merchantId, basePath } = useMerchantContext();
-  const { accessToken } = useAuthSession();
+  const { accessToken, user } = useAuthSession();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isMember = user?.role === "MEMBER" && Boolean(accessToken);
   const resource = useResource(
-    () =>
-      commerce
-        .listMemberVouchers(merchantId, accessToken!)
-        .then((response) => response.vouchers.filter((voucher) => voucher.type === "REWARD")),
-    [merchantId, accessToken],
+    async () => isMember && accessToken
+      ? { owned: (await commerce.listMemberVouchers(merchantId, accessToken)).vouchers.filter((voucher) => voucher.type === "REWARD"), catalog: [] as VoucherDefinitionDto[] }
+      : { owned: [], catalog: (await commerce.listPublicVoucherDefinitions(merchantId)).definitions.filter((voucher) => voucher.type === "REWARD") },
+    [merchantId, isMember, accessToken],
   );
   return (
     <>
@@ -238,7 +247,7 @@ export function MemberRewards() {
         <LoadingState cards={2} />
       ) : resource.error ? (
         <ErrorState message={resource.error} retry={resource.reload} />
-      ) : !resource.data?.length ? (
+      ) : !(isMember ? resource.data?.owned.length : resource.data?.catalog.length) ? (
         <EmptyState
           title="Chưa có quà tặng"
           description="Voucher quà đã nhận sẽ xuất hiện tại đây."
@@ -250,9 +259,7 @@ export function MemberRewards() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {resource.data.map((voucher) => (
-            <OwnedVoucherCard key={voucher.id} voucher={voucher} />
-          ))}
+          {isMember ? resource.data?.owned.map((voucher) => <OwnedVoucherCard key={voucher.id} voucher={voucher} />) : resource.data?.catalog.map((voucher) => <VoucherDefinitionCard key={voucher.id} voucher={voucher} busy={false} disabled={false} canRedeem={false} onRedeem={() => navigate(`/login?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`)} />)}
         </div>
       )}
     </>

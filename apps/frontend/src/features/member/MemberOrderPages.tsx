@@ -94,6 +94,11 @@ export function MemberOrders() {
                   <StatusText tone={orderStatusTone(order.status)}>
                     {orderStatusLabel(order.status)}
                   </StatusText>
+                  {order.refundRequest && (
+                    <StatusText tone={order.refundRequest.status === "REJECTED" ? "red" : order.refundRequest.status === "COMPLETED" ? "green" : "amber"}>
+                      {order.refundRequest.status === "PENDING_MERCHANT" ? "Chờ cửa hàng duyệt" : order.refundRequest.status === "PENDING_ADMIN" ? "Chờ Admin duyệt" : order.refundRequest.status === "REJECTED" ? "Từ chối hoàn tiền" : order.refundRequest.status === "COMPLETED" ? "Đã hoàn tiền" : "Đang xử lý hoàn tiền"}
+                    </StatusText>
+                  )}
                   {order.refundStatus === "PENDING_PROVIDER" && (
                     <p className="text-[10px] text-[#97682a] break-words">Chờ cổng hoàn tiền</p>
                   )}

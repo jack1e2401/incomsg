@@ -4,6 +4,8 @@ import { ArrowLeft, Sparkle } from "@phosphor-icons/react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
+import { createRefundsClient, translateRefundRequestError } from "../../api/refunds-client";
+import type { RefundRequestDto, RefundRequestStatus } from "../../api/refunds-types";
 import type { OrderStatus, PointTransactionType } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
 import {
@@ -15,12 +17,14 @@ import {
   LoadingState,
   PageHeader,
   StatusText,
+  Textarea,
 } from "../../components/ui";
 import { ConfirmActionDialog } from "../../components/ui/ConfirmActionDialog";
 import { memberTierLabel } from "./MemberLoyaltyPolicyDialog";
 import { OrderLoyaltyPolicySnapshot } from "../orders/OrderLoyaltyPolicySnapshot";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
+const refunds = createRefundsClient();
 const money = (value: string | bigint) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(
     typeof value === "bigint" ? value : Number(value),
@@ -73,6 +77,15 @@ function orderStatusLabel(status: OrderStatus): string {
     default:
       return status;
   }
+}
+
+function refundStatusLabel(status: RefundRequestStatus) {
+  if (status === "PENDING_MERCHANT") return "Chờ cửa hàng duyệt";
+  if (status === "PENDING_ADMIN") return "Chờ Admin duyệt";
+  if (status === "REJECTED") return "Từ chối hoàn tiền";
+  if (status === "COMPLETED") return "Đã hoàn tiền";
+  if (status === "APPROVED" || status === "PROCESSING") return "Đang xử lý hoàn tiền";
+  return "Yêu cầu hoàn tiền thất bại";
 }
 
 function transactionTypeLabel(type: PointTransactionType) {
@@ -137,6 +150,11 @@ export function MemberOrderResult() {
   const [cancelError, setCancelError] = useState("");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [reservationExpiredDialogOpen, setReservationExpiredDialogOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundError, setRefundError] = useState("");
+  const [refundRequest, setRefundRequest] = useState<RefundRequestDto | null>(null);
 
   useEffect(() => {
     if (order?.status !== "PENDING" || !order.stockReservedUntil) return;
@@ -191,6 +209,21 @@ export function MemberOrderResult() {
     }
   }
 
+  async function submitRefundRequest() {
+    if (!order || !accessToken || !refundReason.trim() || refundBusy) return;
+    setRefundBusy(true);
+    setRefundError("");
+    try {
+      const response = await refunds.createMemberRefundRequest(order.id, refundReason.trim(), accessToken);
+      setRefundRequest(response.refundRequest);
+      orderResource.setData({ ...order, refundRequest: response.refundRequest });
+      setRefundDialogOpen(false);
+      setRefundReason("");
+    } catch (cause) {
+      setRefundError(translateRefundRequestError(cause instanceof Error ? cause.message : "INVALID_INPUT"));
+    } finally { setRefundBusy(false); }
+  }
+
   const canCancel = order?.actions?.canCancel === true;
   const reservedUntil = order?.stockReservedUntil ? new Date(order.stockReservedUntil).getTime() : null;
   const remainingSeconds = reservedUntil === null
@@ -210,6 +243,13 @@ export function MemberOrderResult() {
         basePath={basePath}
       />
     );
+
+  const activeRefundRequest = refundRequest ?? (order.refundRequest ? {
+    ...order.refundRequest,
+    merchantReviewedAt: null,
+    adminReviewedAt: null,
+  } as RefundRequestDto : null);
+  const canRequestRefund = Boolean(order.actions?.canRequestRefund || (order.status === "PAID" && order.paymentStatus !== "SUCCEEDED" && !order.refundRequest));
 
   return (
     <>
@@ -258,6 +298,14 @@ export function MemberOrderResult() {
             <p className="break-words">{actionError}</p>
           </div>
         )}
+        {activeRefundRequest ? (
+          <div className="mt-5 rounded-2xl bg-[#fff9e9] p-4" role="status">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">Yêu cầu hoàn tiền</h2><StatusText tone={activeRefundRequest.status === "REJECTED" ? "red" : activeRefundRequest.status === "COMPLETED" ? "green" : "amber"}>{refundStatusLabel(activeRefundRequest.status)}</StatusText></div>
+            <p className="mt-2 text-sm">Lý do: {activeRefundRequest.reason}</p>
+            {activeRefundRequest.status === "REJECTED" && (activeRefundRequest.merchantDecisionReason || activeRefundRequest.adminDecisionReason) && <p className="mt-2 text-sm text-[#a4473a]">Lý do từ chối: {activeRefundRequest.adminDecisionReason || activeRefundRequest.merchantDecisionReason}</p>}
+            <p className="mt-2 text-xs muted">Gửi lúc {new Date(activeRefundRequest.requestedAt).toLocaleString("vi-VN")}{activeRefundRequest.merchantReviewedAt ? ` · Cửa hàng duyệt ${new Date(activeRefundRequest.merchantReviewedAt).toLocaleString("vi-VN")}` : ""}{activeRefundRequest.adminReviewedAt ? ` · Admin duyệt ${new Date(activeRefundRequest.adminReviewedAt).toLocaleString("vi-VN")}` : ""}</p>
+          </div>
+        ) : canRequestRefund ? <Button className="mt-5" variant="outline" onClick={() => setRefundDialogOpen(true)}>Yêu cầu hoàn tiền</Button> : null}
         {order.status === "PENDING" ? (
           <div className="mt-5 rounded-xl bg-[#fff1d6] p-4">
             <p className="text-xs leading-5 text-[#97682a] break-words">
@@ -405,6 +453,19 @@ export function MemberOrderResult() {
         error={cancelError}
         onConfirm={handleCancelOrder}
       />
+      <Dialog.Root open={refundDialogOpen} onOpenChange={(open) => { setRefundDialogOpen(open); if (!open) setRefundError(""); }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
+          <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl p-6 shadow-2xl outline-none sm:p-7">
+            <Dialog.Title className="text-xl font-extrabold text-[#20392a]">Yêu cầu hoàn tiền</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm leading-6 muted">Cho cửa hàng biết lý do bạn muốn hoàn tiền cho đơn #{order.id}.</Dialog.Description>
+            <label htmlFor="refund-reason" className="mt-5 block text-sm font-semibold">Lý do hoàn tiền</label>
+            <Textarea id="refund-reason" className="mt-2" required value={refundReason} onChange={(event) => setRefundReason(event.target.value)} />
+            {refundError && <p role="alert" className="mt-2 text-sm text-[#a4473a]">{refundError}</p>}
+            <div className="mt-5 flex flex-col-reverse justify-end gap-2 sm:flex-row"><Dialog.Close asChild><Button type="button" variant="outline" disabled={refundBusy}>Đóng</Button></Dialog.Close><Button type="button" disabled={!refundReason.trim() || refundBusy} onClick={() => void submitRefundRequest()}>{refundBusy ? <BusyLabel>Đang gửi</BusyLabel> : "Gửi yêu cầu"}</Button></div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <Dialog.Root open={reservationExpiredDialogOpen} onOpenChange={setReservationExpiredDialogOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />

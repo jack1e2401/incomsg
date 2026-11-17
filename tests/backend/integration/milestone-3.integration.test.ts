@@ -74,6 +74,7 @@ after(async () => {
   const membershipIds = memberships.map(({ id }) => id);
   const wallets = await prisma.loyaltyWallet.findMany({ where: { membershipId: { in: membershipIds } }, select: { id: true } });
   const walletIds = wallets.map(({ id }) => id);
+  await prisma.memberActivity.deleteMany({ where: { membershipId: { in: membershipIds } } });
   await prisma.inventoryMovement.deleteMany({ where: { merchantId: { in: merchantIds } } });
   await prisma.pointTransaction.deleteMany({ where: { walletId: { in: walletIds } } });
   await prisma.loyaltyWallet.deleteMany({ where: { membershipId: { in: membershipIds } } });

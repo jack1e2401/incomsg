@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Plus, Storefront } from "@phosphor-icons/react";
+import { Plus, ShoppingCart, Storefront } from "@phosphor-icons/react";
 import type { ProductDto } from "../../api/commerce-types";
 import { resolveStorefrontAssetUrl } from "../../api/storefront-client";
 import type { StorefrontProductDto } from "../../api/storefront-types";
@@ -54,7 +54,7 @@ export function StorefrontProductCard({
     <article className="flex flex-col overflow-hidden rounded-2xl border border-[#e6ece3] bg-white p-2.5 shadow-[0_4px_14px_rgba(36,69,47,0.04)] transition hover:border-[#c9dac4] sm:p-3">
       <Link
         to={detailPath}
-        className="group relative block aspect-square overflow-hidden rounded-xl bg-[#edf2e9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
+        className="group relative block aspect-square overflow-hidden rounded-xl bg-[#f6f0e7] p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] sm:p-2"
       >
         {imgSrc ? (
           <img
@@ -62,10 +62,10 @@ export function StorefrontProductCard({
             alt={product.name}
             loading="lazy"
             decoding="async"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            className="h-full w-full rounded-lg bg-white object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="grid h-full w-full place-items-center text-[#709275]">
+          <div className="grid h-full w-full place-items-center rounded-lg bg-white text-[#709275]">
             <Storefront aria-hidden="true" size={32} weight="light" />
           </div>
         )}
@@ -83,26 +83,28 @@ export function StorefrontProductCard({
           </Link>
         </h3>
 
-        <div className="mt-auto flex items-center justify-between gap-1.5 pt-2.5">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-extrabold tabular-nums sm:text-base" style={{ color: accent }}>
+        <div className="mt-auto pt-2.5">
+          <div className="flex items-center justify-between gap-1.5">
+            <p className="min-w-0 truncate text-sm font-extrabold tabular-nums sm:text-base" style={{ color: accent }}>
               {money(Number(product.price))}
             </p>
-            <p className={`inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold ${stockDisplay.badgeClass}`}>
-              {stockDisplay.label}
-            </p>
+            <button
+              type="button"
+              disabled={!canAdd}
+              aria-label={`Thêm ${product.name} vào giỏ`}
+              onClick={() => onAdd(toCartProduct(product))}
+              className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-white shadow-sm transition hover:scale-[1.04] hover:shadow-md disabled:cursor-not-allowed disabled:bg-[#cfd8cf] disabled:text-[#6f7b70] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] focus-visible:ring-offset-2"
+              style={canAdd ? { backgroundColor: accent } : undefined}
+            >
+              <ShoppingCart aria-hidden="true" size={19} weight="bold" />
+              <span className="absolute right-0.5 top-0.5 grid h-3.5 w-3.5 place-items-center rounded-full bg-[#d8eea8] text-[#24452f] ring-2 ring-white">
+                <Plus aria-hidden="true" size={9} weight="bold" />
+              </span>
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={!canAdd}
-            aria-label={`Thêm ${product.name} vào giỏ`}
-            onClick={() => onAdd(toCartProduct(product))}
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[#cfd8cf] disabled:text-[#6f7b70] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d]"
-            style={canAdd ? { backgroundColor: accent } : undefined}
-          >
-            <Plus aria-hidden="true" size={13} weight="bold" />
-            <span>Thêm</span>
-          </button>
+          <p className={`mt-1 min-h-4 whitespace-nowrap text-[10px] font-medium leading-4 ${stockDisplay.textClass}`}>
+            {stockDisplay.label}
+          </p>
         </div>
       </div>
     </article>

@@ -51,7 +51,7 @@ import { LegacyMemberRedirect } from "../../../apps/frontend/src/features/storef
 import { PublicStorefrontPage } from "../../../apps/frontend/src/features/storefront/PublicStorefrontPage";
 import { StorefrontProductsPage } from "../../../apps/frontend/src/features/storefront/StorefrontProductsPage";
 import { StorefrontProfilePage } from "../../../apps/frontend/src/features/storefront/StorefrontProfilePage";
-import { StorefrontAuthGate, StorefrontShellLayout } from "../../../apps/frontend/src/features/storefront/StorefrontShellLayout";
+import { StorefrontShellLayout } from "../../../apps/frontend/src/features/storefront/StorefrontShellLayout";
 
 function LocationEcho() {
   const location = useLocation();
@@ -191,9 +191,8 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
               <Route index element={<PublicStorefrontPage />} />
               <Route path="products" element={<StorefrontProductsPage />} />
               <Route path="profile" element={<StorefrontProfilePage />} />
-              <Route element={<StorefrontAuthGate />}>
-                <Route path="vouchers" element={<MemberVouchers />} />
-              </Route>
+              <Route path="challenges" element={<MemberVouchers />} />
+              <Route path="vouchers" element={<MemberVouchers />} />
             </Route>
           </Routes>
         </MemoryRouter>
@@ -204,7 +203,7 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
     const bottomNav = screen.getByRole("navigation", { name: "Điều hướng Mini App" });
     expect(bottomNav).toHaveTextContent("Trang chủ");
     expect(bottomNav).toHaveTextContent("Sản phẩm");
-    expect(bottomNav).toHaveTextContent("Ưu đãi");
+    expect(bottomNav).toHaveTextContent("Săn thưởng");
     expect(bottomNav).toHaveTextContent("Ví điểm");
     expect(bottomNav).toHaveTextContent("Cá nhân");
 
@@ -212,8 +211,8 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
     const grid = document.querySelector("#featured-products .grid-cols-2");
     expect(grid).not.toBeNull();
 
-    // Switch to Ưu đãi tab -> stays inside exact same bottom nav shell
-    fireEvent.click(screen.getAllByRole("link", { name: "Ưu đãi" })[0]!);
+    // Switch to Săn thưởng tab -> stays inside exact same bottom nav shell
+    fireEvent.click(screen.getAllByRole("link", { name: "Săn thưởng" })[0]!);
     await screen.findByRole("heading", { name: "Voucher & Ưu đãi" });
     expect(screen.getByRole("navigation", { name: "Điều hướng Mini App" })).toBeInTheDocument();
 
@@ -284,7 +283,7 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
       "/s/ca-phe-moc/products?categoryId=1",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Thêm vào giỏ/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Thêm vào giỏ/i })[0]!);
     const viewCartLink = await screen.findByRole("link", { name: "Xem giỏ hàng" });
     expect(viewCartLink).toHaveAttribute("href", "/s/ca-phe-moc/cart");
   });

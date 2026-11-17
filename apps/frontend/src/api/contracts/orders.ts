@@ -23,7 +23,24 @@ export interface OrderItemDto {
 export interface OrderActionsDto {
   canCancel: boolean;
   canRefund: boolean;
+  canRequestRefund?: boolean;
   requiresReconciliation: boolean;
+}
+
+export interface OrderRefundRequestSummaryDto {
+  id: number;
+  status:
+    | "PENDING_MERCHANT"
+    | "PENDING_ADMIN"
+    | "REJECTED"
+    | "APPROVED"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "FAILED";
+  reason: string;
+  merchantDecisionReason: string | null;
+  adminDecisionReason: string | null;
+  requestedAt: string;
 }
 
 export interface OrderDto {
@@ -43,6 +60,7 @@ export interface OrderDto {
   promotedToTier?: TierLevel | null;
   paymentStatus?: PaymentAttemptStatus | null;
   refundStatus?: RefundStatus | string | null;
+  refundRequest?: OrderRefundRequestSummaryDto | null;
   loyaltyEvents?: WalletTransactionDto[];
   actions?: OrderActionsDto;
 }

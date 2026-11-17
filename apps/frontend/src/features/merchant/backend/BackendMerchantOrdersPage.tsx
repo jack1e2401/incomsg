@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { OrderDto } from "../../../api/commerce-types";
 import { useResource } from "../../../api/useResource";
 import {
@@ -12,7 +13,6 @@ import {
   PageHeader,
 } from "../../../components/ui";
 import { PlatformFeeLedger } from "../../finance/PlatformFeeLedger";
-import { MerchantRefundDialog } from "../MerchantRefundDialog";
 import { MerchantAbuseReportDialog } from "../MerchantAbuseReportDialog";
 import { MerchantRewardQueue } from "../MerchantRewardQueue";
 import { OrderLoyaltyPolicySnapshot } from "../../orders/OrderLoyaltyPolicySnapshot";
@@ -113,7 +113,6 @@ function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
         : api.getMerchantOrder(orderId, token).then(({ order }) => [order]),
     [token, orderId],
   );
-  const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<OrderDto | null>(null);
   const [selectedOrderForReport, setSelectedOrderForReport] = useState<
     (OrderDto & { memberEmail?: string }) | null
   >(null);
@@ -160,6 +159,11 @@ function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
                     )}
                     {order.refundStatus === "COMPLETED" && order.status !== "REFUNDED" && (
                       <StatusText tone="purple">Đã hoàn tiền</StatusText>
+                    )}
+                    {order.refundRequest && (
+                      <StatusText tone={order.refundRequest.status === "REJECTED" ? "red" : "amber"}>
+                        Yêu cầu hoàn tiền: {order.refundRequest.status}
+                      </StatusText>
                     )}
                   </div>
                   <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[#53685a]">
@@ -211,15 +215,10 @@ function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
                         {policyOrderId === order.id ? "Ẩn chính sách" : "Chính sách đã áp dụng"}
                       </Button>
                     )}
-                    {canRefund && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedOrderForRefund(order)}
-                      >
-                        Hoàn tiền
-                      </Button>
+                    {canRefund && !order.refundRequest && (
+                      <Link className="inline-flex h-9 items-center rounded-xl border px-3 text-sm" to="/merchant/refund-requests">
+                        Xử lý yêu cầu hoàn tiền
+                      </Link>
                     )}
                     <Button
                       type="button"
@@ -249,17 +248,6 @@ function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
           })}
         </div>
       )}
-
-      <MerchantRefundDialog
-        order={selectedOrderForRefund}
-        onClose={() => setSelectedOrderForRefund(null)}
-        onRefundCompleted={(updatedOrder, msg) => {
-          resource.setData((current) =>
-            (current ?? []).map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o)),
-          );
-          setNotice(msg);
-        }}
-      />
 
       <MerchantAbuseReportDialog
         order={selectedOrderForReport}

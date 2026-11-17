@@ -78,7 +78,7 @@ export const paymentsService = {
     if (!txnRef) return `${env.frontendOrigin}/`;
     const attempt = await paymentsRepository.findForReturn(txnRef);
     if (!attempt) return `${env.frontendOrigin}/`;
-    return `${env.frontendOrigin}/member/${attempt.order.merchantId}/orders/${attempt.order.id}`;
+    return `${env.frontendOrigin}/s/${attempt.order.merchant.slug}/orders/${attempt.order.id}`;
   },
 
   payMock(memberId: number, orderId: number) {

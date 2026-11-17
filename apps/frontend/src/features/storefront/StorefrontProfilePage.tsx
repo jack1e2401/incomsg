@@ -64,6 +64,7 @@ export function StorefrontProfilePage() {
     { to: `${basePath}/wallet`, label: "Ví điểm Loyalty", desc: "Lịch sử tích & tiêu điểm", icon: Wallet },
     { to: `${basePath}/vouchers`, label: "Ưu đãi & Voucher", desc: "Đổi điểm lấy mã giảm giá", icon: Ticket },
     { to: `${basePath}/rewards`, label: "Quà tặng đã đổi", desc: "Theo dõi quà nhận tại quầy", icon: Gift },
+    { to: `${basePath}/challenges`, label: "Nhiệm vụ săn thưởng", desc: "Theo dõi nhiệm vụ và phần thưởng", icon: Gift },
   ];
 
   return (
