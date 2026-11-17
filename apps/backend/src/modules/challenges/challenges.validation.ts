@@ -1,6 +1,32 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import { HttpError } from "../../lib/http-error.js";
 import type { ChallengeType } from "../../generated/prisma/enums.js";
+import { buildDefaultChallengeMilestones, type ChallengeMilestoneInput } from "./challenges.milestones.js";
+
+function readMilestones(value: unknown, targetValue?: Prisma.Decimal): ChallengeMilestoneInput[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 10) throw new HttpError(400, "INVALID_INPUT");
+  const result: ChallengeMilestoneInput[] = [];
+  let previous = new Prisma.Decimal(0);
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new HttpError(400, "INVALID_INPUT");
+    const milestone = item as Record<string, unknown>;
+    const rawThreshold = milestone.thresholdValue;
+    if (typeof rawThreshold !== "string" && !(typeof rawThreshold === "number" && Number.isSafeInteger(rawThreshold))) throw new HttpError(400, "INVALID_INPUT");
+    let threshold: Prisma.Decimal;
+    try { threshold = new Prisma.Decimal(String(rawThreshold)); }
+    catch { throw new HttpError(400, "INVALID_INPUT"); }
+    if (!threshold.isFinite() || !threshold.isInteger() || !threshold.greaterThan(0) || threshold.lessThanOrEqualTo(previous) || (targetValue && threshold.greaterThan(targetValue))) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
+    const title = typeof milestone.title === "string" ? milestone.title.trim() : "";
+    const description = milestone.description === undefined ? "" : milestone.description;
+    if (!title || title.length > 80 || typeof description !== "string" || description.length > 240) throw new HttpError(400, "INVALID_INPUT");
+    result.push({ thresholdValue: threshold.toFixed(0), title, description: description.trim() });
+    previous = threshold;
+  }
+  if (targetValue && !previous.equals(targetValue)) throw new HttpError(400, "INVALID_INPUT");
+  return result;
+}
 
 export function readChallengeId(value: unknown): number { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) throw new HttpError(400, "INVALID_INPUT"); return id; }
 export function readChallengeInput(value: unknown, partial = false) {
@@ -30,6 +56,15 @@ export function readChallengeInput(value: unknown, partial = false) {
   }
   if (result.startsAt instanceof Date && result.endsAt instanceof Date && result.endsAt <= result.startsAt) {
     throw new HttpError(400, "CHALLENGE_INVALID_DATE_RANGE");
+  }
+  if (body.milestones !== undefined) {
+    const targetValue = result.targetValue instanceof Prisma.Decimal ? result.targetValue : undefined;
+    result.milestones = readMilestones(body.milestones, targetValue);
+  } else if (!partial) {
+    result.milestones = buildDefaultChallengeMilestones(
+      result.type as ChallengeType,
+      (result.targetValue as Prisma.Decimal).toFixed(0),
+    );
   }
   if (body.isFeatured !== undefined) { if (typeof body.isFeatured !== "boolean") throw new HttpError(400, "INVALID_INPUT"); result.isFeatured = body.isFeatured; }
   if (!partial && body.status !== undefined) { if (body.status !== "DRAFT" && body.status !== "ACTIVE") throw new HttpError(400, "INVALID_INPUT"); result.status = body.status; }

@@ -25,6 +25,7 @@ let memberId = 0;
 let adminId = 0;
 let productId = 0;
 let orderChallengeId = 0;
+const extraMemberIds: number[] = [];
 
 async function req(path: string, method = "GET", token?: string, body?: unknown) {
   const response = await fetch(base + path, {
@@ -77,7 +78,7 @@ after(async () => {
   await prisma.loyaltyRule.deleteMany({ where: { merchantId } });
   await prisma.loyaltyPolicyVersion.deleteMany({ where: { merchantId } });
   await prisma.merchant.deleteMany({ where: { id: merchantId } });
-  await prisma.user.deleteMany({ where: { id: { in: [ownerId, memberId, adminId] } } });
+  await prisma.user.deleteMany({ where: { id: { in: [ownerId, memberId, adminId, ...extraMemberIds] } } });
   await prisma.$disconnect();
 });
 
@@ -89,6 +90,9 @@ test("challenge CMS activation, public privacy, and daily check-in are scoped", 
   assert.equal(create.status, 201);
   const id = (create.json.challenge as { id: number }).id;
   orderChallengeId = id;
+  assert.deepEqual((create.json.challenge as { milestones: unknown[] }).milestones, [
+    { position: 1, thresholdValue: "1", title: "Mốc 1", description: "" },
+  ]);
   assert.equal((await req(`/api/merchant/challenges/${id}/activate`, "POST", merchantToken)).status, 200);
   const daily = await req("/api/merchant/challenges", "POST", merchantToken, {
     title: "Check in twice", description: "Two daily visits", type: "DAILY_CHECKIN", targetValue: "2", rewardPoints: "3", budgetTotal: "30",
@@ -223,4 +227,73 @@ test("locked fields, WAITING_BUDGET FIFO replenishment, Option B keep-above-targ
   await prisma.orderItem.deleteMany({ where: { orderId: o2Id } });
   await prisma.order.deleteMany({ where: { id: o2Id } });
   await prisma.user.deleteMany({ where: { id: member2.id } });
+});
+
+test("challenge milestones round-trip, stay locked after activation, and do not grant points mid-campaign", async () => {
+  const created = await req("/api/merchant/challenges", "POST", merchantToken, {
+    title: "Ba lần ghé", description: "Theo dõi hành trình ba lần ghé quán", type: "DAILY_CHECKIN", targetValue: "3",
+    rewardPoints: "11", budgetTotal: "110", startsAt: "2026-11-01T00:00:00.000Z", endsAt: "2026-12-31T00:00:00.000Z", status: "ACTIVE",
+    milestones: [
+      { thresholdValue: "1", title: "Lần ghé đầu tiên", description: "Bắt đầu hành trình" },
+      { thresholdValue: "3", title: "Khách quen", description: "Đạt mục tiêu và nhận điểm" },
+    ],
+  });
+  assert.equal(created.status, 201);
+  const challengeId = (created.json.challenge as { id: number }).id;
+  const expectedMilestones = [
+    { position: 1, thresholdValue: "1", title: "Lần ghé đầu tiên", description: "Bắt đầu hành trình" },
+    { position: 2, thresholdValue: "3", title: "Khách quen", description: "Đạt mục tiêu và nhận điểm" },
+  ];
+  assert.deepEqual((created.json.challenge as { milestones: unknown[] }).milestones, expectedMilestones);
+
+  const merchantList = await req("/api/merchant/challenges", "GET", merchantToken);
+  const merchantItems = merchantList.json.items as Array<{ id: number; milestones: unknown[] }>;
+  assert.deepEqual(merchantItems.find((item) => item.id === challengeId)?.milestones, expectedMilestones);
+  const merchantDetail = await req(`/api/merchant/challenges/${challengeId}`, "GET", merchantToken);
+  assert.deepEqual((merchantDetail.json.challenge as { milestones: unknown[] }).milestones, expectedMilestones);
+  const publicList = await req(`/api/public/stores/${slug}/challenges`);
+  assert.deepEqual(((publicList.json.challenges as Array<{ id: number; milestones: unknown[] }>).find((item) => item.id === challengeId))?.milestones, expectedMilestones);
+  const publicDetail = await req(`/api/public/stores/${slug}/challenges/${challengeId}`);
+  assert.deepEqual((publicDetail.json.challenge as { milestones: unknown[] }).milestones, expectedMilestones);
+  const memberDetail = await req(`/api/member/stores/${slug}/challenges/${challengeId}`, "GET", memberToken);
+  assert.deepEqual((memberDetail.json.challenge as { milestones: unknown[] }).milestones, expectedMilestones);
+
+  const lockedStructure = await req(`/api/merchant/challenges/${challengeId}`, "PATCH", merchantToken, {
+    milestones: [
+      { thresholdValue: "2", title: "Lần ghé đầu tiên", description: "Bắt đầu hành trình" },
+      { thresholdValue: "3", title: "Khách quen", description: "Đạt mục tiêu và nhận điểm" },
+    ],
+  });
+  assert.equal(lockedStructure.status, 409);
+  assert.equal(lockedStructure.json.error, "CHALLENGE_FIELDS_LOCKED");
+  const copyEdit = await req(`/api/merchant/challenges/${challengeId}`, "PATCH", merchantToken, {
+    milestones: [
+      { thresholdValue: "1", title: "Ghé lần đầu", description: "Cùng bắt đầu" },
+      { thresholdValue: "3", title: "Khách thân quen", description: "Nhận điểm thưởng cuối" },
+    ],
+  });
+  assert.equal(copyEdit.status, 200);
+  assert.equal((copyEdit.json.challenge as { milestones: Array<{ title: string }> }).milestones[0]?.title, "Ghé lần đầu");
+
+  const legacyChallenge = await prisma.challenge.create({ data: {
+    merchantId, title: "Legacy challenge", description: "Created without milestone rows", type: "SPEND_TOTAL", status: "ACTIVE",
+    targetValue: "3", rewardPoints: "1", budgetTotal: "10", startsAt: new Date("2026-11-01T00:00:00.000Z"), endsAt: new Date("2026-12-31T00:00:00.000Z"),
+  } });
+  const legacyRead = await req(`/api/public/stores/${slug}/challenges/${legacyChallenge.id}`);
+  assert.deepEqual(
+    ((legacyRead.json.challenge as { milestones: Array<{ thresholdValue: string }> }).milestones).map(({ thresholdValue }) => thresholdValue),
+    ["1", "2", "3"],
+  );
+
+  const progressMember = await prisma.user.create({ data: { email: `${slug}-milestone-member@test.local`, passwordHash: "x", role: "MEMBER" } });
+  extraMemberIds.push(progressMember.id);
+  const progressToken = await signAccessToken(progressMember.id);
+  const checkedIn = await req(`/api/member/stores/${slug}/check-in`, "POST", progressToken);
+  assert.equal(checkedIn.status, 200);
+  const membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: progressMember.id, merchantId } } });
+  const progress = await prisma.challengeProgress.findUniqueOrThrow({ where: { challengeId_membershipId: { challengeId, membershipId: membership.id } } });
+  assert.equal(progress.currentValue.toFixed(0), "1");
+  assert.equal(progress.rewardState, "IN_PROGRESS");
+  assert.equal(await prisma.challengeRewardGrant.count({ where: { progress: { challengeId } } }), 0);
+  assert.equal(await prisma.pointTransaction.count({ where: { wallet: { membershipId: membership.id } } }), 0);
 });

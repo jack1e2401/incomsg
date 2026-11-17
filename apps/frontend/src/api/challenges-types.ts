@@ -12,6 +12,15 @@ export interface ChallengePaginationDto {
   totalPages: number;
 }
 
+export interface ChallengeMilestoneDto {
+  position: number;
+  thresholdValue: string;
+  title: string;
+  description: string;
+}
+
+export type ChallengeMilestoneInput = Pick<ChallengeMilestoneDto, "thresholdValue" | "title" | "description">;
+
 export interface MerchantChallengeDto {
   id: number;
   merchantId: number;
@@ -28,6 +37,7 @@ export interface MerchantChallengeDto {
   startsAt: string;
   endsAt: string;
   isFeatured: boolean;
+  milestones: ChallengeMilestoneDto[];
   hasProgress: boolean;
   lockedFields: boolean;
   inProgressCount: number;
@@ -93,6 +103,7 @@ export interface CreateChallengeInput {
   startsAt: string;
   endsAt: string;
   isFeatured?: boolean;
+  milestones?: ChallengeMilestoneInput[];
   status?: "DRAFT" | "ACTIVE";
 }
 
@@ -106,6 +117,7 @@ export interface UpdateChallengeInput {
   startsAt?: string;
   endsAt?: string;
   isFeatured?: boolean;
+  milestones?: ChallengeMilestoneInput[];
 }
 
 export interface ListMerchantChallengesParams {
@@ -139,6 +151,7 @@ export interface PublicChallengeDto {
   startsAt: string;
   endsAt: string;
   isFeatured: boolean;
+  milestones: ChallengeMilestoneDto[];
 }
 
 export interface MemberChallengeDto extends PublicChallengeDto {

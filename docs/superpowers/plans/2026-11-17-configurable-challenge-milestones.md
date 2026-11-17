@@ -80,14 +80,14 @@
 
 **Produces:** Merchant/public/member challenge DTOs include `milestones` sorted by threshold. Create/patch inputs accept the optional array; omitted legacy create inputs receive generated defaults.
 
-- [ ] Add unit tests for valid arrays and rejection of empty, missing-title, non-integer, duplicate, descending, over-target, non-final-target, and over-10 milestone arrays.
-- [ ] Add integration tests proving merchant create persists custom milestones and merchant/public/member reads return the same ordered list.
-- [ ] Add integration tests proving a progress-only intermediate threshold does not create a reward grant, plus locked structure/copy-edit behavior after activation.
-- [ ] Run those unit and integration tests and confirm the expected failures before implementation.
-- [ ] Validate milestone arrays in `readChallengeInput`; write parent and child rows atomically in merchant create/update; reject structural changes when `activatedAt` or progress exists while allowing copy-only edits on unchanged structure.
-- [ ] Include deterministic defaults for legacy rows with no milestone children in every campaign DTO; keep campaign reward, budget, progress, and refund accounting unchanged.
-- [ ] Re-run the targeted backend unit and MySQL integration tests and confirm they pass.
-- [ ] Commit as `feat(challenges): persist display milestones`.
+- [x] Add unit tests for valid arrays and rejection of empty, missing-title, non-integer, duplicate, descending, over-target, non-final-target, and over-10 milestone arrays.
+- [x] Add integration tests proving merchant create persists custom milestones and merchant/public/member reads return the same ordered list.
+- [x] Add integration tests proving a progress-only intermediate threshold does not create a reward grant, plus locked structure/copy-edit behavior after activation.
+- [ ] Run those unit and integration tests and confirm the expected failures before implementation. Unit validation failures were observed; the integration database is unavailable at `localhost:3306`.
+- [x] Validate milestone arrays in `readChallengeInput`; write parent and child rows atomically in merchant create/update; reject structural changes when `activatedAt` or progress exists while allowing copy-only edits on unchanged structure.
+- [x] Include deterministic defaults for legacy rows with no milestone children in every campaign DTO; keep campaign reward, budget, progress, and refund accounting unchanged.
+- [ ] Re-run the targeted backend unit and MySQL integration tests and confirm they pass. Backend unit suite passed; integration verification is blocked because no local MySQL server is listening on port 3306.
+- [x] Commit as `feat(challenges): persist display milestones`.
 
 ### Task 3: Make Merchant editor step 4 configure milestones
 
