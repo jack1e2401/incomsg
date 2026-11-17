@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 
 const { publicChallenges, memberChallenges, checkIn, publicDetail, memberDetail, publicVouchers, memberVouchers, wallet } = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session
 import { ChallengeHeroCard } from "../../../apps/frontend/src/features/challenges/ChallengeHeroCard";
 import { ChallengesPage } from "../../../apps/frontend/src/features/challenges/ChallengesPage";
 import { ChallengeDetailPage } from "../../../apps/frontend/src/features/challenges/ChallengeDetailPage";
+import { ChallengeMilestonePath } from "../../../apps/frontend/src/features/challenges/ChallengeMilestonePath";
 import { MemberVouchers } from "../../../apps/frontend/src/features/member/MemberLoyaltyPages";
 
 const challenge = { id: 9, merchantId: 5, title: "Mua cà phê", description: "Mua đủ đơn", type: "ORDER_COUNT" as const, effectiveStatus: "ACTIVE" as const, targetValue: "3", rewardPoints: "150", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z", isFeatured: true };
@@ -48,6 +49,39 @@ describe("V4 member challenges and public discovery", () => {
     memberVouchers.mockResolvedValue({ vouchers: [] }); wallet.mockResolvedValue({ wallet: { availablePoints: 500 } });
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+  it("renders labeled milestone nodes instead of a generic progress bar", () => {
+    render(<ChallengeMilestonePath challenge={challenge} progress={progress} />);
+
+    const milestones = screen.getByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(within(milestones).getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getByText("2/3 đơn hàng")).toBeInTheDocument();
+    expect(screen.getByText("3 đơn").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("shows pending reward and rewarded final node states", () => {
+    const dailyChallenge = { ...challenge, type: "DAILY_CHECKIN" as const, targetValue: "2" };
+    const completedProgress = { ...progress, currentValue: "2", targetValue: "2", percent: 100 };
+
+    const { rerender } = render(
+      <ChallengeMilestonePath
+        challenge={dailyChallenge}
+        progress={{ ...completedProgress, rewardState: "WAITING_BUDGET" }}
+      />,
+    );
+    expect(screen.getByText("Mục tiêu hoàn thành, đang chờ ngân sách.")).toBeInTheDocument();
+    expect(screen.getByText("2 ngày").closest("li")).toHaveAttribute("data-state", "reward-pending");
+
+    rerender(
+      <ChallengeMilestonePath
+        challenge={dailyChallenge}
+        progress={{ ...completedProgress, rewardState: "REWARDED" }}
+      />,
+    );
+    expect(screen.getByText("Đã nhận phần thưởng.")).toBeInTheDocument();
+    expect(screen.getByText("2 ngày").closest("li")).toHaveAttribute("data-state", "rewarded");
+  });
 
   it("shows goal and login CTA to guests without progress, and member progress when authenticated", async () => {
     tree("/s/coffee", <ChallengeHeroCard slug="coffee" storeBase="/s/coffee" />);

@@ -17,6 +17,15 @@ export const formatChallengeProgress = (challenge: PublicChallengeDto, progress:
   return `${current.toLocaleString("vi-VN")}/${target.toLocaleString("vi-VN")} ${challenge.type === "ORDER_COUNT" ? "đơn hàng" : "ngày"}`;
 };
 
+export const formatChallengeRemaining = (challenge: PublicChallengeDto, progress: ChallengeProgressDto) => {
+  const remaining = Number(progress.remainingValue);
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  if (challenge.type === "SPEND_TOTAL")
+    return `Còn thiếu ${new Intl.NumberFormat("vi-VN").format(remaining)} ₫`;
+  const unit = challenge.type === "ORDER_COUNT" ? "đơn hàng" : "ngày";
+  return `Còn thiếu ${remaining.toLocaleString("vi-VN")} ${unit}`;
+};
+
 export function ChallengeProgress({ challenge, progress }: { challenge: PublicChallengeDto; progress: ChallengeProgressDto }) {
   return (
     <div className="mt-4">
@@ -24,7 +33,7 @@ export function ChallengeProgress({ challenge, progress }: { challenge: PublicCh
         <div className="h-full rounded-full bg-[#4d8057] transition-[width]" style={{ width: `${Math.max(0, Math.min(progress.percent, 100))}%` }} />
       </div>
       <p className="mt-2 text-sm font-semibold tabular-nums">{formatChallengeProgress(challenge, progress)}</p>
-      {Number(progress.remainingValue) > 0 && <p className="mt-1 text-xs muted">Còn thiếu {challenge.type === "SPEND_TOTAL" ? `${new Intl.NumberFormat("vi-VN").format(Number(progress.remainingValue))} ₫` : `${Number(progress.remainingValue).toLocaleString("vi-VN")} ${challenge.type === "ORDER_COUNT" ? "đơn hàng" : "ngày"}`}</p>}
+      {formatChallengeRemaining(challenge, progress) && <p className="mt-1 text-xs muted">{formatChallengeRemaining(challenge, progress)}</p>}
     </div>
   );
 }
