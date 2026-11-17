@@ -42,16 +42,18 @@ vi.mock("../../../apps/frontend/src/api/analytics-client", async (importOriginal
   };
 });
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
 import { MemberVouchers } from "../../../apps/frontend/src/features/member/MemberLoyaltyPages";
+import { MemberOrders } from "../../../apps/frontend/src/features/member/MemberOrderPages";
 import { PublicProductDetail } from "../../../apps/frontend/src/features/member/PublicProductDetail";
 import { LegacyMemberRedirect } from "../../../apps/frontend/src/features/storefront/LegacyMemberRedirect";
 import { PublicStorefrontPage } from "../../../apps/frontend/src/features/storefront/PublicStorefrontPage";
 import { StorefrontProductsPage } from "../../../apps/frontend/src/features/storefront/StorefrontProductsPage";
 import { StorefrontProfilePage } from "../../../apps/frontend/src/features/storefront/StorefrontProfilePage";
-import { StorefrontShellLayout } from "../../../apps/frontend/src/features/storefront/StorefrontShellLayout";
+import { StorefrontAuthGate, StorefrontShellLayout } from "../../../apps/frontend/src/features/storefront/StorefrontShellLayout";
+import { Breadcrumbs } from "../../../apps/frontend/src/components/ui/Breadcrumbs";
 
 function LocationEcho() {
   const location = useLocation();
@@ -180,6 +182,9 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
           },
         });
       }
+      if (url.includes("/api/member/orders?merchantId=5")) {
+        return Response.json({ orders: [] });
+      }
       return Response.json({ error: "Unhandled" }, { status: 404 });
     };
 
@@ -191,6 +196,9 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
               <Route index element={<PublicStorefrontPage />} />
               <Route path="products" element={<StorefrontProductsPage />} />
               <Route path="profile" element={<StorefrontProfilePage />} />
+              <Route element={<StorefrontAuthGate />}>
+                <Route path="orders" element={<MemberOrders />} />
+              </Route>
               <Route path="challenges" element={<MemberVouchers />} />
               <Route path="vouchers" element={<MemberVouchers />} />
             </Route>
@@ -219,7 +227,26 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
     // Switch to Cá nhân tab -> renders profile wrapper without legacy links
     fireEvent.click(screen.getAllByRole("link", { name: "Cá nhân" })[0]!);
     await screen.findByText("member@moc.local");
-    expect(screen.getByRole("link", { name: /Đơn hàng của tôi/i })).toHaveAttribute("href", "/s/ca-phe-moc/orders");
+    const ordersLink = screen.getByRole("link", { name: /Đơn hàng của tôi/i });
+    expect(ordersLink).toHaveAttribute("href", "/s/ca-phe-moc/orders");
+    fireEvent.click(ordersLink);
+    await screen.findByRole("heading", { name: "Chưa có đơn hàng" });
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumb).getByRole("link", { name: "Cá nhân" })).toHaveAttribute("href", "/s/ca-phe-moc/profile");
+    fireEvent.click(screen.getByRole("link", { name: "Quay lại Cá nhân" }));
+    await screen.findByRole("link", { name: /Đơn hàng của tôi/i });
+  });
+
+  it("keeps the profile and order list in the breadcrumb when opening order detail directly", () => {
+    render(
+      <MemoryRouter initialEntries={["/s/ca-phe-moc/orders/41"]}>
+        <Breadcrumbs basePath="/s/ca-phe-moc" merchantName="Tiệm Cà Phê Mộc" />
+      </MemoryRouter>,
+    );
+
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumb).getByRole("link", { name: "Cá nhân" })).toHaveAttribute("href", "/s/ca-phe-moc/profile");
+    expect(screen.getByRole("link", { name: "Quay lại Đơn hàng" })).toHaveAttribute("href", "/s/ca-phe-moc/orders");
   });
 
   it("redirects legacy /member/:merchantId routes safely to /s/:slug/*", async () => {
