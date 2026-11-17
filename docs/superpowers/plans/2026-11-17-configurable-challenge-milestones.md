@@ -123,8 +123,8 @@
 
 **Consumes:** ordered configured milestone DTOs from Task 2.
 
-- [x] Add tests that custom thresholds drive reached/current/upcoming path state and render merchant titles/descriptions; retain the no-progress guest behavior and generated fallback behavior.
-- [x] Add member detail assertions for campaign summary, remaining-time text, available/accumulated store points, recent activity, and absence of leaderboard UI.
+- [x] Add tests that custom thresholds drive reached/current/upcoming path state, render merchant titles/descriptions, align the fill with uneven thresholds, and show a zero-progress path to first-time members while retaining guest behavior and generated fallbacks.
+- [x] Add member detail assertions for campaign summary, remaining-time text, decimal reward display, available/accumulated store points, recent activity, and absence of leaderboard UI.
 - [x] Run milestone/member unit files and confirm the new assertions fail against generated-only path labels and the current detail layout.
 - [x] Map path states from configured thresholds against server-confirmed `currentValue` and final `rewardState`; keep animations transition-based and reduced-motion safe.
 - [x] Redesign member challenge detail using the supplied campaign-summary hierarchy, configured milestone path, existing store-wallet response and recent challenge activity; keep the store palette and bottom navigation.
@@ -148,10 +148,11 @@
 - Backend unit: 77 passed / 77.
 - Backend integration: 128 passed / 128 using only `incomsg-test` through `scripts/test-backend-db.mjs`.
 - Backend typecheck/build and frontend production build passed.
-- Focused challenge/editor frontend tests: 31 passed / 31.
-- Full frontend unit suite: 173 passed / 176; the three failures are in untouched `m7-merchant-experience.test.tsx` (two loyalty policy/ledger assertions) and `v4-catalog.test.tsx` (category-management button assertion).
+- Focused challenge/editor frontend tests: 33 passed / 33.
+- Full frontend unit suite: 175 passed / 178; the three failures are in untouched `m7-merchant-experience.test.tsx` (two loyalty policy/ledger assertions) and `v4-catalog.test.tsx` (category-management button assertion).
+- Review follow-up fixes were committed separately as `546221e` (`fix(member): align mission path progress`).
 - Runtime API investigation found `20261117180000_configurable_challenge_milestones` pending and `ChallengeMilestone` missing in the local app database. After explicit user approval, `prisma migrate deploy --config prisma7.config.ts` applied only that additive migration. Migration status is up to date; public challenges, authenticated member challenges, merchant challenge listing, the Vite detail module, and `/s/ca-phe-moc/challenges` all returned HTTP 200.
-- The initial Vite module 404 happened during replacement of `ChallengeDetailPage.tsx`; the stable file now serves HTTP 200. No browser/E2E test was run.
+- The initial Vite module 404 happened during replacement of `ChallengeDetailPage.tsx`; the stable file now serves HTTP 200. New members get an initial journey state, path fill follows uneven milestone thresholds, and decimal point strings remain exact. No browser/E2E test was run.
 
 ## Acceptance
 
