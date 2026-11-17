@@ -1,3 +1,4 @@
+import { refundRequestStatusLabel } from "../refunds/refund-status";
 import { Link } from "react-router-dom";
 import { useAuthSession } from "../../api/auth-session";
 import type { OrderStatus } from "../../api/commerce-types";
@@ -96,7 +97,7 @@ export function MemberOrders() {
                   </StatusText>
                   {order.refundRequest && (
                     <StatusText tone={order.refundRequest.status === "REJECTED" ? "red" : order.refundRequest.status === "COMPLETED" ? "green" : "amber"}>
-                      {order.refundRequest.status === "PENDING_MERCHANT" ? "Chờ cửa hàng duyệt" : order.refundRequest.status === "PENDING_ADMIN" ? "Chờ Admin duyệt" : order.refundRequest.status === "REJECTED" ? "Từ chối hoàn tiền" : order.refundRequest.status === "COMPLETED" ? "Đã hoàn tiền" : "Đang xử lý hoàn tiền"}
+                      {refundRequestStatusLabel(order.refundRequest.status)}
                     </StatusText>
                   )}
                   {order.refundStatus === "PENDING_PROVIDER" && (

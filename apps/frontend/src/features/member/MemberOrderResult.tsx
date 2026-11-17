@@ -1,3 +1,4 @@
+import { refundRequestStatusLabel } from "../refunds/refund-status";
 import { useEffect, useState } from "react";
 import { Link, useParams, useOutletContext } from "react-router-dom";
 import { ArrowLeft, Sparkle } from "@phosphor-icons/react";
@@ -5,7 +6,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useAuthSession } from "../../api/auth-session";
 import { createCommerceClient } from "../../api/commerce-http";
 import { createRefundsClient, translateRefundRequestError } from "../../api/refunds-client";
-import type { RefundRequestDto, RefundRequestStatus } from "../../api/refunds-types";
 import type { OrderStatus, PointTransactionType } from "../../api/commerce-types";
 import { useResource } from "../../api/useResource";
 import {
@@ -79,15 +79,6 @@ function orderStatusLabel(status: OrderStatus): string {
   }
 }
 
-function refundStatusLabel(status: RefundRequestStatus) {
-  if (status === "PENDING_MERCHANT") return "Chờ cửa hàng duyệt";
-  if (status === "PENDING_ADMIN") return "Chờ Admin duyệt";
-  if (status === "REJECTED") return "Từ chối hoàn tiền";
-  if (status === "COMPLETED") return "Đã hoàn tiền";
-  if (status === "APPROVED" || status === "PROCESSING") return "Đang xử lý hoàn tiền";
-  return "Yêu cầu hoàn tiền thất bại";
-}
-
 function transactionTypeLabel(type: PointTransactionType) {
   switch (type) {
     case "EARN":
@@ -154,7 +145,6 @@ export function MemberOrderResult() {
   const [refundReason, setRefundReason] = useState("");
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundError, setRefundError] = useState("");
-  const [refundRequest, setRefundRequest] = useState<RefundRequestDto | null>(null);
 
   useEffect(() => {
     if (order?.status !== "PENDING" || !order.stockReservedUntil) return;
@@ -215,7 +205,6 @@ export function MemberOrderResult() {
     setRefundError("");
     try {
       const response = await refunds.createMemberRefundRequest(order.id, refundReason.trim(), accessToken);
-      setRefundRequest(response.refundRequest);
       orderResource.setData({ ...order, refundRequest: response.refundRequest });
       setRefundDialogOpen(false);
       setRefundReason("");
@@ -244,12 +233,9 @@ export function MemberOrderResult() {
       />
     );
 
-  const activeRefundRequest = refundRequest ?? (order.refundRequest ? {
-    ...order.refundRequest,
-    merchantReviewedAt: null,
-    adminReviewedAt: null,
-  } as RefundRequestDto : null);
-  const canRequestRefund = Boolean(order.actions?.canRequestRefund || (order.status === "PAID" && order.paymentStatus !== "SUCCEEDED" && !order.refundRequest));
+  const activeRefundRequest = order.refundRequest;
+  const canRequestRefund = order.actions?.canRequestRefund
+    ?? (order.status === "PAID" && order.paymentStatus !== "SUCCEEDED" && !order.refundStatus && !activeRefundRequest);
 
   return (
     <>
@@ -300,10 +286,14 @@ export function MemberOrderResult() {
         )}
         {activeRefundRequest ? (
           <div className="mt-5 rounded-2xl bg-[#fff9e9] p-4" role="status">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">Yêu cầu hoàn tiền</h2><StatusText tone={activeRefundRequest.status === "REJECTED" ? "red" : activeRefundRequest.status === "COMPLETED" ? "green" : "amber"}>{refundStatusLabel(activeRefundRequest.status)}</StatusText></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-bold">Yêu cầu hoàn tiền</h2><StatusText tone={activeRefundRequest.status === "REJECTED" ? "red" : activeRefundRequest.status === "COMPLETED" ? "green" : "amber"}>{refundRequestStatusLabel(activeRefundRequest.status)}</StatusText></div>
             <p className="mt-2 text-sm">Lý do: {activeRefundRequest.reason}</p>
             {activeRefundRequest.status === "REJECTED" && (activeRefundRequest.merchantDecisionReason || activeRefundRequest.adminDecisionReason) && <p className="mt-2 text-sm text-[#a4473a]">Lý do từ chối: {activeRefundRequest.adminDecisionReason || activeRefundRequest.merchantDecisionReason}</p>}
-            <p className="mt-2 text-xs muted">Gửi lúc {new Date(activeRefundRequest.requestedAt).toLocaleString("vi-VN")}{activeRefundRequest.merchantReviewedAt ? ` · Cửa hàng duyệt ${new Date(activeRefundRequest.merchantReviewedAt).toLocaleString("vi-VN")}` : ""}{activeRefundRequest.adminReviewedAt ? ` · Admin duyệt ${new Date(activeRefundRequest.adminReviewedAt).toLocaleString("vi-VN")}` : ""}</p>
+            <p className="mt-2 text-xs muted">
+              Gửi lúc {new Date(activeRefundRequest.requestedAt).toLocaleString("vi-VN")}
+              {activeRefundRequest.merchantReviewedAt && ` · Cửa hàng xử lý ${new Date(activeRefundRequest.merchantReviewedAt).toLocaleString("vi-VN")}`}
+              {activeRefundRequest.adminReviewedAt && ` · Admin đã xử lý ở luồng cũ ${new Date(activeRefundRequest.adminReviewedAt).toLocaleString("vi-VN")}`}
+            </p>
           </div>
         ) : canRequestRefund ? <Button className="mt-5" variant="outline" onClick={() => setRefundDialogOpen(true)}>Yêu cầu hoàn tiền</Button> : null}
         {order.status === "PENDING" ? (

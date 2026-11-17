@@ -43,4 +43,18 @@ describe("V4 member refund requests", () => {
     expect(await screen.findByText("Chờ cửa hàng duyệt")).toBeInTheDocument();
     expect(screen.getByText("Lý do: Sản phẩm bị lỗi")).toBeInTheDocument();
   });
+
+  it("shows the recorded rejection when opening an existing order", async () => {
+    getOrder.mockResolvedValue({
+      order: {
+        ...order,
+        refundRequest: { id: 4, status: "REJECTED", reason: "Sản phẩm bị lỗi", merchantDecisionReason: "Đơn đã được xác minh" },
+        actions: { ...order.actions, canRequestRefund: false },
+      },
+    });
+    renderPage();
+    expect(await screen.findByText("Từ chối hoàn tiền")).toBeInTheDocument();
+    expect(screen.getByText("Lý do từ chối: Đơn đã được xác minh")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Yêu cầu hoàn tiền" })).not.toBeInTheDocument();
+  });
 });

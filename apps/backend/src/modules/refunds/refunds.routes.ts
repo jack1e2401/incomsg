@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireRole } from "../../middleware/auth.js";
-import { createRefundRequest, getMemberRefundRequest, listMerchantRefundRequests, merchantRefundRequestDetail, merchantApproveRefundRequest, merchantRejectRefundRequest, listAdminRefundRequests, adminRefundRequestDetail, adminApproveRefundRequest, adminRejectRefundRequest } from "./refunds.controller.js";
+import { createRefundRequest, getMemberRefundRequest, listMerchantRefundRequests, merchantRefundRequestDetail, merchantApproveRefundRequest, merchantRejectRefundRequest, listAdminRefundRequests, adminRefundRequestDetail } from "./refunds.controller.js";
 export const memberRefundRequestRoutes = Router();
 memberRefundRequestRoutes.use(authenticate, requireRole("MEMBER"));
 memberRefundRequestRoutes.get("/:orderId/refund-request", getMemberRefundRequest);
@@ -17,5 +17,3 @@ export const adminRefundRequestRoutes = Router();
 adminRefundRequestRoutes.use(authenticate, requireRole("ADMIN"));
 adminRefundRequestRoutes.get("/", listAdminRefundRequests);
 adminRefundRequestRoutes.get("/:requestId", adminRefundRequestDetail);
-adminRefundRequestRoutes.post("/:requestId/approve", adminApproveRefundRequest);
-adminRefundRequestRoutes.post("/:requestId/reject", adminRejectRefundRequest);

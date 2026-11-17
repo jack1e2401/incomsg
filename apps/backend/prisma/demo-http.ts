@@ -98,10 +98,12 @@ async function main(): Promise<void> {
   await wallet(member, [0, "0.2", "0"]);
   const preview = await api<{ walletAfter: { pointDebt: string } }>(`/api/merchant/orders/${second}/refund-preview`, merchant);
   assert.ok(new Prisma.Decimal(preview.walletAfter.pointDebt).eq("0.4"));
-  const refund = await api<{ refund: { status: string } }>(`/api/merchant/orders/${second}/refund`, merchant, "POST", { reason: "Full mock refund for exact debt demo" });
+  const { refundRequest } = await api<{ refundRequest: { id: number } }>(`/api/orders/${second}/refund-request`, member, "POST", { reason: "Full mock refund for exact debt demo" }, [201]);
+  const approvalPath = `/api/merchant/refund-requests/${refundRequest.id}/approve`;
+  const refund = await api<{ refund: { status: string } }>(approvalPath, merchant, "POST");
   assert.equal(refund.refund.status, "COMPLETED");
   const debtWallet = await wallet(member, [0, "0", "0.4"]);
-  await api(`/api/merchant/orders/${second}/refund`, merchant, "POST", { reason: "Duplicate refund request" });
+  await api(approvalPath, merchant, "POST");
   await api(`/api/member/vouchers/${data.vouchers.discount}/redeem`, member, "POST", undefined, [201], key);
   await wallet(member, [0, "0", "0.4"]);
   const third = await order(member, data.products.recovery);

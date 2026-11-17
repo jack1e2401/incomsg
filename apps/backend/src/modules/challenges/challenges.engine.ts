@@ -75,7 +75,7 @@ export function decimalText(value: Prisma.Decimal): string { return exactPoints(
 export async function reverseOrderChallenges(tx: PrismaTypes.TransactionClient, orderId: number, actorId: number): Promise<number> {
   const paidActivity = await tx.memberActivity.findUnique({ where: { eventKey: `order-paid-${orderId}` } });
   if (!paidActivity) return 0;
-  const impacts = await tx.challengeProgressEntry.findMany({ where: { activityId: paidActivity.id, deltaValue: { gt: 0 } }, include: { progress: { include: { challenge: true, grants: { where: { status: "GRANTED" }, orderBy: { cycle: "desc" }, take: 1, include: { earnTransaction: { include: { wallet: true } } } } } } } });
+  const impacts = await tx.challengeProgressEntry.findMany({ where: { activityId: paidActivity.id, deltaValue: { gt: 0 } }, orderBy: { id: "asc" }, include: { progress: { include: { challenge: true, grants: { where: { status: "GRANTED" }, orderBy: { cycle: "desc" }, take: 1, include: { earnTransaction: { select: { walletId: true } } } } } } } });
   const activity = await tx.memberActivity.create({ data: { membershipId: paidActivity.membershipId, type: "ORDER_REFUNDED", eventKey: `order-refunded-${orderId}`, orderId, occurredAt: new Date() } });
   let reversals = 0;
   for (const impact of impacts) {
@@ -84,13 +84,18 @@ export async function reverseOrderChallenges(tx: PrismaTypes.TransactionClient, 
     if (after.greaterThanOrEqualTo(challenge.targetValue)) { await tx.challengeProgress.update({ where: { id: progress.id }, data: { currentValue: after } }); continue; }
     const grant = progress.grants[0];
     if (grant) {
-      const wallet = grant.earnTransaction.wallet; const balanceAfter = wallet.exactBalance.minus(grant.pointsGranted); const lifetimeAfter = wallet.netLifetimeEarned.minus(grant.pointsGranted);
-      const txRow = await tx.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN_REVERSAL", source: "CHALLENGE_REFUND", delta: grant.pointsGranted.negated(), balanceAfter, reason: `Challenge reward reversal for refunded order #${orderId}`, eventRef: `challenge-refund-${grant.id}`, actorId } });
-      await tx.loyaltyWallet.update({ where: { id: wallet.id }, data: { exactBalance: balanceAfter, netLifetimeEarned: lifetimeAfter } });
+      const wallet = await tx.loyaltyWallet.update({
+        where: { id: grant.earnTransaction.walletId },
+        data: {
+          exactBalance: { decrement: grant.pointsGranted },
+          netLifetimeEarned: { decrement: grant.pointsGranted },
+        },
+      });
+      const txRow = await tx.pointTransaction.create({ data: { walletId: wallet.id, type: "EARN_REVERSAL", source: "CHALLENGE_REFUND", delta: grant.pointsGranted.negated(), balanceAfter: wallet.exactBalance, reason: `Challenge reward reversal for refunded order #${orderId}`, eventRef: `challenge-refund-${grant.id}`, actorId } });
       await tx.challengeRewardGrant.update({ where: { id: grant.id }, data: { status: "REVERSED", reversalTransactionId: txRow.id, reversedAt: new Date() } });
       await tx.challenge.update({ where: { id: challenge.id }, data: { budgetSpent: { decrement: grant.pointsGranted } } });
       const tiers = await tx.loyaltyTier.findMany({ where: { merchantId: challenge.merchantId }, orderBy: { minLifetimePoints: "asc" } });
-      const tier = tiers.filter((item) => lifetimeAfter.greaterThanOrEqualTo(item.minLifetimePoints)).at(-1);
+      const tier = tiers.filter((item) => wallet.netLifetimeEarned.greaterThanOrEqualTo(item.minLifetimePoints)).at(-1);
       await tx.merchantMembership.update({ where: { id: progress.membershipId }, data: { tierId: tier?.id ?? null } });
       reversals += 1;
     }

@@ -225,10 +225,8 @@ test("Customer 360 lists 0-order members, handles REFUND_PENDING/REFUNDED, and e
   });
   await request(`/api/orders/${order3.json.order.id}/pay`, "POST", buyerMember.token);
   const refundRequest = await prisma.refundRequest.create({ data: { orderId: order3.json.order.id, memberId: buyerMember.id, merchantId: storeA.id, reason: "Test refund" } });
-  await request(`/api/merchant/refund-requests/${refundRequest.id}/approve`, "POST", storeA.ownerToken, {});
-  const refundAdmin = await prisma.user.create({ data: { email: `customer-analytics-admin-${randomUUID()}@test.local`, passwordHash: "fixture", role: "ADMIN" } });
-  fixtureUserIds.push(refundAdmin.id);
-  await request(`/api/admin/refund-requests/${refundRequest.id}/approve`, "POST", await signAccessToken(refundAdmin.id), {});
+  const refund = await request(`/api/merchant/refund-requests/${refundRequest.id}/approve`, "POST", storeA.ownerToken, {});
+  assert.equal(refund.status, 200);
 
   // List all customers for Store A
   const listAll = await request<{

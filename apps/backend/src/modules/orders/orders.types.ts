@@ -59,7 +59,16 @@ export type OrderActionsDto = {
   requiresReconciliation: boolean;
   canRequestRefund?: boolean;
 };
-export type RefundRequestSummaryDto = { id: number; status: import("../../generated/prisma/enums.js").RefundRequestStatus; requestedAt: string };
+export type RefundRequestSummaryDto = {
+  id: number;
+  status: import("../../generated/prisma/enums.js").RefundRequestStatus;
+  requestedAt: string;
+  reason: string;
+  merchantReviewedAt: string | null;
+  adminReviewedAt: string | null;
+  merchantDecisionReason: string | null;
+  adminDecisionReason: string | null;
+};
 
 export type OrderLoyaltyEventDto = {
   id: number;

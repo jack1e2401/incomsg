@@ -40,7 +40,7 @@ import {
   AdminBlacklist,
   AdminAuditLogs,
   AdminAbuseReports,
-  AdminRefundApprovalsPage,
+  AdminRefundHistoryPage,
 } from "../features/admin/BackendAdminPages";
 import {
   MerchantLoyalty,
@@ -107,7 +107,7 @@ function BackendRoutes() {
           <Route path="email-blacklist" element={<AdminBlacklist />} />
           <Route path="audit-logs" element={<AdminAuditLogs />} />
           <Route path="abuse-reports" element={<AdminAbuseReports />} />
-          <Route path="refund-requests" element={<AdminRefundApprovalsPage />} />
+          <Route path="refund-requests" element={<AdminRefundHistoryPage />} />
         </Route>
       </Route>
       <Route element={<RequireRole role="MERCHANT" />}>
