@@ -94,6 +94,62 @@ describe("V4 member challenges and public discovery", () => {
     expect(memberChallenges).toHaveBeenCalledWith("coffee", "member-token");
   });
 
+  it("shows the milestone path on member home, list, and detail while keeping guests progress-free", async () => {
+    tree("/s/coffee", <ChallengeHeroCard slug="coffee" storeBase="/s/coffee" />, member);
+    const homePath = await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(within(homePath).getByText("2 đơn")).toBeInTheDocument();
+
+    cleanup();
+    tree("/s/coffee/challenges", <ChallengesPage />, member);
+    const listPaths = await screen.findAllByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(listPaths).toHaveLength(1);
+    expect(within(listPaths[0]).getByText("2 đơn")).toBeInTheDocument();
+
+    cleanup();
+    sessionStorage.clear();
+    tree("/s/coffee/challenges", <ChallengesPage />);
+    await screen.findByText("Mua cà phê");
+    expect(screen.queryByRole("list", { name: "Các mốc nhiệm vụ" })).not.toBeInTheDocument();
+
+    cleanup();
+    tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
+    const detailPath = await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(within(detailPath).getByText("2 đơn")).toBeInTheDocument();
+  });
+
+  it("keeps the prior detail path until refreshed progress arrives, then animates the confirmed reward", async () => {
+    const before = { merchant: memberList.merchant, checkedInToday: false, todayDateKey: "2026-11-17", challenge: { ...challenge, type: "DAILY_CHECKIN" as const, progress: { ...progress, currentValue: "2", targetValue: "3", remainingValue: "1" } }, recentEntries: [] };
+    const after = { ...before, checkedInToday: true, challenge: { ...before.challenge, progress: { ...progress, currentValue: "3", targetValue: "3", remainingValue: "0", percent: 100, rewardState: "REWARDED" as const } } };
+    let resolveRefresh: ((value: typeof after) => void) | undefined;
+    memberDetail.mockResolvedValueOnce(before).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
+
+    expect(await screen.findByText("2/3 ngày")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Điểm danh hôm nay" }));
+    await waitFor(() => expect(memberDetail).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("2/3 ngày")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Các mốc nhiệm vụ" })).toBeInTheDocument();
+
+    resolveRefresh?.(after);
+    expect(await screen.findByText("3/3 ngày")).toBeInTheDocument();
+    expect(screen.getByText("3 ngày").closest("li")).toHaveAttribute("data-state", "rewarded");
+    await waitFor(() => expect(screen.getByText("3 ngày").closest("li")).toHaveAttribute("data-animating", "true"));
+  });
+
+  it("does not animate a rewarded state loaded on the initial request", async () => {
+    memberDetail.mockResolvedValueOnce({
+      merchant: memberList.merchant,
+      checkedInToday: true,
+      todayDateKey: "2026-11-17",
+      challenge: { ...challenge, type: "DAILY_CHECKIN", targetValue: "2", progress: { ...progress, currentValue: "2", targetValue: "2", remainingValue: "0", percent: 100, rewardState: "REWARDED" } },
+      recentEntries: [],
+    });
+    tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
+    expect(await screen.findByText("2/2 ngày")).toBeInTheDocument();
+    expect(screen.getByText("2 ngày").closest("li")).toHaveAttribute("data-state", "rewarded");
+    expect(screen.getByText("2 ngày").closest("li")).toHaveAttribute("data-animating", "false");
+  });
+
   it("filters challenges through status tabs and handles daily check-in", async () => {
     tree("/s/coffee/challenges", <ChallengesPage />, member);
     expect(await screen.findByText("Mua cà phê")).toBeInTheDocument();

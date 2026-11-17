@@ -23,19 +23,20 @@ export function ChallengeMilestonePath({
   challenge,
   progress,
   animateReached = false,
+  compact = false,
 }: {
   challenge: PublicChallengeDto;
   progress: ChallengeProgressDto;
   animateReached?: boolean;
+  compact?: boolean;
 }) {
   const milestones = buildChallengeMilestones(challenge, progress);
   if (!milestones.length) return null;
 
-  const points = milestones.map((_, index) => ({
-    x: index % 2 === 0 ? 34 : 66,
-    y: 44 + index * NODE_SPACING,
-  }));
-  const trackHeight = Math.max(NODE_SPACING, points.at(-1)!.y + NODE_SPACING / 2);
+  const points = milestones.map((_, index) => compact
+    ? { x: milestones.length === 1 ? 50 : 14 + index * (72 / (milestones.length - 1)), y: 25 }
+    : { x: index % 2 === 0 ? 34 : 66, y: 44 + index * NODE_SPACING });
+  const trackHeight = compact ? 78 : Math.max(NODE_SPACING, points.at(-1)!.y + NODE_SPACING / 2);
   const pathData = points.reduce((path, point, index) => {
     if (index === 0) return `M ${point.x} ${point.y}`;
     const previous = points[index - 1];
@@ -43,7 +44,7 @@ export function ChallengeMilestonePath({
     return `${path} Q 50 ${middleY} ${point.x} ${point.y}`;
   }, "");
   const mostRecentReached = milestones.reduce(
-    (latest, milestone, index) => milestone.state === "reached" ? index : latest,
+    (latest, milestone, index) => ["reached", "reward-pending", "rewarded"].includes(milestone.state) ? index : latest,
     -1,
   );
   const progressPercent = Number.isFinite(progress.percent) ? Math.min(100, Math.max(0, progress.percent)) : 0;
@@ -94,6 +95,7 @@ export function ChallengeMilestonePath({
                 key={milestone.key}
                 aria-current={milestone.state === "current" ? "step" : undefined}
                 data-state={milestone.state}
+                data-animating={shouldAnimate ? "true" : "false"}
                 className="absolute z-10 h-12 w-12 -translate-x-1/2 -translate-y-1/2"
                 style={{ left: `${point.x}%`, top: point.y }}
               >
@@ -101,6 +103,7 @@ export function ChallengeMilestonePath({
                   aria-hidden="true"
                   className={cn(
                     "grid size-12 place-items-center rounded-full border-2 transition-transform duration-300",
+                    compact && "size-9",
                     milestone.state === "reached" && "border-[#3e754a] bg-[#3e754a] text-white",
                     milestone.state === "current" && "border-[#3e754a] bg-white text-[#3e754a] shadow-[0_0_0_5px_#e7f2dd]",
                     milestone.state === "upcoming" && "border-[#d6e1d1] bg-white text-[#94a198]",
@@ -109,11 +112,16 @@ export function ChallengeMilestonePath({
                     shouldAnimate && "scale-110 shadow-[0_0_0_7px_#e7f2dd]",
                   )}
                 >
-                  <Icon size={20} weight="bold" />
+                  <Icon size={compact ? 16 : 20} weight="bold" />
                 </span>
-                <span className={cn("absolute top-1/2 w-32 -translate-y-1/2 sm:w-40", sideLabel)}>
+                <span className={cn(
+                  "absolute",
+                  compact
+                    ? "left-1/2 top-12 w-16 -translate-x-1/2 text-center"
+                    : cn("top-1/2 w-32 -translate-y-1/2 sm:w-40", sideLabel),
+                )}>
                   <span className="text-sm font-extrabold text-[#304735]">{milestone.label}</span>
-                  {milestone.state === "current" && (
+                  {!compact && milestone.state === "current" && (
                     <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4d8057]">Tiếp theo</span>
                   )}
                 </span>

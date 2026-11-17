@@ -5,7 +5,8 @@ import { createChallengesClient } from "../../api/challenges-client";
 import type { MemberChallengeDto } from "../../api/challenges-types";
 import { useResource } from "../../api/useResource";
 import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusText } from "../../components/ui";
-import { ChallengeProgress, challengeStatusLabel, formatChallengeGoal } from "./challenge-ui";
+import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
+import { challengeStatusLabel, formatChallengeGoal } from "./challenge-ui";
 
 const api = createChallengesClient();
 type Tab = "active" | "completed" | "ended";
@@ -19,11 +20,11 @@ export function ChallengesPage() {
     () => member && accessToken ? api.listMemberStoreChallenges(slug, accessToken) : api.listPublicStoreChallenges(slug),
     [slug, member, accessToken],
   );
-  if (resource.loading) return <LoadingState cards={3} />;
+  if (resource.loading && !resource.data) return <LoadingState cards={3} />;
   if (resource.error || !resource.data) return <ErrorState message={resource.error ?? "Không tải được nhiệm vụ."} retry={resource.reload} />;
   const challenges = resource.data.challenges;
   const visible = challenges.filter((item) => {
-        const progress = member ? (item as MemberChallengeDto).progress : null;
+    const progress = member ? (item as MemberChallengeDto).progress : null;
     if (tab === "ended") return item.effectiveStatus === "ENDED";
     if (tab === "completed") return Boolean(progress && ["REWARDED", "WAITING_BUDGET"].includes(progress.rewardState));
     return item.effectiveStatus !== "ENDED" && (!progress || progress.rewardState === "IN_PROGRESS");
@@ -43,7 +44,7 @@ export function ChallengesPage() {
           <p className="mt-2 text-sm muted">{challenge.description}</p>
           <p className="mt-3 text-sm font-bold text-[#357044]">+{Number(challenge.rewardPoints).toLocaleString("vi-VN")} điểm</p>
           <p className="mt-1 text-xs muted">{new Date(challenge.endsAt).toLocaleDateString("vi-VN")}</p>
-          {progress ? <ChallengeProgress challenge={challenge as MemberChallengeDto} progress={progress} /> : <p className="mt-3 text-sm">{formatChallengeGoal(challenge)}</p>}
+          {progress ? <ChallengeMilestonePath challenge={challenge} progress={progress} compact /> : <p className="mt-3 text-sm">{formatChallengeGoal(challenge)}</p>}
           <div className="mt-4">{member ? <Button asChild variant="outline"><Link to={`/s/${slug}/challenges/${challenge.id}`}>Xem nhiệm vụ</Link></Button> : <Button asChild><Link to={`/login?returnTo=${encodeURIComponent(`/s/${slug}/challenges/${challenge.id}`)}`}>Đăng nhập để bắt đầu</Link></Button>}</div>
         </Card>;
       })}
