@@ -16,6 +16,8 @@ import { useApi } from "../api/client";
 import { useResource } from "../api/useResource";
 import { ErrorState, LoadingState } from "../components/ui";
 import { cn } from "../lib/utils";
+import { Breadcrumb } from "antd";
+import { MerchantCmsProvider } from "../features/merchant/cms";
 
 type NavItem = { to: string; label: string; icon: ReactNode; end?: boolean };
 const adminItems: NavItem[] = [
@@ -47,6 +49,7 @@ export function ConsoleLayout({ role }: { role: "admin" | "merchant" }) {
   );
 
   return (
+    <MerchantCmsProvider enabled={isMerchant}>
     <div className="min-h-[100dvh] bg-[#f7f8f4]">
       {menuOpen && (
         <button
@@ -108,9 +111,20 @@ export function ConsoleLayout({ role }: { role: "admin" | "merchant" }) {
           >
             <List size={22} />
           </button>
-          <p className="text-sm font-bold text-[#294833]">
-            {currentSection?.label ?? (isMerchant ? "Cửa hàng" : "Quản trị")}
-          </p>
+          <div>
+            {isMerchant && (
+              <Breadcrumb
+                aria-label="Breadcrumb"
+                className="mb-0.5 text-xs"
+                items={currentSection?.end
+                  ? [{ title: currentSection.label }]
+                  : [{ title: <Link to={`/merchant/${merchantId}`}>Tổng quan</Link> }, { title: currentSection?.label ?? "Cửa hàng" }]}
+              />
+            )}
+            <p className="text-sm font-semibold text-[#294833]">
+              {currentSection?.label ?? (isMerchant ? "Cửa hàng" : "Quản trị")}
+            </p>
+          </div>
         </header>
         <main className="mx-auto max-w-[1440px] px-5 pb-16 pt-8 sm:px-8 lg:px-10 lg:pt-10 fade-in">
           {isMerchant && (merchant.loading || allowed.loading) ? (
@@ -136,5 +150,6 @@ export function ConsoleLayout({ role }: { role: "admin" | "merchant" }) {
         </main>
       </div>
     </div>
+    </MerchantCmsProvider>
   );
 }

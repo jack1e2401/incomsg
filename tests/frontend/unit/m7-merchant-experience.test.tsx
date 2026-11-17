@@ -148,6 +148,37 @@ describe("M7 Merchant Experience", () => {
     });
   });
 
+  it("restores the selected order detail from the existing orderId query", async () => {
+    const order = {
+      id: 77,
+      merchantId: 7,
+      memberId: 9,
+      memberEmail: "member@test.local",
+      status: "PAID",
+      subtotal: "100000",
+      discountAmount: "0",
+      total: "100000",
+      paidAt: "2026-11-10T10:00:00.000Z",
+      items: [{ productId: 1, productName: "Sản phẩm A", unitPrice: "100000", quantity: 1, lineTotal: "100000" }],
+      earnedPoints: 10,
+      earnedPointsExact: "10.0",
+      actions: { canCancel: false, canRefund: true, requiresReconciliation: false },
+    };
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/merchant/orders/77")) return Response.json({ order });
+      if (url.includes("/api/merchant/rewards")) return Response.json({ rewards: [] });
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    renderMerchantPage("/merchant/orders?orderId=77", <MerchantOrders />);
+
+    expect(await screen.findByRole("heading", { name: "Đơn #77" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Quay lại đơn hàng" })).toHaveAttribute("href", "/merchant/orders");
+    expect(screen.getByText("Sản phẩm A")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Xử lý yêu cầu hoàn tiền" })).toHaveAttribute("href", "/merchant/refund-requests");
+  });
+
   it("handles merchant refund preview and reasoned refund submission in MerchantOrders", async () => {
     const orders = [
       {
