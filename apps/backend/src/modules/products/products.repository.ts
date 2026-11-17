@@ -3,6 +3,12 @@ import { HttpError } from "../../lib/http-error.js";
 import { prisma } from "../../lib/prisma.js";
 import { createInventoryBalance } from "../inventory/inventory.persistence.js";
 import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
+import {
+  productReadRepository,
+  productSelection,
+  sellableProductFilter,
+  type SelectedProduct,
+} from "./products.read.repository.js";
 import type {
   MerchantProductListQuery,
   ProductInput,
@@ -11,36 +17,18 @@ import type {
   PublicProductListQuery,
 } from "./products.types.js";
 
-const productSelection = {
-  id: true,
-  merchantId: true,
-  categoryId: true,
-  category: { select: { id: true, name: true, slug: true } },
-  sku: true,
-  name: true,
-  description: true,
-  richDescription: true,
-  imageUrl: true,
-  images: {
-    select: { id: true, url: true, altText: true, sortOrder: true },
-    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-  },
-  lowStockThreshold: true,
-  price: true,
-  kind: true,
-  status: true,
-  inventoryBalance: { select: { onHandQuantity: true, reservedQuantity: true } },
-} satisfies Prisma.ProductSelect;
-
-export type SelectedProduct = Prisma.ProductGetPayload<{ select: typeof productSelection }>;
-
-const sellableProductFilter = { kind: "SALE", status: "ACTIVE" } as const;
+export type { SelectedProduct } from "./products.read.repository.js";
 
 function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
-function buildOrderBy(sort: ProductSortOption): Prisma.ProductOrderByWithRelationInput[] {
+function buildOrderBy(
+  sort: ProductSortOption,
+): Prisma.ProductOrderByWithRelationInput[] {
   switch (sort) {
     case "price_asc":
       return [{ price: "asc" }, { id: "asc" }];
@@ -120,77 +108,93 @@ async function syncImagesOnUpdate(
 }
 
 export const productsRepository = {
-  async create(merchantId: number, actorId: number, input: ProductInput): Promise<SelectedProduct> {
+  ...productReadRepository,
+  async create(
+    merchantId: number,
+    actorId: number,
+    input: ProductInput,
+  ): Promise<SelectedProduct> {
     return withTransactionRetry(() =>
-      prisma.$transaction(async (tx) => {
-        if (typeof input.categoryId === "number") {
-          await assertCategoryOwned(tx, merchantId, input.categoryId);
-        }
-
-        const primaryImageUrl =
-          input.images !== undefined ? (input.images[0]?.url ?? null) : (input.imageUrl ?? null);
-
-        let product: { id: number };
-        try {
-          product = await tx.product.create({
-            data: {
-              merchantId,
-              categoryId: input.categoryId ?? null,
-              sku: input.sku ?? null,
-              name: input.name,
-              kind: input.kind,
-              price: new Prisma.Decimal(input.kind === "REWARD" ? "0" : input.price),
-              description: input.description ?? null,
-              richDescription: input.richDescription ?? null,
-              imageUrl: primaryImageUrl,
-              lowStockThreshold: input.lowStockThreshold ?? 5,
-            },
-            select: { id: true },
-          });
-        } catch (error) {
-          if (isUniqueViolation(error)) {
-            throw new HttpError(409, "SKU_ALREADY_EXISTS");
+      prisma.$transaction(
+        async (tx) => {
+          if (typeof input.categoryId === "number") {
+            await assertCategoryOwned(tx, merchantId, input.categoryId);
           }
-          throw error;
-        }
 
-        if (input.images !== undefined) {
-          if (input.images.length > 0) {
-            await tx.productImage.createMany({
-              data: input.images.map((image) => ({
+          const primaryImageUrl =
+            input.images !== undefined
+              ? (input.images[0]?.url ?? null)
+              : (input.imageUrl ?? null);
+
+          let product: { id: number };
+          try {
+            product = await tx.product.create({
+              data: {
+                merchantId,
+                categoryId: input.categoryId ?? null,
+                sku: input.sku ?? null,
+                name: input.name,
+                kind: input.kind,
+                price: new Prisma.Decimal(
+                  input.kind === "REWARD" ? "0" : input.price,
+                ),
+                description: input.description ?? null,
+                richDescription: input.richDescription ?? null,
+                imageUrl: primaryImageUrl,
+                lowStockThreshold: input.lowStockThreshold ?? 5,
+              },
+              select: { id: true },
+            });
+          } catch (error) {
+            if (isUniqueViolation(error)) {
+              throw new HttpError(409, "SKU_ALREADY_EXISTS");
+            }
+            throw error;
+          }
+
+          if (input.images !== undefined) {
+            if (input.images.length > 0) {
+              await tx.productImage.createMany({
+                data: input.images.map((image) => ({
+                  merchantId,
+                  productId: product.id,
+                  url: image.url,
+                  altText: image.altText,
+                  sortOrder: image.sortOrder,
+                })),
+              });
+            }
+          } else if (primaryImageUrl) {
+            await tx.productImage.create({
+              data: {
                 merchantId,
                 productId: product.id,
-                url: image.url,
-                altText: image.altText,
-                sortOrder: image.sortOrder,
-              })),
+                url: primaryImageUrl,
+                altText: null,
+                sortOrder: 0,
+              },
             });
           }
-        } else if (primaryImageUrl) {
-          await tx.productImage.create({
-            data: {
+
+          await createInventoryBalance(
+            tx,
+            {
               merchantId,
+              ownerType:
+                input.kind === "REWARD" ? "REWARD_PRODUCT" : "SALE_PRODUCT",
               productId: product.id,
-              url: primaryImageUrl,
-              altText: null,
-              sortOrder: 0,
             },
+            input.initialQuantity ?? 0,
+            actorId,
+          );
+
+          return tx.product.findUniqueOrThrow({
+            where: { id: product.id },
+            select: productSelection,
           });
-        }
-
-        await createInventoryBalance(
-          tx,
-          {
-            merchantId,
-            ownerType: input.kind === "REWARD" ? "REWARD_PRODUCT" : "SALE_PRODUCT",
-            productId: product.id,
-          },
-          input.initialQuantity ?? 0,
-          actorId,
-        );
-
-        return tx.product.findUniqueOrThrow({ where: { id: product.id }, select: productSelection });
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }),
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
     );
   },
 
@@ -199,16 +203,27 @@ export const productsRepository = {
     sellableOnly: boolean,
     query: MerchantProductListQuery | PublicProductListQuery,
   ): Promise<{ rows: SelectedProduct[]; totalItems: number }> {
-    const merchantQuery = !sellableOnly ? (query as MerchantProductListQuery) : undefined;
+    const merchantQuery = !sellableOnly
+      ? (query as MerchantProductListQuery)
+      : undefined;
     const where: Prisma.ProductWhereInput = {
       merchantId,
       ...(sellableOnly ? sellableProductFilter : {}),
-      ...(query.categoryId !== undefined ? { categoryId: query.categoryId } : {}),
-      ...(merchantQuery?.status !== undefined ? { status: merchantQuery.status } : {}),
-      ...(merchantQuery?.kind !== undefined ? { kind: merchantQuery.kind } : {}),
+      ...(query.categoryId !== undefined
+        ? { categoryId: query.categoryId }
+        : {}),
+      ...(merchantQuery?.status !== undefined
+        ? { status: merchantQuery.status }
+        : {}),
+      ...(merchantQuery?.kind !== undefined
+        ? { kind: merchantQuery.kind }
+        : {}),
       ...(query.q
         ? {
-            OR: [{ name: { contains: query.q } }, { sku: { contains: query.q } }],
+            OR: [
+              { name: { contains: query.q } },
+              { sku: { contains: query.q } },
+            ],
           }
         : {}),
     };
@@ -222,13 +237,16 @@ export const productsRepository = {
         select: {
           id: true,
           lowStockThreshold: true,
-          inventoryBalance: { select: { onHandQuantity: true, reservedQuantity: true } },
+          inventoryBalance: {
+            select: { onHandQuantity: true, reservedQuantity: true },
+          },
         },
       });
       const lowStockIds = candidates
         .filter((item) => {
           const available = item.inventoryBalance
-            ? item.inventoryBalance.onHandQuantity - item.inventoryBalance.reservedQuantity
+            ? item.inventoryBalance.onHandQuantity -
+              item.inventoryBalance.reservedQuantity
             : 0;
           return available <= item.lowStockThreshold;
         })
@@ -244,7 +262,9 @@ export const productsRepository = {
         select: productSelection,
       });
       const byId = new Map(fetched.map((row) => [row.id, row]));
-      const ordered = pageIds.map((id) => byId.get(id)).filter((row): row is SelectedProduct => Boolean(row));
+      const ordered = pageIds
+        .map((id) => byId.get(id))
+        .filter((row): row is SelectedProduct => Boolean(row));
       return { rows: ordered, totalItems: lowStockIds.length };
     }
 
@@ -280,19 +300,31 @@ export const productsRepository = {
       }
 
       const primaryImageUrl =
-        patch.images !== undefined ? (patch.images[0]?.url ?? null) : patch.imageUrl;
+        patch.images !== undefined
+          ? (patch.images[0]?.url ?? null)
+          : patch.imageUrl;
 
       try {
         await tx.product.update({
           where: { id: productId },
           data: {
             ...(patch.name !== undefined ? { name: patch.name } : {}),
-            ...(patch.price !== undefined ? { price: new Prisma.Decimal(patch.price) } : {}),
-            ...(patch.description !== undefined ? { description: patch.description } : {}),
-            ...(patch.richDescription !== undefined ? { richDescription: patch.richDescription } : {}),
-            ...(primaryImageUrl !== undefined ? { imageUrl: primaryImageUrl } : {}),
+            ...(patch.price !== undefined
+              ? { price: new Prisma.Decimal(patch.price) }
+              : {}),
+            ...(patch.description !== undefined
+              ? { description: patch.description }
+              : {}),
+            ...(patch.richDescription !== undefined
+              ? { richDescription: patch.richDescription }
+              : {}),
+            ...(primaryImageUrl !== undefined
+              ? { imageUrl: primaryImageUrl }
+              : {}),
             ...(patch.sku !== undefined ? { sku: patch.sku } : {}),
-            ...(patch.categoryId !== undefined ? { categoryId: patch.categoryId } : {}),
+            ...(patch.categoryId !== undefined
+              ? { categoryId: patch.categoryId }
+              : {}),
             ...(patch.lowStockThreshold !== undefined
               ? { lowStockThreshold: patch.lowStockThreshold }
               : {}),
@@ -312,48 +344,6 @@ export const productsRepository = {
         where: { id: productId },
         select: productSelection,
       });
-    });
-  },
-
-  async findPublicProductById(merchantId: number, productId: number): Promise<SelectedProduct | null> {
-    return prisma.product.findFirst({
-      where: {
-        id: productId,
-        merchantId,
-        ...sellableProductFilter,
-      },
-      select: productSelection,
-    });
-  },
-
-  async isMerchantActive(merchantId: number): Promise<boolean> {
-    const merchant = await prisma.merchant.findFirst({
-      where: { id: merchantId, isActive: true },
-      select: { id: true },
-    });
-    return merchant !== null;
-  },
-
-  async findActiveStoreBySlug(slug: string) {
-    return prisma.merchant.findFirst({
-      where: { slug, isActive: true },
-      select: { id: true, name: true, slug: true },
-    });
-  },
-
-  async findSellableProducts(productIds: number[]) {
-    return prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        ...sellableProductFilter,
-        merchant: { is: { isActive: true } },
-      },
-      select: {
-        id: true,
-        merchantId: true,
-        name: true,
-        price: true,
-      },
     });
   },
 };
