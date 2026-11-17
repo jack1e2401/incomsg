@@ -30,7 +30,6 @@ export function ChallengeDetailPage() {
     finally { setBusy(false); }
   }
   return <div className="space-y-4">
-    <Link className="inline-flex font-semibold text-[#357044]" to={`/s/${slug}/challenges`}>← Nhiệm vụ</Link>
     <Card className="p-5 sm:p-7">
       <div className="flex flex-wrap items-center gap-2"><StatusText tone="green">+{Number(challenge.rewardPoints).toLocaleString("vi-VN")} điểm</StatusText><StatusText>{challengeStatusLabel(progress, challenge.effectiveStatus)}</StatusText></div>
       <h1 className="mt-3 text-2xl font-extrabold">{challenge.title}</h1>
@@ -41,6 +40,6 @@ export function ChallengeDetailPage() {
       {challenge.type === "DAILY_CHECKIN" && <div className="mt-5">{member ? <Button disabled={busy || checkedInToday} onClick={() => void checkIn()}>{checkedInToday ? "Đã điểm danh hôm nay" : busy ? "Đang điểm danh" : "Điểm danh hôm nay"}</Button> : <Button asChild><Link to={`/login?returnTo=${encodeURIComponent(`/s/${slug}/challenges/${challenge.id}`)}`}>Đăng nhập để bắt đầu</Link></Button>}</div>}
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     </Card>
-    {member && (resource.data as MemberStoreChallengeDetailResponse).recentEntries.length > 0 && <Card className="p-5"><h2 className="font-bold">Hoạt động gần đây</h2><ul className="mt-3 divide-y">{(resource.data as MemberStoreChallengeDetailResponse).recentEntries.map((entry) => <li key={entry.id} className="py-3 text-sm"><span>{entry.activityType === "DAILY_CHECKIN" ? "Điểm danh" : entry.activityType === "ORDER_PAID" ? "Đơn hàng" : "Hoàn tiền"}</span><span className="ml-2 font-semibold">{entry.deltaValue}</span><span className="ml-2 text-xs muted">{new Date(entry.occurredAt).toLocaleString("vi-VN")}</span></li>)}</ul></Card>}
+    {member && (resource.data as MemberStoreChallengeDetailResponse).recentEntries.length > 0 && <Card className="p-5"><h2 className="font-bold">Hoạt động gần đây</h2><ul className="mt-3 divide-y">{(resource.data as MemberStoreChallengeDetailResponse).recentEntries.map((entry) => <li key={entry.id} className="py-3 text-sm"><span>{entry.activityType === "DAILY_CHECKIN" ? "Điểm danh" : entry.activityType === "ORDER_PAID" ? "Đơn hàng" : "Hoàn tiền"}</span><span className="ml-2 font-semibold">{Number(entry.deltaValue) > 0 ? `+${entry.deltaValue}` : entry.deltaValue}</span><span className="ml-2 text-xs muted">{new Date(entry.occurredAt).toLocaleString("vi-VN")}</span></li>)}</ul></Card>}
   </div>;
 }

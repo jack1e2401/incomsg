@@ -17,11 +17,14 @@ export function translateChallengeError(code: string): string {
   const translations: Record<string, string> = {
     CHALLENGE_NOT_FOUND: "Không tìm thấy nhiệm vụ.",
     CHALLENGE_LOCKED_FIELDS: "Không thể sửa loại nhiệm vụ, mục tiêu, điểm thưởng hoặc ngày bắt đầu sau khi đã kích hoạt.",
+    CHALLENGE_FIELDS_LOCKED: "Không thể sửa loại nhiệm vụ, mục tiêu, điểm thưởng hoặc ngày bắt đầu sau khi đã kích hoạt.",
     CHALLENGE_INVALID_BUDGET: "Ngân sách tổng phải lớn hơn hoặc bằng tổng điểm đã phát.",
     CHALLENGE_INSUFFICIENT_BUDGET_TO_ACTIVATE: "Ngân sách phải lớn hơn hoặc bằng điểm thưởng để kích hoạt.",
+    INVALID_CHALLENGE_CONFIGURATION: "Cấu hình nhiệm vụ chưa hợp lệ hoặc ngân sách thấp hơn điểm thưởng.",
     CHALLENGE_INVALID_DATE_RANGE: "Ngày kết thúc phải lớn hơn ngày bắt đầu.",
     CHALLENGE_HAS_PROGRESS: "Không thể xóa nhiệm vụ đã phát sinh tiến trình hoặc giao dịch. Hãy lưu trữ.",
     CHALLENGE_NOT_ACTIVE: "Nhiệm vụ hiện không hoạt động.",
+    STORE_NOT_FOUND: "Không tìm thấy cửa hàng hoặc cửa hàng đã tạm ngưng.",
     INVALID_INPUT: "Thông tin nhiệm vụ chưa hợp lệ. Vui lòng kiểm tra lại.",
   };
   return translations[code] ?? translateApiError(code);

@@ -48,8 +48,7 @@ export function ChallengeHeroCard({ slug, storeBase }: { slug: string; storeBase
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2"><StatusText tone="green">{rewardText(hero.rewardPoints)}</StatusText>{hero.endsAt && <span className="text-xs muted">{deadlineText(hero.endsAt)}</span>}</div>
         <h2 className="mt-2 text-xl font-extrabold text-[#20392a]">{member ? headline : hero.title}</h2>
-        <p className="mt-1 font-semibold">{hero.title}</p>
-        {!member && <p className="mt-1 text-sm muted">{formatChallengeGoal(hero)}</p>}
+        {member ? <p className="mt-1 font-semibold">{hero.title}</p> : <p className="mt-1 text-sm muted">{formatChallengeGoal(hero)}</p>}
         {progress && <ChallengeProgress challenge={hero} progress={progress} />}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </div>

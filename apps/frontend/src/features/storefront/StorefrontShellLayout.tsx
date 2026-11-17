@@ -214,12 +214,15 @@ function StorefrontChrome({ storageKey, data }: { storageKey: string; data: Stor
             }}
             style={() => ((rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : location.pathname === to || location.pathname.startsWith(`${to}/`) || (to.endsWith("/profile") && location.pathname.includes("/orders"))) ? { color: accent } : undefined)}
           >
-            {({ isActive }) => (
-              <>
-                <Icon aria-hidden="true" size={20} weight={isActive ? "fill" : "regular"} />
-                <span className="max-w-full truncate px-0.5 text-center leading-tight">{label}</span>
-              </>
-            )}
+            {({ isActive }) => {
+              const active = rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : isActive || (to.endsWith("/profile") && location.pathname.includes("/orders"));
+              return (
+                <>
+                  <Icon aria-hidden="true" size={20} weight={active ? "fill" : "regular"} />
+                  <span className="max-w-full truncate px-0.5 text-center leading-tight">{label}</span>
+                </>
+              );
+            }}
           </NavLink>
         ))}
       </nav>

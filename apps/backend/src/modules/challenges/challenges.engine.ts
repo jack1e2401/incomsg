@@ -6,25 +6,27 @@ import { exactPoints } from "../loyalty/loyalty.balance.js";
 export async function processPaidOrderChallenges(
   tx: PrismaTypes.TransactionClient,
   order: { id: number; merchantId: number; memberId: number; total: Prisma.Decimal; paidAt: Date | null },
+  existingMembershipId?: number,
 ): Promise<void> {
   const occurredAt = order.paidAt ?? new Date();
-  const membership = await tx.merchantMembership.upsert({
-    where: { memberId_merchantId: { memberId: order.memberId, merchantId: order.merchantId } },
-    create: { memberId: order.memberId, merchantId: order.merchantId }, update: {},
-  });
-  const activity = await tx.memberActivity.create({ data: {
-    membershipId: membership.id, type: "ORDER_PAID", eventKey: `order-paid-${order.id}`,
-    orderId: order.id, amountVnd: order.total, occurredAt,
-  } });
   const challenges = await tx.challenge.findMany({ where: {
     merchantId: order.merchantId, status: "ACTIVE", startsAt: { lte: occurredAt }, endsAt: { gte: occurredAt },
     type: { in: ["ORDER_COUNT", "SPEND_TOTAL"] },
   } });
+  const membershipId = existingMembershipId ?? (await tx.merchantMembership.upsert({
+    where: { memberId_merchantId: { memberId: order.memberId, merchantId: order.merchantId } },
+    create: { memberId: order.memberId, merchantId: order.merchantId }, update: {},
+    select: { id: true },
+  })).id;
+  const activity = await tx.memberActivity.create({ data: {
+    membershipId, type: "ORDER_PAID", eventKey: `order-paid-${order.id}`,
+    orderId: order.id, amountVnd: order.total, occurredAt,
+  } });
   for (const challenge of challenges) {
     const delta = challenge.type === "ORDER_COUNT" ? new Prisma.Decimal(1) : order.total;
     const progress = await tx.challengeProgress.upsert({
-      where: { challengeId_membershipId: { challengeId: challenge.id, membershipId: membership.id } },
-      create: { challengeId: challenge.id, membershipId: membership.id }, update: {},
+      where: { challengeId_membershipId: { challengeId: challenge.id, membershipId } },
+      create: { challengeId: challenge.id, membershipId }, update: {},
     });
     await tx.challengeProgressEntry.create({ data: { progressId: progress.id, activityId: activity.id, deltaValue: delta } });
     const currentValue = progress.currentValue.plus(delta);
@@ -34,7 +36,7 @@ export async function processPaidOrderChallenges(
       currentValue, ...(waiting ? { completedAt: occurredAt } : {}),
       ...(waiting ? { rewardState: "WAITING_BUDGET" } : {}),
     } });
-    if (waiting) await grantChallengeReward(tx, challenge.id, result.id, membership.id, challenge.rewardPoints, occurredAt);
+    if (waiting) await grantChallengeReward(tx, challenge.id, result.id, membershipId, challenge.rewardPoints, occurredAt);
   }
 }
 

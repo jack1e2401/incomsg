@@ -135,3 +135,69 @@ test("refund approval gates mock refunds and blocks merchant bypass", async () =
   assert.equal((await prisma.challengeRewardGrant.findFirstOrThrow({ where: { progressId: progress.id } })).status, "REVERSED");
   assert.equal(await prisma.pointTransaction.count({ where: { source: "CHALLENGE_REFUND", orderId: null, wallet: { membershipId: membership.id } } }), 1);
 });
+
+test("locked fields, WAITING_BUDGET FIFO replenishment, Option B keep-above-target, and cycle-2 re-earn", async () => {
+  // Locked fields after activation
+  const lockAttempt = await req(`/api/merchant/challenges/${orderChallengeId}`, "PATCH", merchantToken, { targetValue: "5" });
+  assert.equal(lockAttempt.status, 409);
+  assert.equal(lockAttempt.json.error, "CHALLENGE_FIELDS_LOCKED");
+
+  // Create SPEND_TOTAL challenge with budget = reward (only enough for 1 reward -> 2nd member waits for budget)
+  const member2 = await prisma.user.create({ data: { email: `${slug}-m2@test.local`, passwordHash: "x", role: "MEMBER" } });
+  const m2Token = await signAccessToken(member2.id);
+  const spendCreate = await req("/api/merchant/challenges", "POST", merchantToken, {
+    title: "Spend 10k", description: "Spend 10k", type: "SPEND_TOTAL", targetValue: "10000",
+    rewardPoints: "7", budgetTotal: "7", startsAt: "2026-11-01T00:00:00.000Z", endsAt: "2026-12-31T00:00:00.000Z", status: "ACTIVE",
+  });
+  assert.equal(spendCreate.status, 201);
+  const spendId = (spendCreate.json.challenge as { id: number }).id;
+
+  const o1 = await req("/api/orders", "POST", memberToken, { items: [{ productId, quantity: 1 }] });
+  const o1Id = (o1.json.order as { id: number }).id;
+  assert.equal((await req(`/api/orders/${o1Id}/pay`, "POST", memberToken)).status, 200);
+
+  const o2 = await req("/api/orders", "POST", m2Token, { items: [{ productId, quantity: 1 }] });
+  const o2Id = (o2.json.order as { id: number }).id;
+  assert.equal((await req(`/api/orders/${o2Id}/pay`, "POST", m2Token)).status, 200);
+
+  const m2Membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId: member2.id, merchantId } } });
+  const m2Progress = await prisma.challengeProgress.findUniqueOrThrow({ where: { challengeId_membershipId: { challengeId: spendId, membershipId: m2Membership.id } } });
+  assert.equal(m2Progress.rewardState, "WAITING_BUDGET");
+
+  // Top up budget -> auto-replenishes member2 FIFO
+  const topUp = await req(`/api/merchant/challenges/${spendId}`, "PATCH", merchantToken, { budgetTotal: "14" });
+  assert.equal(topUp.status, 200);
+  assert.equal(topUp.json.replenishedCount, 1);
+  const m2AfterTopUp = await prisma.challengeProgress.findUniqueOrThrow({ where: { id: m2Progress.id } });
+  assert.equal(m2AfterTopUp.rewardState, "REWARDED");
+
+  // Option B: member1 gets 2nd paid order on orderChallenge (now 2/1 >= 1), then refunds 1 -> 1/1 keeps grant!
+  const o3 = await req("/api/orders", "POST", memberToken, { items: [{ productId, quantity: 1 }] });
+  const o3Id = (o3.json.order as { id: number }).id;
+  assert.equal((await req(`/api/orders/${o3Id}/pay`, "POST", memberToken)).status, 200);
+  // Now member1 has currentValue = 2 on orderChallengeId (target = 1), cycle 2 GRANTED!
+  const o3Req = await req(`/api/orders/${o3Id}/refund-request`, "POST", memberToken, { reason: "Keep above target test" });
+  const o3ReqId = (o3Req.json.refundRequest as { id: number }).id;
+  await req(`/api/merchant/refund-requests/${o3ReqId}/approve`, "POST", merchantToken);
+  const o3Approve = await req(`/api/admin/refund-requests/${o3ReqId}/approve`, "POST", adminToken);
+  assert.equal(o3Approve.status, 200);
+  const m1Membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId, merchantId } } });
+  const m1OrderProgress = await prisma.challengeProgress.findUniqueOrThrow({ where: { challengeId_membershipId: { challengeId: orderChallengeId, membershipId: m1Membership.id } } });
+  assert.equal(m1OrderProgress.currentValue.toFixed(0), "1");
+  assert.equal(m1OrderProgress.rewardState, "REWARDED");
+  assert.equal(m1OrderProgress.rewardCycle, 2);
+
+  // Clean up extra member2 records before after()
+  await prisma.challengeProgressEntry.deleteMany({ where: { progress: { membershipId: m2Membership.id } } });
+  await prisma.challengeRewardGrant.deleteMany({ where: { progress: { membershipId: m2Membership.id } } });
+  await prisma.challengeProgress.deleteMany({ where: { membershipId: m2Membership.id } });
+  await prisma.memberActivity.deleteMany({ where: { membershipId: m2Membership.id } });
+  await prisma.pointTransaction.deleteMany({ where: { wallet: { membershipId: m2Membership.id } } });
+  await prisma.loyaltyWallet.deleteMany({ where: { membershipId: m2Membership.id } });
+  await prisma.merchantMembership.deleteMany({ where: { id: m2Membership.id } });
+  await prisma.merchantFeeTransaction.deleteMany({ where: { orderId: o2Id } });
+  await prisma.inventoryMovement.deleteMany({ where: { orderId: o2Id } });
+  await prisma.orderItem.deleteMany({ where: { orderId: o2Id } });
+  await prisma.order.deleteMany({ where: { id: o2Id } });
+  await prisma.user.deleteMany({ where: { id: member2.id } });
+});

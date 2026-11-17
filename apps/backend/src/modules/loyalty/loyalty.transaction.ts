@@ -5,7 +5,8 @@ export async function withTransactionRetry<T>(operation: () => Promise<T>): Prom
     } catch (error) {
       const retryable = typeof error === "object" && error !== null && "code" in error &&
         (error.code === "P2034" || error.code === "P2002");
-      if (!retryable || attempt >= 3) throw error;
+      if (!retryable || attempt >= 6) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 10));
     }
   }
 }

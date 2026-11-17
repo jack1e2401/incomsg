@@ -110,6 +110,6 @@ export async function completePaidOrder(
   });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
   await recordMerchantFee(tx, { ...order, paidAt: order.paidAt! });
-  await processPaidOrderChallenges(tx, { ...order, paidAt: order.paidAt! });
+  await processPaidOrderChallenges(tx, { ...order, paidAt: order.paidAt! }, membership.id);
   return { ...toOrderDto(paid), promotedToTier };
 }

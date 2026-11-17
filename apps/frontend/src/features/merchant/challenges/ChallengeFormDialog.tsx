@@ -8,7 +8,14 @@ const api = createChallengesClient();
 type Props = { editing: MerchantChallengeDto | "new" | null; token: string; onClose(): void; onSaved(): void };
 type Form = { title: string; description: string; type: ChallengeType; targetValue: string; rewardPoints: string; budgetTotal: string; startsAt: string; endsAt: string; isFeatured: boolean; status: "DRAFT" | "ACTIVE" };
 const empty: Form = { title: "", description: "", type: "ORDER_COUNT", targetValue: "1", rewardPoints: "1", budgetTotal: "1", startsAt: "", endsAt: "", isFeatured: false, status: "DRAFT" };
-const localInput = (value: string) => value ? new Date(value).toISOString().slice(0, 16) : "";
+const localInput = (value: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+const trimDecimal = (value: string) => value.includes(".") ? value.replace(/\.?0+$/, "") : value;
 function decimalAtLeast(left: string, right: string) {
   const precision = Math.max(left.split(".")[1]?.length ?? 0, right.split(".")[1]?.length ?? 0);
   const scale = 10n ** BigInt(precision);
@@ -25,7 +32,7 @@ export function ChallengeFormDialog({ editing, token, onClose, onSaved }: Props)
   useEffect(() => {
     if (!editing) return;
     setError("");
-    setForm(editing === "new" ? empty : { title: editing.title, description: editing.description, type: editing.type, targetValue: editing.targetValue, rewardPoints: editing.rewardPoints, budgetTotal: editing.budgetTotal, startsAt: localInput(editing.startsAt), endsAt: localInput(editing.endsAt), isFeatured: editing.isFeatured, status: editing.status === "ACTIVE" ? "ACTIVE" : "DRAFT" });
+    setForm(editing === "new" ? empty : { title: editing.title, description: editing.description, type: editing.type, targetValue: editing.targetValue, rewardPoints: trimDecimal(editing.rewardPoints), budgetTotal: trimDecimal(editing.budgetTotal), startsAt: localInput(editing.startsAt), endsAt: localInput(editing.endsAt), isFeatured: editing.isFeatured, status: editing.status === "ACTIVE" ? "ACTIVE" : "DRAFT" });
   }, [editing]);
   function update<K extends keyof Form>(key: K, value: Form[K]) { setForm((current) => ({ ...current, [key]: value })); }
   async function submit(event: FormEvent) {
@@ -35,10 +42,16 @@ export function ChallengeFormDialog({ editing, token, onClose, onSaved }: Props)
     if (form.status === "ACTIVE" && !decimalAtLeast(form.budgetTotal, form.rewardPoints)) { setError("Ngân sách phải lớn hơn hoặc bằng điểm thưởng để kích hoạt."); return; }
     if (editing && editing !== "new" && !decimalAtLeast(form.budgetTotal, editing.budgetSpent)) { setError("Ngân sách không được thấp hơn số điểm đã phát."); return; }
     setBusy(true);
-    const input: CreateChallengeInput = { title: form.title.trim(), description: form.description, type: form.type, targetValue: form.targetValue, rewardPoints: form.rewardPoints, budgetTotal: form.budgetTotal, startsAt: new Date(form.startsAt).toISOString(), endsAt: new Date(form.endsAt).toISOString(), isFeatured: form.isFeatured, ...(isNew ? { status: form.status } : {}) };
     try {
-      if (editing === "new") await api.createMerchantChallenge(input, token);
-      else if (editing) await api.updateMerchantChallenge(editing.id, input, token);
+      if (editing === "new") {
+        const input: CreateChallengeInput = { title: form.title.trim(), description: form.description, type: form.type, targetValue: form.targetValue, rewardPoints: form.rewardPoints, budgetTotal: form.budgetTotal, startsAt: new Date(form.startsAt).toISOString(), endsAt: new Date(form.endsAt).toISOString(), isFeatured: form.isFeatured, status: form.status };
+        await api.createMerchantChallenge(input, token);
+      } else if (editing) {
+        const patch = locked
+          ? { title: form.title.trim(), description: form.description, budgetTotal: form.budgetTotal, endsAt: new Date(form.endsAt).toISOString(), isFeatured: form.isFeatured }
+          : { title: form.title.trim(), description: form.description, type: form.type, targetValue: form.targetValue, rewardPoints: form.rewardPoints, budgetTotal: form.budgetTotal, startsAt: new Date(form.startsAt).toISOString(), endsAt: new Date(form.endsAt).toISOString(), isFeatured: form.isFeatured };
+        await api.updateMerchantChallenge(editing.id, patch, token);
+      }
       onSaved();
     } catch (reason) { setError(translateChallengeError(reason instanceof Error ? reason.message : "INVALID_INPUT")); }
     finally { setBusy(false); }

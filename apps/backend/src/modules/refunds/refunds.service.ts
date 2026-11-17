@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
 import { merchantService } from "../merchant/merchant.service.js";
 import { ordersRepository } from "../orders/orders.repository.js";
+import { toOrderDto } from "../orders/orders.serialization.js";
 import { reverseOrderChallenges } from "../challenges/challenges.engine.js";
 
 import { reasonInput } from "./refunds.validation.js";
@@ -24,18 +25,23 @@ export const refundsService = {
     return prisma.refundRequest.findUnique({ where: { orderId }, select: { id: true, orderId: true, reason: true, status: true, requestedAt: true, merchantDecisionReason: true, adminDecisionReason: true } });
   },
   async listMerchant(ownerId: number, query: Record<string, unknown>) {
-    const merchant = await merchantService.getOwnStore(ownerId); const { page, limit } = paging(query); const where = { merchantId: merchant.id, ...(typeof query.status === "string" ? { status: query.status as never } : {}) };
-    const [items, totalItems] = await Promise.all([prisma.refundRequest.findMany({ where, include: { order: true, member: { select: { id: true, email: true } } }, orderBy: [{ requestedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }), prisma.refundRequest.count({ where })]); return { items, pagination: pageInfo(page, limit, totalItems) };
+    const merchant = await merchantService.getOwnStore(ownerId); const { page, limit } = paging(query); const where = { merchantId: merchant.id, ...(typeof query.status === "string" && query.status ? { status: query.status as never } : {}) };
+    const [rows, totalItems] = await Promise.all([prisma.refundRequest.findMany({ where, include: { order: { select: { total: true, status: true } }, member: { select: { id: true, email: true } } }, orderBy: [{ requestedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }), prisma.refundRequest.count({ where })]);
+    const items = rows.map(({ order, member, ...row }) => ({ ...row, orderTotalVnd: order.total.toFixed(0), orderStatus: order.status, memberEmail: member.email }));
+    return { items, pagination: pageInfo(page, limit, totalItems) };
   },
   async listAdmin(query: Record<string, unknown>) {
-    const { page, limit } = paging(query); const where = typeof query.status === "string" ? { status: query.status as never } : {};
-    const [items, totalItems] = await Promise.all([prisma.refundRequest.findMany({ where, include: { order: true, merchant: { select: { id: true, name: true, slug: true } }, member: { select: { id: true, email: true } } }, orderBy: [{ requestedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }), prisma.refundRequest.count({ where })]); return { items, pagination: pageInfo(page, limit, totalItems) };
+    const { page, limit } = paging(query); const where = typeof query.status === "string" && query.status ? { status: query.status as never } : {};
+    const [rows, totalItems] = await Promise.all([prisma.refundRequest.findMany({ where, include: { order: { select: { total: true, status: true } }, merchant: { select: { id: true, name: true, slug: true } }, member: { select: { id: true, email: true } } }, orderBy: [{ requestedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }), prisma.refundRequest.count({ where })]);
+    const items = rows.map(({ order, merchant, member, ...row }) => ({ ...row, orderTotalVnd: order.total.toFixed(0), orderStatus: order.status, memberEmail: member.email, merchantName: merchant.name, merchantSlug: merchant.slug }));
+    return { items, pagination: pageInfo(page, limit, totalItems) };
   },
   async detail(id: number, merchantId?: number) {
-    const request = await prisma.refundRequest.findFirst({ where: { id, ...(merchantId ? { merchantId } : {}) }, include: { order: true, merchant: { select: { id: true, name: true, slug: true } }, member: { select: { id: true, email: true } } } });
+    const request = await prisma.refundRequest.findFirst({ where: { id, ...(merchantId ? { merchantId } : {}) }, include: { order: { include: { items: true, paymentAttempt: true, refund: true, pointTransactions: true } }, merchant: { select: { id: true, name: true, slug: true } }, member: { select: { id: true, email: true } } } });
     if (!request) throw new HttpError(404, "REFUND_REQUEST_NOT_FOUND");
     const preview = await ordersRepository.getRefundPreview(request.merchantId, request.orderId);
-    return { refundRequest: request, order: request.order, merchant: request.merchant, member: request.member, preview };
+    const { order, merchant, member, ...refundRequest } = request;
+    return { refundRequest, order: toOrderDto(order), merchant, member, preview };
   },
   async merchantApprove(ownerId: number, id: number) {
     const merchant = await merchantService.getOwnStore(ownerId); const now = new Date(); const result = await prisma.refundRequest.updateMany({ where: { id, merchantId: merchant.id, status: "PENDING_MERCHANT" }, data: { status: "PENDING_ADMIN", merchantReviewedById: ownerId, merchantReviewedAt: now } });

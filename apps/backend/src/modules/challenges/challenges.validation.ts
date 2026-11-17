@@ -12,9 +12,25 @@ export function readChallengeInput(value: unknown, partial = false) {
   if (body.type !== undefined || !partial) { if (!["ORDER_COUNT", "DAILY_CHECKIN", "SPEND_TOTAL"].includes(String(body.type))) throw new HttpError(400, "INVALID_INPUT"); result.type = body.type as ChallengeType; }
   for (const field of ["targetValue", "rewardPoints", "budgetTotal"] as const) {
     if (body[field] === undefined && partial) continue;
-    const raw = body[field]; try { const d = new Prisma.Decimal(String(raw)); if (!d.isFinite() || d.lessThan(0) || (field === "targetValue" && !d.isInteger())) throw new Error(); result[field] = d; } catch { throw new HttpError(400, "INVALID_INPUT"); }
+    const raw = body[field];
+    try {
+      const d = new Prisma.Decimal(String(raw));
+      const minViolation = field === "budgetTotal" ? d.lessThan(0) : d.lessThanOrEqualTo(0);
+      if (!d.isFinite() || minViolation || (field === "targetValue" && !d.isInteger())) throw new Error();
+      result[field] = d;
+    } catch {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
   }
-  for (const field of ["startsAt", "endsAt"] as const) { if (body[field] === undefined && partial) continue; const d = new Date(String(body[field])); if (Number.isNaN(d.getTime())) throw new HttpError(400, "INVALID_INPUT"); result[field] = d; }
+  for (const field of ["startsAt", "endsAt"] as const) {
+    if (body[field] === undefined && partial) continue;
+    const d = new Date(String(body[field]));
+    if (Number.isNaN(d.getTime())) throw new HttpError(400, "INVALID_INPUT");
+    result[field] = d;
+  }
+  if (result.startsAt instanceof Date && result.endsAt instanceof Date && result.endsAt <= result.startsAt) {
+    throw new HttpError(400, "CHALLENGE_INVALID_DATE_RANGE");
+  }
   if (body.isFeatured !== undefined) { if (typeof body.isFeatured !== "boolean") throw new HttpError(400, "INVALID_INPUT"); result.isFeatured = body.isFeatured; }
   if (!partial && body.status !== undefined) { if (body.status !== "DRAFT" && body.status !== "ACTIVE") throw new HttpError(400, "INVALID_INPUT"); result.status = body.status; }
   return result;

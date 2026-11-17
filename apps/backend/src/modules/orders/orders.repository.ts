@@ -269,22 +269,8 @@ export const ordersRepository = {
       const wallet = membership?.wallet;
       const originalEarned = points(order.earnedPointsExact ?? "0");
 
-      const walletBefore = describeWallet(wallet);
-      const projectedBalance = points(wallet?.exactBalance ?? "0").minus(
-        originalEarned,
-      );
-      const projectedLifetime = points(wallet?.netLifetimeEarned ?? "0").minus(
-        originalEarned,
-      );
-      const walletAfter = describeWallet({
-        exactBalance: projectedBalance,
-        netLifetimeEarned: projectedLifetime,
-      });
-
       const tierBefore =
         selectTier(wallet?.netLifetimeEarned ?? "0", tiers) ?? "UNRANKED";
-      const tierAfter = selectTier(projectedLifetime, tiers) ?? "UNRANKED";
-
       const isVnpay = Boolean(
         order.paymentAttempt && order.paymentAttempt.status === "SUCCEEDED",
       );
@@ -297,6 +283,15 @@ export const ordersRepository = {
         const after = progress.currentValue.minus(entry.deltaValue); const belowTarget = after.lessThan(challenge.targetValue); const revoke = Boolean(grant && belowTarget);
         return { challengeId: challenge.id, title: challenge.title, type: challenge.type, targetValue: challenge.targetValue.toFixed(0), currentValueBefore: progress.currentValue.toFixed(0), currentValueAfter: after.toFixed(0), rewardStateBefore: progress.rewardState, rewardStateAfter: belowTarget ? "IN_PROGRESS" : progress.rewardState, grantStatusBefore: grant ? "GRANTED" as const : null, grantStatusAfter: revoke ? "REVERSED" as const : grant ? "GRANTED" as const : null, pointsToReverseExact: revoke && grant ? grant.pointsGranted.toFixed(12) : "0", budgetSpentBefore: challenge.budgetSpent.toFixed(12), budgetSpentAfter: revoke && grant ? challenge.budgetSpent.minus(grant.pointsGranted).toFixed(12) : challenge.budgetSpent.toFixed(12) };
       });
+      const challengeReversalTotal = challenges.reduce((sum, item) => sum.plus(item.pointsToReverseExact), points("0"));
+      const walletBefore = describeWallet(wallet);
+      const projectedBalance = points(wallet?.exactBalance ?? "0").minus(originalEarned).minus(challengeReversalTotal);
+      const projectedLifetime = points(wallet?.netLifetimeEarned ?? "0").minus(originalEarned).minus(challengeReversalTotal);
+      const walletAfter = describeWallet({
+        exactBalance: projectedBalance,
+        netLifetimeEarned: projectedLifetime,
+      });
+      const tierAfter = selectTier(projectedLifetime, tiers) ?? "UNRANKED";
 
       return {
         orderId: order.id,

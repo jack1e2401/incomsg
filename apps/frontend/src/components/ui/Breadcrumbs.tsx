@@ -6,6 +6,7 @@ export function Breadcrumbs({ basePath, merchantName }: { basePath: string; merc
   const { pathname } = useLocation();
   const path = pathname.slice(basePath.length).replace(/\/$/, "");
   const parts = path.split("/").filter(Boolean);
+  if (parts.length === 0) return null;
   const titles: Record<string, string> = {
     products: "Sản phẩm", challenges: "Nhiệm vụ", vouchers: "Ưu đãi", rewards: "Đổi quà",
     events: "Sự kiện", wallet: "Ví điểm", orders: "Đơn hàng", cart: "Giỏ hàng",

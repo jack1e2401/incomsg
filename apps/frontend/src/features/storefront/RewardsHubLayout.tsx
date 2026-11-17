@@ -17,10 +17,11 @@ export function RewardsHubLayout() {
   ];
   const detail = /^\/s\/[^/]+\/challenges\/[^/]+/.test(pathname);
   return <div>
-    {detail ? <Link to={tabs[0].path} className="mb-3 hidden text-sm font-semibold text-[#335e3d] md:inline-flex">← Nhiệm vụ</Link> :
+    {!detail && (
       <nav aria-label="Danh mục săn thưởng" className="mb-5 flex gap-2 overflow-x-auto border-b border-[#e5ece3]">
         {tabs.map((tab) => { const active = pathname === tab.path || pathname.startsWith(`${tab.path}/`); return <Link key={tab.path} to={tab.path} aria-current={active ? "page" : undefined} className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm font-bold ${active ? "border-[#335e3d] text-[#24452f]" : "border-transparent text-[#68786c] hover:text-[#24452f]"}`}>{tab.label}</Link>; })}
-      </nav>}
+      </nav>
+    )}
     {user?.role !== "MEMBER" && (pathname === tabs[1].path || pathname === tabs[2].path)
       ? <PublicVoucherCatalog merchantId={shell.merchantId} basePath={shell.basePath} rewardsOnly={pathname === tabs[2].path} />
       : <Outlet context={shell} />}

@@ -59,7 +59,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
   const pageTitle = location.pathname.split("/").filter(Boolean).length > 1
     ? location.pathname.includes("/challenges/")
       ? "Chi tiết nhiệm vụ"
-      : routeLabels.find(([to]) => location.pathname === to || location.pathname.startsWith(`${to}/`))?.[1] ?? "Cửa hàng"
+      : routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
     : role === "admin" ? "Quản trị hệ thống" : "Cửa hàng";
   return (
     <div className="min-h-dvh bg-[#f7f8f4] lg:pl-64">
