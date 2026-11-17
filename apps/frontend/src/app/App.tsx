@@ -40,6 +40,7 @@ import {
   AdminBlacklist,
   AdminAuditLogs,
   AdminAbuseReports,
+  AdminRefundApprovalsPage,
 } from "../features/admin/BackendAdminPages";
 import {
   MerchantLoyalty,
@@ -75,6 +76,12 @@ import { PublicProductDetail } from "../features/member/PublicProductDetail";
 import { MerchantEventsPage } from "../features/events/MerchantEventsPage";
 import { PublicEventsPage } from "../features/events/PublicEventsPage";
 import { PublicEventDetailPage } from "../features/events/PublicEventDetailPage";
+import { ChallengesPage } from "../features/challenges/ChallengesPage";
+import { ChallengeDetailPage } from "../features/challenges/ChallengeDetailPage";
+import { MerchantChallengesPage } from "../features/merchant/challenges/MerchantChallengesPage";
+import { MerchantChallengeDetailPage } from "../features/merchant/challenges/MerchantChallengeDetailPage";
+import { MerchantRefundRequestsPage } from "../features/merchant/refunds/MerchantRefundRequestsPage";
+import { RewardsHubLayout } from "../features/storefront/RewardsHubLayout";
 
 // Production and local development use real endpoints. Fixtures are opt-in only.
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
@@ -100,6 +107,7 @@ function BackendRoutes() {
           <Route path="email-blacklist" element={<AdminBlacklist />} />
           <Route path="audit-logs" element={<AdminAuditLogs />} />
           <Route path="abuse-reports" element={<AdminAbuseReports />} />
+          <Route path="refund-requests" element={<AdminRefundApprovalsPage />} />
         </Route>
       </Route>
       <Route element={<RequireRole role="MERCHANT" />}>
@@ -109,6 +117,9 @@ function BackendRoutes() {
           <Route path="storefront" element={<MerchantStorefrontEditor />} />
           <Route path="products" element={<MerchantProducts />} />
           <Route path="events" element={<MerchantEventsPage />} />
+          <Route path="challenges" element={<MerchantChallengesPage />} />
+          <Route path="challenges/:challengeId" element={<MerchantChallengeDetailPage />} />
+          <Route path="refund-requests" element={<MerchantRefundRequestsPage />} />
           <Route path="orders" element={<MerchantOrders />} />
           <Route path="loyalty">
             <Route index element={<LegacyMerchantLoyaltyRedirect />} />
@@ -132,12 +143,16 @@ function BackendRoutes() {
         <Route path="events" element={<PublicEventsPage />} />
         <Route path="events/:eventSlug" element={<PublicEventDetailPage />} />
         <Route path="profile" element={<StorefrontProfilePage />} />
+        <Route element={<RewardsHubLayout />}>
+          <Route path="challenges" element={<ChallengesPage />} />
+          <Route path="challenges/:challengeId" element={<ChallengeDetailPage />} />
+          <Route path="vouchers" element={<MemberVouchers />} />
+          <Route path="rewards" element={<MemberRewards />} />
+        </Route>
         <Route element={<StorefrontAuthGate />}>
           <Route path="cart" element={<MemberCart />} />
           <Route path="checkout" element={<MemberCheckout />} />
           <Route path="wallet" element={<MemberWallet />} />
-          <Route path="vouchers" element={<MemberVouchers />} />
-          <Route path="rewards" element={<MemberRewards />} />
           <Route path="orders" element={<MemberOrders />} />
           <Route path="orders/:orderId" element={<MemberOrderResult />} />
         </Route>

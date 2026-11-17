@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { List, SignOut, X } from "@phosphor-icons/react";
 import { useAuthSession } from "../api/auth-session";
@@ -17,9 +17,10 @@ const adminLinks = [
   ["/admin/blacklist", "Danh sách đen"],
   ["/admin/audit-logs", "Nhật ký"],
   ["/admin/abuse-reports", "Báo cáo vi phạm"],
+  ["/admin/refund-requests", "Duyệt hoàn tiền"],
 ];
 const merchantGroups = [
-  { label: "Vận hành", links: [["/merchant", "Tổng quan"], ["/merchant/orders", "Đơn hàng"]] },
+  { label: "Vận hành", links: [["/merchant", "Tổng quan"], ["/merchant/orders", "Đơn hàng"], ["/merchant/refund-requests", "Hoàn tiền"]] },
   { label: "Sản phẩm", links: [["/merchant/products", "Sản phẩm"], ["/merchant/categories", "Danh mục"]] },
   { label: "Cửa hàng", links: [["/merchant/store", "Thông tin cửa hàng"], ["/merchant/storefront", "Giao diện cửa hàng"]] },
   {
@@ -33,7 +34,7 @@ const merchantGroups = [
       ["/merchant/vouchers", "Voucher"],
     ],
   },
-  { label: "Marketing", links: [["/merchant/events", "Sự kiện"]] },
+  { label: "Marketing", links: [["/merchant/events", "Sự kiện"], ["/merchant/challenges", "Nhiệm vụ"]] },
   { label: "Báo cáo", links: [["/merchant/analytics", "Phân tích"]] },
 ];
 
@@ -49,6 +50,17 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
       group.links.some(([to]) => location.pathname === to || (to !== "/merchant" && location.pathname.startsWith(`${to}/`))),
     ])),
   );
+  useEffect(() => {
+    if (role !== "merchant") return;
+    const active = merchantGroups.find((group) => group.links.some(([to]) => location.pathname === to || (to !== "/merchant" && location.pathname.startsWith(`${to}/`))));
+    if (active) setExpandedGroups((current) => ({ ...current, [active.label]: true }));
+  }, [location.pathname, role]);
+  const routeLabels = role === "admin" ? adminLinks : merchantGroups.flatMap((group) => group.links);
+  const pageTitle = location.pathname.split("/").filter(Boolean).length > 1
+    ? location.pathname.includes("/challenges/")
+      ? "Chi tiết nhiệm vụ"
+      : routeLabels.find(([to]) => location.pathname === to || location.pathname.startsWith(`${to}/`))?.[1] ?? "Cửa hàng"
+    : role === "admin" ? "Quản trị hệ thống" : "Cửa hàng";
   return (
     <div className="min-h-dvh bg-[#f7f8f4] lg:pl-64">
       {menuOpen && (
@@ -127,7 +139,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
           <button aria-label="Mở menu" className="lg:hidden" onClick={() => setMenuOpen(true)}>
             <List size={24} />
           </button>
-          <p className="font-bold text-[#294833]">{role === "admin" ? "Quản trị hệ thống" : "Cửa hàng"}</p>
+          <p className="font-bold text-[#294833]">{pageTitle}</p>
         </div>
         <button
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#45654b]"

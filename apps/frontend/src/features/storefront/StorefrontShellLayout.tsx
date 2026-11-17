@@ -4,9 +4,9 @@ import {
   ShoppingCart,
   SquaresFour,
   Storefront,
-  Ticket,
   UserCircle,
   Wallet,
+  Trophy,
 } from "@phosphor-icons/react";
 import { routeForRole, useAuthSession } from "../../api/auth-session";
 import { createStorefrontClient, resolveStorefrontAssetUrl } from "../../api/storefront-client";
@@ -15,6 +15,7 @@ import { ErrorState, LoadingState } from "../../components/ui";
 import { useEnsureMembership } from "../customers/useEnsureMembership";
 import { useMemberCart } from "../member/useMemberCart";
 import { useStorefrontShell, type StorefrontShellContext, type StorefrontShellData } from "./storefront-context";
+import { Breadcrumbs } from "../../components/ui/Breadcrumbs";
 
 const storefrontApi = createStorefrontClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -89,6 +90,7 @@ export function StorefrontShellLayout() {
 }
 
 function StorefrontChrome({ storageKey, data }: { storageKey: string; data: StorefrontShellData }) {
+  const location = useLocation();
   const cart = useMemberCart(storageKey, data.merchant.id);
   const accent = data.config.branding.primaryColor || "#335e3d";
   const basePath = `/s/${data.merchant.slug}`;
@@ -98,7 +100,7 @@ function StorefrontChrome({ storageKey, data }: { storageKey: string; data: Stor
   const navTabs = [
     { to: basePath, label: "Trang chủ", icon: House, end: true },
     { to: `${basePath}/products`, label: "Sản phẩm", icon: SquaresFour },
-    { to: `${basePath}/vouchers`, label: "Ưu đãi", icon: Ticket },
+    { to: `${basePath}/challenges`, label: "Săn thưởng", icon: Trophy, rewards: true },
     { to: `${basePath}/wallet`, label: "Ví điểm", icon: Wallet },
     { to: `${basePath}/profile`, label: "Cá nhân", icon: UserCircle },
   ];
@@ -152,17 +154,18 @@ function StorefrontChrome({ storageKey, data }: { storageKey: string; data: Stor
           </Link>
 
           <nav aria-label="Điều hướng cửa hàng" className="hidden items-center gap-1 lg:flex">
-            {navTabs.map(({ to, label, end }) => (
+            {navTabs.map(({ to, label, end, rewards }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                className={({ isActive }) =>
-                  `rounded-full px-3.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${
-                    isActive ? "bg-[#e8f1e2] text-[#24452f]" : "text-[#637468] hover:bg-[#eff5eb]"
-                  }`
-                }
-                style={({ isActive }) => (isActive ? { color: accent } : undefined)}
+                className={({ isActive }) => {
+                  const active = rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : isActive || (to.endsWith("/profile") && location.pathname.includes("/orders"));
+                  return `rounded-full px-3.5 py-1.5 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${
+                    active ? "bg-[#e8f1e2] text-[#24452f]" : "text-[#637468] hover:bg-[#eff5eb]"
+                  }`;
+                }}
+                style={() => ((rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : location.pathname === to || location.pathname.startsWith(`${to}/`) || (to.endsWith("/profile") && location.pathname.includes("/orders"))) ? { color: accent } : undefined)}
               >
                 {label}
               </NavLink>
@@ -190,6 +193,7 @@ function StorefrontChrome({ storageKey, data }: { storageKey: string; data: Stor
       </header>
 
       <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-7">
+        <div className="mb-4"><Breadcrumbs basePath={basePath} merchantName={data.merchant.name} /></div>
         <Outlet context={contextValue} />
       </main>
 
@@ -197,17 +201,18 @@ function StorefrontChrome({ storageKey, data }: { storageKey: string; data: Stor
         aria-label="Điều hướng Mini App"
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-[#e5ece3] bg-[#fcfcf8]/95 px-1 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 backdrop-blur lg:hidden"
       >
-        {navTabs.map(({ to, label, icon: Icon, end }) => (
+        {navTabs.map(({ to, label, icon: Icon, end, rewards }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
-            className={({ isActive }) =>
-              `flex min-h-[46px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${
-                isActive ? "text-[#24452f]" : "text-[#6f7f74]"
-              }`
-            }
-            style={({ isActive }) => (isActive ? { color: accent } : undefined)}
+            className={({ isActive }) => {
+              const active = rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : isActive || (to.endsWith("/profile") && location.pathname.includes("/orders"));
+              return `flex min-h-[46px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg py-1 text-[10px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] ${
+                active ? "bg-[#e8f1e2] text-[#24452f]" : "text-[#6f7f74]"
+              }`;
+            }}
+            style={() => ((rewards ? /^\/s\/[^/]+\/(challenges|vouchers|rewards)(\/|$)/.test(location.pathname) : location.pathname === to || location.pathname.startsWith(`${to}/`) || (to.endsWith("/profile") && location.pathname.includes("/orders"))) ? { color: accent } : undefined)}
           >
             {({ isActive }) => (
               <>
