@@ -31,25 +31,38 @@ export function StorefrontProfilePage() {
   if (!user) {
     const returnTo = encodeURIComponent(`${basePath}/profile`);
     return (
-      <section className="mx-auto max-w-md py-4">
-        <Card className="p-6 text-center">
+      <section className="mx-auto w-full max-w-md py-8 sm:py-12">
+        <Card
+          role="region"
+          aria-labelledby="storefront-guest-profile-title"
+          className="rounded-[2rem] p-7 text-center shadow-[0_18px_48px_-32px_rgba(32,57,42,0.28)] sm:p-9"
+        >
           <span
-            className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#edf4e9]"
+            className="mx-auto grid h-16 w-16 place-items-center rounded-[1.35rem] bg-[#edf4e9] ring-1 ring-inset ring-[#e2ecdf]"
             style={{ color: accent }}
           >
-            <UserCircle size={34} weight="light" aria-hidden="true" />
+            <UserCircle size={36} weight="light" aria-hidden="true" />
           </span>
-          <h1 className="mt-4 text-xl font-extrabold text-[#20392a]">Thành viên {merchantName}</h1>
-          <p className="mt-2 text-sm text-[#5d6f62]">
+          <h1
+            id="storefront-guest-profile-title"
+            className="mt-5 text-[1.35rem] font-extrabold leading-tight tracking-[-0.025em] text-[#20392a]"
+          >
+            Thành viên {merchantName}
+          </h1>
+          <p className="mx-auto mt-3 max-w-sm text-[0.95rem] leading-6 text-[#5d6f62]">
             Đăng nhập để tích điểm, đổi ưu đãi và theo dõi đơn hàng của bạn tại cửa hàng này.
           </p>
-          <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
-            <Button asChild className="flex-1" style={{ backgroundColor: accent }}>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <Button asChild className="min-h-11 w-full" style={{ backgroundColor: accent }}>
               <Link to={`/login?returnTo=${returnTo}`}>
-                <SignIn size={16} aria-hidden="true" /> Đăng nhập
+                <SignIn size={17} aria-hidden="true" /> Đăng nhập
               </Link>
             </Button>
-            <Button asChild variant="outline" className="flex-1">
+            <Button
+              asChild
+              variant="outline"
+              className="min-h-11 w-full border-[#d6e2d2] bg-white text-[#335e3d] hover:bg-[#f6f9f4]"
+            >
               <Link to={`/register?returnTo=${returnTo}`}>Tạo tài khoản</Link>
             </Button>
           </div>
@@ -60,11 +73,21 @@ export function StorefrontProfilePage() {
 
   const wallet = walletResource.data;
   const quickLinks = [
-    { to: `${basePath}/orders`, label: "Đơn hàng của tôi", desc: "Xem trạng thái và lịch sử mua", icon: Receipt },
+    {
+      to: `${basePath}/orders`,
+      label: "Đơn hàng của tôi",
+      desc: "Xem trạng thái và lịch sử mua",
+      icon: Receipt,
+    },
     { to: `${basePath}/wallet`, label: "Ví điểm Loyalty", desc: "Lịch sử tích & tiêu điểm", icon: Wallet },
     { to: `${basePath}/vouchers`, label: "Ưu đãi & Voucher", desc: "Đổi điểm lấy mã giảm giá", icon: Ticket },
     { to: `${basePath}/rewards`, label: "Quà tặng đã đổi", desc: "Theo dõi quà nhận tại quầy", icon: Gift },
-    { to: `${basePath}/challenges`, label: "Nhiệm vụ săn thưởng", desc: "Theo dõi nhiệm vụ và phần thưởng", icon: Gift },
+    {
+      to: `${basePath}/challenges`,
+      label: "Nhiệm vụ săn thưởng",
+      desc: "Theo dõi nhiệm vụ và phần thưởng",
+      icon: Gift,
+    },
   ];
 
   return (
@@ -84,7 +107,10 @@ export function StorefrontProfilePage() {
             </div>
           </div>
           {wallet && (
-            <span className="shrink-0 rounded-full bg-[#edf4e9] px-3 py-1 text-xs font-bold" style={{ color: accent }}>
+            <span
+              className="shrink-0 rounded-full bg-[#edf4e9] px-3 py-1 text-xs font-bold"
+              style={{ color: accent }}
+            >
               {wallet.tier === "UNRANKED" ? "Thành viên mới" : memberTierLabel[wallet.tier]}
             </span>
           )}
@@ -122,7 +148,10 @@ export function StorefrontProfilePage() {
               to={to}
               className="flex items-center gap-3 rounded-2xl border border-[#e6ece3] bg-white p-4 transition hover:border-[#bdd0b9]"
             >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#edf4e9]" style={{ color: accent }}>
+              <span
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#edf4e9]"
+                style={{ color: accent }}
+              >
                 <Icon size={20} aria-hidden="true" />
               </span>
               <div className="min-w-0">
