@@ -17,7 +17,7 @@ const adminLinks = [
   ["/admin/blacklist", "Danh sách đen"],
   ["/admin/audit-logs", "Nhật ký"],
   ["/admin/abuse-reports", "Báo cáo vi phạm"],
-  ["/admin/refund-requests", "Duyệt hoàn tiền"],
+  ["/admin/refund-requests", "Lịch sử hoàn tiền"],
 ];
 const merchantGroups = [
   { label: "Vận hành", icon: Gauge, links: [["/merchant", "Tổng quan"], ["/merchant/orders", "Đơn hàng"], ["/merchant/refund-requests", "Hoàn tiền"]] },

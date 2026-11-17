@@ -5,6 +5,7 @@ import type {
   PointTransactionSource,
   PointTransactionType,
   RefundStatus,
+  RefundRequestStatus,
 } from "../../generated/prisma/enums.js";
 import { describeTransaction, exactPoints } from "../loyalty/loyalty.balance.js";
 import type { AppliedLoyaltyPolicyDto, OrderActionsDto, OrderDto, OrderLoyaltyEventDto } from "./orders.types.js";
@@ -30,7 +31,16 @@ type OrderRecord = {
   earnedPointsExact?: Prisma.Decimal | null;
   paymentAttempt?: { status: PaymentAttemptStatus; createdAt: Date } | null;
   refund?: { status: RefundStatus } | null;
-  refundRequest?: { id: number; status: import("../../generated/prisma/enums.js").RefundRequestStatus; requestedAt: Date } | null;
+  refundRequest?: {
+    id: number;
+    status: RefundRequestStatus;
+    requestedAt: Date;
+    reason: string;
+    merchantReviewedAt: Date | null;
+    adminReviewedAt: Date | null;
+    merchantDecisionReason: string | null;
+    adminDecisionReason: string | null;
+  } | null;
   pointTransactions?: {
     id: number;
     type: PointTransactionType;
@@ -141,7 +151,16 @@ export function toOrderDto(order: OrderRecord): OrderDto {
     })),
     paymentStatus: paymentAttempt?.status ?? null,
     refundStatus: refund?.status ?? null,
-    refundRequest: refundRequest ? { id: refundRequest.id, status: refundRequest.status, requestedAt: refundRequest.requestedAt.toISOString() } : null,
+    refundRequest: refundRequest ? {
+      id: refundRequest.id,
+      status: refundRequest.status,
+      requestedAt: refundRequest.requestedAt.toISOString(),
+      reason: refundRequest.reason,
+      merchantReviewedAt: refundRequest.merchantReviewedAt?.toISOString() ?? null,
+      adminReviewedAt: refundRequest.adminReviewedAt?.toISOString() ?? null,
+      merchantDecisionReason: refundRequest.status === "REJECTED" ? refundRequest.merchantDecisionReason : null,
+      adminDecisionReason: refundRequest.status === "REJECTED" ? refundRequest.adminDecisionReason : null,
+    } : null,
     loyaltyEvents,
     actions: computeOrderActions(order.status, paymentAttempt, refund, refundRequest, paymentAttempt),
   };

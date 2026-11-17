@@ -72,6 +72,8 @@ test("Vietnam calendar year excludes the previous year's final second and applie
   const refunded = await refund(shop, current.id);
   assert.equal(refunded.status, 200);
   assert.equal(refunded.json.refund.status, "COMPLETED");
+  const merchant = await prisma.merchant.findUniqueOrThrow({ where: { id: shop.id } });
+  assert.equal(merchant.feeTier, "BRONZE");
   const updated = await finance(shop);
   assert.equal(updated.tier.level, "BRONZE");
   assert.equal(updated.tier.revenueVnd, "0");

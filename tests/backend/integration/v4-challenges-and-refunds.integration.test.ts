@@ -107,6 +107,12 @@ test("challenge CMS activation, public privacy, and daily check-in are scoped", 
 });
 
 test("refund approval gates mock refunds and blocks merchant bypass", async () => {
+  const secondChallenge = await req("/api/merchant/challenges", "POST", merchantToken, {
+    title: "Second reward", description: "Second challenge reward", type: "SPEND_TOTAL", targetValue: "10000", rewardPoints: "7", budgetTotal: "70",
+    startsAt: "2026-11-01T00:00:00.000Z", endsAt: "2026-12-31T00:00:00.000Z", status: "ACTIVE",
+  });
+  assert.equal(secondChallenge.status, 201);
+  const secondChallengeId = (secondChallenge.json.challenge as { id: number }).id;
   const created = await req("/api/orders", "POST", memberToken, { items: [{ productId, quantity: 1 }] });
   assert.equal(created.status, 201);
   const orderId = (created.json.order as { id: number }).id;
@@ -123,17 +129,32 @@ test("refund approval gates mock refunds and blocks merchant bypass", async () =
   const submitted = await req(`/api/orders/${order.id}/refund-request`, "POST", memberToken, { reason: "Wrong item" });
   assert.equal(submitted.status, 201);
   const requestId = (submitted.json.refundRequest as { id: number }).id;
-  const merchantApproval = await req(`/api/merchant/refund-requests/${requestId}/approve`, "POST", merchantToken);
-  assert.equal((merchantApproval.json.refundRequest as { status: string }).status, "PENDING_ADMIN");
-  const approved = await req(`/api/admin/refund-requests/${requestId}/approve`, "POST", adminToken);
+  assert.equal((await req(`/api/admin/refund-requests/${requestId}`, "GET", adminToken)).status, 200);
+  assert.equal((await req(`/api/admin/refund-requests/${requestId}/approve`, "POST", adminToken)).status, 404);
+  assert.equal((await req(`/api/admin/refund-requests/${requestId}/reject`, "POST", adminToken, { reason: "No" })).status, 404);
+  const approved = await req(`/api/merchant/refund-requests/${requestId}/approve`, "POST", merchantToken, { note: "Checked" });
   assert.equal(approved.status, 200);
   assert.equal((approved.json.refundRequest as { status: string }).status, "COMPLETED");
+  assert.equal((approved.json.refundRequest as { merchantDecisionReason: string }).merchantDecisionReason, "Checked");
+  assert.equal(approved.json.challengeReversals, 2);
+  const wallet = await prisma.loyaltyWallet.findUniqueOrThrow({ where: { membershipId: membership.id } });
+  assert.ok(wallet.exactBalance.isZero());
+  assert.ok(wallet.netLifetimeEarned.isZero());
+  assert.equal(Number((approved.json.walletImpact as { exactBalance: string }).exactBalance), 0);
+  const retried = await req(`/api/merchant/refund-requests/${requestId}/approve`, "POST", merchantToken);
+  assert.equal(retried.status, 200);
+  assert.deepEqual(retried.json.refund, approved.json.refund);
+  assert.deepEqual(retried.json.order, approved.json.order);
+  assert.equal(retried.json.challengeReversals, 0);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "REFUNDED");
   const reversedProgress = await prisma.challengeProgress.findUniqueOrThrow({ where: { id: progress.id } });
   assert.equal(reversedProgress.currentValue.toFixed(0), "0");
   assert.equal(reversedProgress.rewardState, "IN_PROGRESS");
   assert.equal((await prisma.challengeRewardGrant.findFirstOrThrow({ where: { progressId: progress.id } })).status, "REVERSED");
-  assert.equal(await prisma.pointTransaction.count({ where: { source: "CHALLENGE_REFUND", orderId: null, wallet: { membershipId: membership.id } } }), 1);
+  assert.equal(await prisma.pointTransaction.count({ where: { source: "CHALLENGE_REFUND", orderId: null, wallet: { membershipId: membership.id }, actorId: ownerId } }), 2);
+  const lastReversal = await prisma.pointTransaction.findFirstOrThrow({ where: { walletId: wallet.id, source: "CHALLENGE_REFUND" }, orderBy: { id: "desc" } });
+  assert.ok(lastReversal.balanceAfter.eq(wallet.exactBalance));
+  assert.equal((await req(`/api/merchant/challenges/${secondChallengeId}/archive`, "POST", merchantToken)).status, 200);
 });
 
 test("locked fields, WAITING_BUDGET FIFO replenishment, Option B keep-above-target, and cycle-2 re-earn", async () => {
@@ -178,8 +199,10 @@ test("locked fields, WAITING_BUDGET FIFO replenishment, Option B keep-above-targ
   // Now member1 has currentValue = 2 on orderChallengeId (target = 1), cycle 2 GRANTED!
   const o3Req = await req(`/api/orders/${o3Id}/refund-request`, "POST", memberToken, { reason: "Keep above target test" });
   const o3ReqId = (o3Req.json.refundRequest as { id: number }).id;
-  await req(`/api/merchant/refund-requests/${o3ReqId}/approve`, "POST", merchantToken);
-  const o3Approve = await req(`/api/admin/refund-requests/${o3ReqId}/approve`, "POST", adminToken);
+  await prisma.refundRequest.update({ where: { id: o3ReqId }, data: { status: "PENDING_ADMIN", merchantReviewedById: ownerId, merchantReviewedAt: new Date() } });
+  const pending = await req("/api/merchant/refund-requests?status=PENDING_MERCHANT", "GET", merchantToken);
+  assert.ok((pending.json.items as { id: number }[]).some(({ id }) => id === o3ReqId));
+  const o3Approve = await req(`/api/merchant/refund-requests/${o3ReqId}/approve`, "POST", merchantToken);
   assert.equal(o3Approve.status, 200);
   const m1Membership = await prisma.merchantMembership.findUniqueOrThrow({ where: { memberId_merchantId: { memberId, merchantId } } });
   const m1OrderProgress = await prisma.challengeProgress.findUniqueOrThrow({ where: { challengeId_membershipId: { challengeId: orderChallengeId, membershipId: m1Membership.id } } });

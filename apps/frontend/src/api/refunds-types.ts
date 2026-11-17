@@ -74,14 +74,15 @@ export interface RefundRequestDetailResponse {
   merchant?: { id: number; name: string; slug: string };
   member?: { id: number; email: string };
   preview: ExtendedRefundPreviewDto;
+  settlement?: Pick<RefundDto, "status" | "amountVnd" | "completedAt"> | null;
 }
 
-export interface AdminApproveRefundResponse {
+export interface MerchantApproveRefundResponse {
   refundRequest: RefundRequestDto;
   refund: RefundDto;
   order: OrderDto;
   walletImpact: unknown;
-  challengeReversals: ChallengeRefundImpactDto[];
+  challengeReversals: number;
 }
 
 export interface ListRefundRequestsParams {

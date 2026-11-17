@@ -111,10 +111,7 @@ export async function completeRefundApproval(shop: Shop, orderId: number, reason
   const submitted = await request<{ refundRequest?: { id: number } }>(`/api/orders/${orderId}/refund-request`, "POST", memberToken, { reason });
   if (submitted.status !== 201) return submitted;
   const requestId = submitted.json.refundRequest!.id;
-  const merchantApproval = await request(`/api/merchant/refund-requests/${requestId}/approve`, "POST", shop.token, {});
-  if (merchantApproval.status !== 200) return merchantApproval;
-  const admin = await createUser("ADMIN");
-  return request(`/api/admin/refund-requests/${requestId}/approve`, "POST", admin.token, {});
+  return request(`/api/merchant/refund-requests/${requestId}/approve`, "POST", shop.token, {});
 }
 
 export const createMember = () => createUser("MEMBER");

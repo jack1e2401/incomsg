@@ -1,6 +1,6 @@
 import { requestJson, translateApiError } from "./commerce/shared";
 import type {
-  AdminApproveRefundResponse,
+  MerchantApproveRefundResponse,
   ListRefundRequestsParams,
   RefundRequestDetailResponse,
   RefundRequestDto,
@@ -13,7 +13,7 @@ export function translateRefundRequestError(code: string): string {
     REFUND_REQUEST_NOT_FOUND: "Không tìm thấy yêu cầu hoàn tiền.",
     VNPAY_REFUND_NOT_SUPPORTED: "Hoàn tiền qua cổng VNPay chưa được hỗ trợ trong phiên bản này.",
     ORDER_NOT_REFUNDABLE: "Đơn hàng không ở trạng thái có thể hoàn tiền.",
-    INVALID_REFUND_REQUEST_STATE: "Trạng thái yêu cầu hoàn tiền không hợp lệ cho thao tác này.",
+    REFUND_REQUEST_NOT_PENDING: "Yêu cầu này đã được xử lý. Hãy tải lại để xem kết quả.",
     USE_REFUND_APPROVAL_WORKFLOW: "Vui lòng xử lý hoàn tiền thông qua quy trình phê duyệt yêu cầu hoàn tiền.",
     REASON_REQUIRED: "Vui lòng nhập lý do.",
   };
@@ -67,7 +67,7 @@ export function createRefundsClient(
     },
 
     approveMerchantRefundRequest(requestId: number, token: string, note?: string) {
-      return requestJson<{ refundRequest: RefundRequestDto }>(
+      return requestJson<MerchantApproveRefundResponse>(
         fetcher,
         baseUrl,
         `/api/merchant/refund-requests/${requestId}/approve`,
@@ -107,22 +107,5 @@ export function createRefundsClient(
       );
     },
 
-    approveAdminRefundRequest(requestId: number, token: string, note?: string) {
-      return requestJson<AdminApproveRefundResponse>(
-        fetcher,
-        baseUrl,
-        `/api/admin/refund-requests/${requestId}/approve`,
-        { method: "POST", body: note ? { note } : {}, token },
-      );
-    },
-
-    rejectAdminRefundRequest(requestId: number, reason: string, token: string) {
-      return requestJson<{ refundRequest: RefundRequestDto }>(
-        fetcher,
-        baseUrl,
-        `/api/admin/refund-requests/${requestId}/reject`,
-        { method: "POST", body: { reason }, token },
-      );
-    },
   };
 }

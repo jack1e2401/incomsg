@@ -23,8 +23,7 @@ const merchantAEmail = `m34-merchant-a-${suffix}@test.local`;
 const merchantBEmail = `m34-merchant-b-${suffix}@test.local`;
 const memberAEmail = `m34-member-a-${suffix}@test.local`;
 const memberBEmail = `m34-member-b-${suffix}@test.local`;
-const adminEmail = `m34-admin-${suffix}@test.local`;
-const fixtureEmails = [merchantAEmail, merchantBEmail, memberAEmail, memberBEmail, adminEmail];
+const fixtureEmails = [merchantAEmail, merchantBEmail, memberAEmail, memberBEmail];
 
 let server: Server | undefined;
 let baseUrl: string;
@@ -34,12 +33,10 @@ let merchantAOwnerId: number;
 let merchantBOwnerId: number;
 let memberAId: number;
 let memberBId: number;
-let adminId: number;
 let merchantAToken: string;
 let merchantBToken: string;
 let memberAToken: string;
 let memberBToken: string;
-let adminToken: string;
 let productAId: number;
 
 function signedIpn(txnRef: string, amount: string, overrides: Record<string, string> = {}) {
@@ -69,18 +66,16 @@ function signedIpn(txnRef: string, amount: string, overrides: Record<string, str
 }
 
 before(async () => {
-  const [ownerA, ownerB, memberA, memberB, admin] = await Promise.all([
+  const [ownerA, ownerB, memberA, memberB] = await Promise.all([
     prisma.user.create({ data: { email: merchantAEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: merchantBEmail, passwordHash: "fixture", role: "MERCHANT" } }),
     prisma.user.create({ data: { email: memberAEmail, passwordHash: "fixture", role: "MEMBER" } }),
     prisma.user.create({ data: { email: memberBEmail, passwordHash: "fixture", role: "MEMBER" } }),
-    prisma.user.create({ data: { email: adminEmail, passwordHash: "fixture", role: "ADMIN" } }),
   ]);
   merchantAOwnerId = ownerA.id;
   merchantBOwnerId = ownerB.id;
   memberAId = memberA.id;
   memberBId = memberB.id;
-  adminId = admin.id;
 
   const [merchantA, merchantB] = await Promise.all([
     prisma.merchant.create({ data: { ownerId: ownerA.id, name: "Merchant A", slug: `m34-a-${suffix}` } }),
@@ -147,7 +142,6 @@ before(async () => {
   merchantBToken = await signAccessToken(ownerB.id);
   memberAToken = await signAccessToken(memberA.id);
   memberBToken = await signAccessToken(memberB.id);
-  adminToken = await signAccessToken(admin.id);
 
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server!.once("listening", resolve));
@@ -213,7 +207,7 @@ async function approveRefund(orderId: number, reason: string) {
   const requestId = submitted.json.refundRequest.id as number;
   const merchantApproval = await request(`/api/merchant/refund-requests/${requestId}/approve`, "POST", merchantAToken, {});
   assert.equal(merchantApproval.response.status, 200, JSON.stringify(merchantApproval.json));
-  return request(`/api/admin/refund-requests/${requestId}/approve`, "POST", adminToken, {});
+  return merchantApproval;
 }
 
 test("1. cancel paid rejection: cannot cancel a paid order", async () => {
@@ -541,7 +535,7 @@ test("7. mock refund exact fractional reversal, debt, tier demotion, and voucher
   });
   assert.equal(reversalTx.delta.toString(), "-1.5");
   assert.equal(reversalTx.source, "MERCHANT_REFUND");
-  assert.equal(reversalTx.actorId, adminId);
+  assert.equal(reversalTx.actorId, merchantAOwnerId);
   assert.equal(reversalTx.eventRef, `order-earn-reversal-${orderId}`);
 
   // Verify USED discount voucher was restored to AVAILABLE
@@ -597,6 +591,29 @@ test("9. wrong merchant 403: Merchant B cannot preview or refund Merchant A's or
   const refund = await request(`/api/merchant/orders/${orderId}/refund`, "POST", merchantBToken, { reason: "Steal" });
   assert.equal(refund.response.status, 409);
   assert.equal(refund.json.error, "USE_REFUND_APPROVAL_WORKFLOW");
+
+  assert.equal((await request(`/api/orders/${orderId}/pay`, "POST", memberAToken)).response.status, 200);
+  const { json } = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "Wrong item" });
+  const refundPath = `/api/merchant/refund-requests/${json.refundRequest.id}`;
+  assert.equal((await request(refundPath, "GET", merchantBToken)).response.status, 404);
+  assert.equal((await request(`${refundPath}/approve`, "POST", merchantBToken)).response.status, 404);
+  assert.equal((await request(`${refundPath}/reject`, "POST", merchantBToken, { reason: "Not ours" })).response.status, 404);
+  const [approved, rejected] = await Promise.all([
+    request(`${refundPath}/approve`, "POST", merchantAToken),
+    request(`${refundPath}/reject`, "POST", merchantAToken, { reason: "Order correct" }),
+  ]);
+  assert.deepEqual([approved.response.status, rejected.response.status].sort(), [200, 409]);
+  const persisted = await prisma.refundRequest.findUniqueOrThrow({ where: { orderId }, include: { order: { include: { refund: true } } } });
+  if (approved.response.ok) {
+    assert.equal(persisted.status, "COMPLETED");
+    assert.equal(persisted.order.refund?.status, "COMPLETED");
+  } else {
+    assert.equal(persisted.status, "REJECTED");
+    assert.equal(persisted.order.status, "PAID");
+    assert.equal(persisted.order.refund, null);
+    const detail = await request(`/api/member/orders/${orderId}`, "GET", memberAToken);
+    assert.equal(detail.json.order.refundRequest.merchantDecisionReason, "Order correct");
+  }
 });
 
 test("10. VNPay refund request is rejected without changing paid state", async () => {
@@ -613,17 +630,46 @@ test("10. VNPay refund request is rejected without changing paid state", async (
   const paidOrder = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
   assert.equal(paidOrder.status, "PAID");
 
-  // Merchant initiates refund for VNPay order
+  // Members cannot request a refund for a real payment.
   const refundRes = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "VNPay cancellation" });
   assert.equal(refundRes.response.status, 409);
   assert.equal(refundRes.json.error, "VNPAY_REFUND_NOT_SUPPORTED");
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status, "PAID");
+
+  // A historical request must also fail at approval and keep its pending status.
+  const legacy = await prisma.refundRequest.create({
+    data: { orderId, merchantId: merchantAId, memberId: memberAId, status: "PENDING_ADMIN", reason: "Legacy request" },
+  });
+  const approval = await request(`/api/merchant/refund-requests/${legacy.id}/approve`, "POST", merchantAToken);
+  assert.equal(approval.response.status, 409);
+  assert.equal(approval.json.error, "VNPAY_REFUND_NOT_SUPPORTED");
+  assert.equal(await prisma.orderRefund.count({ where: { orderId } }), 0);
+  assert.equal((await prisma.refundRequest.findUniqueOrThrow({ where: { id: legacy.id } })).status, "PENDING_ADMIN");
 
   // Verify NO EARN_REVERSAL transaction is created
   const reversals = await prisma.pointTransaction.findMany({
     where: { orderId, type: "EARN_REVERSAL" },
   });
   assert.equal(reversals.length, 0);
+});
+
+test("merchant rejection exposes the recorded reason to the member without refunding the order", async () => {
+  env.paymentMode = "mock";
+  const created = await request("/api/orders", "POST", memberAToken, { items: [{ productId: productAId, quantity: 1 }] });
+  assert.equal(created.response.status, 201);
+  const orderId = created.json.order.id;
+  assert.equal((await request(`/api/orders/${orderId}/pay`, "POST", memberAToken)).response.status, 200);
+  const submitted = await request(`/api/orders/${orderId}/refund-request`, "POST", memberAToken, { reason: "Wrong size" });
+  assert.equal(submitted.response.status, 201);
+  const rejectPath = `/api/merchant/refund-requests/${submitted.json.refundRequest.id}/reject`;
+  assert.equal((await request(rejectPath, "POST", merchantAToken, { reason: " " })).response.status, 400);
+  assert.equal((await request(rejectPath, "POST", merchantAToken, { reason: "Size was verified" })).response.status, 200);
+  const { json } = await request(`/api/member/orders/${orderId}`, "GET", memberAToken);
+  assert.equal(json.order.status, "PAID");
+  assert.equal(json.order.refundStatus, null);
+  assert.equal(json.order.refundRequest.status, "REJECTED");
+  assert.equal(json.order.refundRequest.merchantDecisionReason, "Size was verified");
+  assert.ok(Number.isFinite(Date.parse(json.order.refundRequest.merchantReviewedAt)));
 });
 
 test("11. preview auth: enforces authentication and role boundaries", async () => {
