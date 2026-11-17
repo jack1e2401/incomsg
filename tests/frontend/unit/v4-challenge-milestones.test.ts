@@ -14,6 +14,7 @@ const challenge = (overrides: Partial<PublicChallengeDto> = {}): PublicChallenge
   startsAt: "2026-11-01T00:00:00Z",
   endsAt: "2026-12-01T00:00:00Z",
   isFeatured: true,
+  milestones: [],
   ...overrides,
 });
 

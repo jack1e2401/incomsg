@@ -123,12 +123,12 @@
 
 **Consumes:** ordered configured milestone DTOs from Task 2.
 
-- [ ] Add tests that custom thresholds drive reached/current/upcoming path state and render merchant titles/descriptions; retain the no-progress guest behavior and generated fallback behavior.
-- [ ] Add member detail assertions for campaign summary, remaining-time text, available/accumulated store points, recent activity, and absence of leaderboard UI.
-- [ ] Run milestone/member unit files and confirm the new assertions fail against generated-only path labels and the current detail layout.
-- [ ] Map path states from configured thresholds against server-confirmed `currentValue` and final `rewardState`; keep animations transition-based and reduced-motion safe.
-- [ ] Redesign member challenge detail using the supplied campaign-summary hierarchy, configured milestone path, existing store-wallet response and recent challenge activity; keep the store palette and bottom navigation.
-- [ ] Re-run member milestone/navigation tests and confirm list, home preview, detail, and status filters remain functional.
+- [x] Add tests that custom thresholds drive reached/current/upcoming path state and render merchant titles/descriptions; retain the no-progress guest behavior and generated fallback behavior.
+- [x] Add member detail assertions for campaign summary, remaining-time text, available/accumulated store points, recent activity, and absence of leaderboard UI.
+- [x] Run milestone/member unit files and confirm the new assertions fail against generated-only path labels and the current detail layout.
+- [x] Map path states from configured thresholds against server-confirmed `currentValue` and final `rewardState`; keep animations transition-based and reduced-motion safe.
+- [x] Redesign member challenge detail using the supplied campaign-summary hierarchy, configured milestone path, existing store-wallet response and recent challenge activity; keep the store palette and bottom navigation.
+- [x] Re-run member milestone/navigation tests and confirm list, home preview, detail, and status filters remain functional.
 - [ ] Commit as `feat(member): render configured challenge journey`.
 
 ### Task 5: Verify the complete milestone flow

@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 import { buildChallengeMilestones, type ChallengeMilestoneState } from "./challenge-milestones";
 import { formatChallengeProgress, formatChallengeRemaining } from "./challenge-ui";
 
-const NODE_SPACING = 88;
+const NODE_SPACING = 144;
 
 function formatFinalState(progress: ChallengeProgressDto): string | null {
   if (progress.rewardState === "WAITING_BUDGET") return "Mục tiêu hoàn thành, đang chờ ngân sách.";
@@ -51,6 +51,7 @@ export function ChallengeMilestonePath({
 
   return (
     <section className="mt-5 rounded-[1.75rem] border border-[#e4ecdf] bg-[#f8faf6] px-4 py-5 sm:px-6">
+      {!compact && <h2 className="mb-4 text-lg font-extrabold text-[#263d2d]">Hành trình nhiệm vụ</h2>}
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-base font-extrabold tabular-nums text-[#263d2d]">
           {formatChallengeProgress(challenge, progress)}
@@ -117,12 +118,18 @@ export function ChallengeMilestonePath({
                 <span className={cn(
                   "absolute",
                   compact
-                    ? "left-1/2 top-12 w-16 -translate-x-1/2 text-center"
-                    : cn("top-1/2 w-32 -translate-y-1/2 sm:w-40", sideLabel),
+                    ? "left-1/2 top-12 w-[4.5rem] -translate-x-1/2 text-center"
+                    : cn("top-1/2 w-36 -translate-y-1/2 sm:w-44", sideLabel),
                 )}>
-                  <span className="text-sm font-extrabold text-[#304735]">{milestone.label}</span>
+                  <span className={cn("block font-extrabold text-[#304735]", compact ? "truncate text-[10px]" : "text-sm")}>{milestone.title}</span>
+                  {milestone.label !== milestone.title && (
+                    <span className={cn("block text-[#718075]", compact ? "text-[9px]" : "mt-0.5 text-xs font-semibold")}>{milestone.label}</span>
+                  )}
+                  {!compact && milestone.description && (
+                    <span className="mt-1 block text-xs leading-5 text-[#718075]">{milestone.description}</span>
+                  )}
                   {!compact && milestone.state === "current" && (
-                    <span className="mt-0.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4d8057]">Tiếp theo</span>
+                    <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-[#4d8057]">Mốc tiếp theo</span>
                   )}
                 </span>
               </li>

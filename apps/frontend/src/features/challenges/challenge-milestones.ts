@@ -5,6 +5,8 @@ export type ChallengeMilestoneState = "reached" | "current" | "upcoming" | "rewa
 export interface ChallengeMilestone {
   key: string;
   label: string;
+  title: string;
+  description: string;
   threshold: string;
   percent: number;
   state: ChallengeMilestoneState;
@@ -24,6 +26,12 @@ function positiveInteger(value: string): bigint {
 
 function boundedPercent(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+}
+
+function formatThreshold(challenge: PublicChallengeDto, threshold: bigint): string {
+  const formatted = threshold.toLocaleString("vi-VN");
+  if (challenge.type === "SPEND_TOTAL") return `${formatted} ₫`;
+  return `${formatted} ${challenge.type === "ORDER_COUNT" ? "đơn" : "ngày"}`;
 }
 
 function finalState(progress: ChallengeProgressDto): ChallengeMilestoneState | null {
@@ -64,6 +72,8 @@ function buildSpendMilestones(progress: ChallengeProgressDto): ChallengeMileston
     return {
       key: threshold,
       label: isFinal ? "Hoàn tất" : threshold,
+      title: isFinal ? "Hoàn tất" : threshold,
+      description: "",
       threshold,
       percent: percentage,
       state: result.state,
@@ -96,6 +106,8 @@ function buildCountMilestones(
     return {
       key: threshold.toString(),
       label,
+      title: label,
+      description: "",
       threshold: threshold.toString(),
       percent,
       state: result.state,
@@ -107,6 +119,33 @@ export function buildChallengeMilestones(
   challenge: PublicChallengeDto,
   progress: ChallengeProgressDto,
 ): ChallengeMilestone[] {
+  const configuredMilestones = challenge.milestones ?? [];
+  const target = positiveInteger(progress.targetValue || challenge.targetValue);
+  if (configuredMilestones.length > 0 && target > 0n) {
+    const current = positiveInteger(progress.currentValue);
+    const confirmedFinalState = finalState(progress);
+    let foundCurrent = false;
+
+    return configuredMilestones.map((configuredMilestone, index) => {
+      const threshold = positiveInteger(configuredMilestone.thresholdValue);
+      const isFinal = index === configuredMilestones.length - 1;
+      const result = milestoneState(threshold <= current, isFinal, foundCurrent, confirmedFinalState);
+      foundCurrent = result.foundCurrent;
+      const label = formatThreshold(challenge, threshold);
+      const percent = Number((threshold * 10_000n) / target) / 100;
+
+      return {
+        key: threshold.toString(),
+        label,
+        title: configuredMilestone.title || label,
+        description: configuredMilestone.description || "",
+        threshold: threshold.toString(),
+        percent: boundedPercent(percent),
+        state: result.state,
+      };
+    });
+  }
+
   return challenge.type === "SPEND_TOTAL"
     ? buildSpendMilestones(progress)
     : buildCountMilestones(challenge, progress);

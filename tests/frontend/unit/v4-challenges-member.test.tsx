@@ -24,7 +24,7 @@ import { ChallengeDetailPage } from "../../../apps/frontend/src/features/challen
 import { ChallengeMilestonePath } from "../../../apps/frontend/src/features/challenges/ChallengeMilestonePath";
 import { MemberVouchers } from "../../../apps/frontend/src/features/member/MemberLoyaltyPages";
 
-const challenge = { id: 9, merchantId: 5, title: "Mua cà phê", description: "Mua đủ đơn", type: "ORDER_COUNT" as const, effectiveStatus: "ACTIVE" as const, targetValue: "3", rewardPoints: "150", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z", isFeatured: true };
+const challenge = { id: 9, merchantId: 5, title: "Mua cà phê", description: "Mua đủ đơn", type: "ORDER_COUNT" as const, effectiveStatus: "ACTIVE" as const, targetValue: "3", rewardPoints: "150", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z", isFeatured: true, milestones: [] };
 const progress = { currentValue: "2", targetValue: "3", remainingValue: "1", percent: 67, rewardState: "IN_PROGRESS" as const, rewardCycle: 1, completedAt: null, grantedAt: null };
 function tree(path: string, element: React.ReactNode, session?: object) {
   if (session) sessionStorage.setItem("loyalty.m2.session", JSON.stringify(session));
@@ -46,7 +46,7 @@ describe("V4 member challenges and public discovery", () => {
     publicDetail.mockResolvedValue({ merchant: memberList.merchant, challenge });
     memberDetail.mockResolvedValue({ merchant: memberList.merchant, checkedInToday: false, todayDateKey: "2026-11-17", challenge: { ...challenge, progress }, recentEntries: [] });
     publicVouchers.mockResolvedValue({ definitions: [{ id: 2, title: "Quà", type: "REWARD", rewardDescription: "Ly nước", pointsCost: 100, discountAmount: null, availableQuantity: 5 }] });
-    memberVouchers.mockResolvedValue({ vouchers: [] }); wallet.mockResolvedValue({ wallet: { availablePoints: 500 } });
+    memberVouchers.mockResolvedValue({ vouchers: [] }); wallet.mockResolvedValue({ wallet: { availablePoints: 500, netLifetimeEarned: 1840 } });
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -58,6 +58,24 @@ describe("V4 member challenges and public discovery", () => {
     expect(screen.getByText("2/3 đơn hàng")).toBeInTheDocument();
     expect(screen.getByText("3 đơn").closest("li")).toHaveAttribute("aria-current", "step");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("uses merchant configured milestone copy and thresholds on the client journey", () => {
+    const configuredChallenge = {
+      ...challenge,
+      milestones: [
+        { position: 1, thresholdValue: "1", title: "Khởi động", description: "Hoàn tất đơn đầu tiên" },
+        { position: 2, thresholdValue: "2", title: "Thân quen", description: "Quay lại thêm một lần" },
+        { position: 3, thresholdValue: "3", title: "Bạn của quán", description: "Nhận điểm thưởng cuối" },
+      ],
+    };
+    render(<ChallengeMilestonePath challenge={configuredChallenge} progress={progress} />);
+
+    const milestones = screen.getByRole("list", { name: "Các mốc nhiệm vụ" });
+    expect(within(milestones).getByText("Khởi động")).toBeInTheDocument();
+    expect(within(milestones).getByText("Hoàn tất đơn đầu tiên")).toBeInTheDocument();
+    expect(within(milestones).getByText("Bạn của quán").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(within(milestones).getByText("3 đơn")).toBeInTheDocument();
   });
 
   it("shows pending reward and rewarded final node states", () => {
@@ -115,6 +133,29 @@ describe("V4 member challenges and public discovery", () => {
     tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
     const detailPath = await screen.findByRole("list", { name: "Các mốc nhiệm vụ" });
     expect(within(detailPath).getByText("2 đơn")).toBeInTheDocument();
+  });
+
+  it("shows the store scoped points summary on member challenge detail", async () => {
+    memberDetail.mockResolvedValueOnce({
+      merchant: memberList.merchant,
+      checkedInToday: false,
+      todayDateKey: "2026-11-17",
+      challenge: { ...challenge, progress },
+      recentEntries: [{ id: 88, activityType: "ORDER_PAID", deltaValue: "2", orderId: 77, occurredAt: "2026-11-16T10:00:00Z" }],
+    });
+    tree("/s/coffee/challenges/9", <ChallengeDetailPage />, member);
+
+    expect(await screen.findByRole("heading", { name: "Mua cà phê" })).toBeInTheDocument();
+    expect(screen.getByText(/Kết thúc/)).toBeInTheDocument();
+    expect(screen.getByText(/Còn \d+ ngày/)).toBeInTheDocument();
+    expect(await screen.findByText("Điểm khả dụng")).toBeInTheDocument();
+    expect(screen.getByText("Tổng tích lũy")).toBeInTheDocument();
+    expect(screen.getByText("1.840")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hoạt động gần đây" })).toBeInTheDocument();
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("Chi tiết chương trình")).toBeInTheDocument();
+    expect(screen.queryByText("Bảng xếp hạng")).not.toBeInTheDocument();
+    expect(wallet).toHaveBeenCalledWith(5, "member-token");
   });
 
   it("keeps the prior detail path until refreshed progress arrives, then animates the confirmed reward", async () => {
