@@ -132,7 +132,7 @@ function MerchantPurchaseOrders({ orderId }: { orderId: number | null }) {
 
   return (
     <>
-      {notice ? <Alert type="success" showIcon message={notice} className="mb-4" /> : null}
+      {notice ? <Alert type="success" showIcon title={notice} className="mb-4" /> : null}
       {content}
       <MerchantAbuseReportDialog
         order={selectedOrderForReport}

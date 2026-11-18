@@ -100,7 +100,7 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
   }
 
   if (!data && !error) return <Flex justify="center" className="py-12"><Spin description="Đang tải yêu cầu hoàn tiền…" /></Flex>;
-  if (error && !data) return <Alert type="error" showIcon message="Không tải được yêu cầu hoàn tiền" description={error} action={<Button onClick={onClose}>Quay lại danh sách</Button>} />;
+  if (error && !data) return <Alert type="error" showIcon title="Không tải được yêu cầu hoàn tiền" description={error} action={<Button onClick={onClose}>Quay lại danh sách</Button>} />;
   if (!data) return null;
 
   const pending = isRefundAwaitingMerchant(data.refundRequest.status);
@@ -126,7 +126,7 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
       backLabel="Quay lại yêu cầu hoàn tiền"
       status={<CmsStatusTag label={refundRequestStatusLabel(data.refundRequest.status)} tone={statusTone} />}
     >
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
+      {error ? <Alert type="error" showIcon title={error} className="mb-4" /> : null}
       <Card title="Thông tin yêu cầu" size="small">
         <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
           <Descriptions.Item label="Đơn hàng">#{data.order.id}</Descriptions.Item>
@@ -146,7 +146,7 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
           </Typography.Paragraph>
           <RefundPreview preview={data.preview} />
           {providerRequired ? (
-            <Alert className="mt-4" type="warning" showIcon message="Chưa thể hoàn qua VNPay" description="Đơn đã thanh toán qua VNPay. Hệ thống chưa hỗ trợ hoàn tiền qua cổng này." />
+            <Alert className="mt-4" type="warning" showIcon title="Chưa thể hoàn qua VNPay" description="Đơn đã thanh toán qua VNPay. Hệ thống chưa hỗ trợ hoàn tiền qua cổng này." />
           ) : null}
         </Card>
       ) : (
@@ -172,7 +172,7 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
               <Alert
                 type="warning"
                 showIcon
-                message={`Xác nhận hoàn ${money(data.preview.refundAmountVnd)} cho đơn #${data.order.id}?`}
+                title={`Xác nhận hoàn ${money(data.preview.refundAmountVnd)} cho đơn #${data.order.id}?`}
                 description="Hành động này sẽ gửi yêu cầu hoàn tiền để hệ thống xử lý."
                 action={
                   <Flex gap={8} wrap>

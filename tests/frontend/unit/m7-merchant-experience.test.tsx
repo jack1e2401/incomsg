@@ -195,7 +195,7 @@ describe("M7 Merchant Experience", () => {
     expect(await screen.findByRole("heading", { name: "Đơn #77" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Quay lại đơn hàng" })).toHaveAttribute("href", "/merchant/orders");
     expect(screen.getByText("Sản phẩm A")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Xử lý yêu cầu hoàn tiền" })).toHaveAttribute("href", "/merchant/refund-requests");
+    expect(screen.queryByRole("link", { name: "Xử lý yêu cầu hoàn tiền" })).not.toBeInTheDocument();
   });
 
   it("handles merchant refund preview and reasoned refund submission in MerchantOrders", async () => {

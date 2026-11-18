@@ -106,8 +106,8 @@ export function MerchantPurchaseOrdersTable({
       width: 160,
       render: (_: unknown, order) => (
         <Flex vertical align="start" gap={8}>
-          {order.actions?.canRefund === true && !order.refundRequest ? (
-            <Link to="/merchant/refund-requests">Xử lý yêu cầu hoàn tiền</Link>
+          {order.refundRequest && ["PENDING_MERCHANT", "PENDING_ADMIN"].includes(order.refundRequest.status) ? (
+            <Link to={`/merchant/refund-requests?requestId=${order.refundRequest.id}`}>Xử lý yêu cầu hoàn tiền</Link>
           ) : null}
           <Button size="small" onClick={() => onReport(order)}>Báo cáo vi phạm</Button>
         </Flex>

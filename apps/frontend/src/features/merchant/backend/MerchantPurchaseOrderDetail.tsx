@@ -31,8 +31,8 @@ export function MerchantPurchaseOrderDetail({
   ];
   const action = (
     <Flex gap={8} wrap>
-      {order.actions?.canRefund === true && !order.refundRequest ? (
-        <Button type="primary"><Link to="/merchant/refund-requests">Xử lý yêu cầu hoàn tiền</Link></Button>
+      {order.refundRequest && ["PENDING_MERCHANT", "PENDING_ADMIN"].includes(order.refundRequest.status) ? (
+        <Button type="primary"><Link to={`/merchant/refund-requests?requestId=${order.refundRequest.id}`}>Xử lý yêu cầu hoàn tiền</Link></Button>
       ) : null}
       <Button onClick={onReport}>Báo cáo vi phạm</Button>
     </Flex>
