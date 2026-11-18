@@ -3,7 +3,7 @@ import { Empty, Table, type TableProps } from "antd";
 
 type CmsDataTableProps<T extends object> = Omit<
   TableProps<T>,
-  "dataSource" | "loading" | "locale" | "scroll"
+  "dataSource" | "loading" | "locale"
 > & {
   label: string;
   rows: T[];
@@ -17,6 +17,7 @@ export function CmsDataTable<T extends object>({
   loading = false,
   emptyText,
   pagination,
+  scroll = { x: "max-content" },
   ...tableProps
 }: CmsDataTableProps<T>) {
   return (
@@ -28,7 +29,7 @@ export function CmsDataTable<T extends object>({
         loading={loading}
         locale={{ emptyText: emptyText ?? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có dữ liệu" /> }}
         pagination={pagination ?? false}
-        scroll={{ x: "max-content" }}
+        scroll={scroll}
         size="middle"
       />
     </div>

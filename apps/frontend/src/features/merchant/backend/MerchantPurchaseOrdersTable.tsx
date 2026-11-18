@@ -43,8 +43,9 @@ export function MerchantPurchaseOrdersTable({
     {
       title: "Thành viên",
       key: "member",
+      width: 230,
       render: (_: unknown, order) => (
-        <div className="min-w-36">
+        <div className="min-w-0 break-words">
           <div>#{order.memberId}</div>
           {order.memberEmail ? <Typography.Text type="secondary">{order.memberEmail}</Typography.Text> : null}
         </div>
@@ -53,8 +54,9 @@ export function MerchantPurchaseOrdersTable({
     {
       title: "Sản phẩm",
       key: "items",
+      width: 260,
       render: (_: unknown, order) => (
-        <Typography.Text className="max-w-72" ellipsis={{ tooltip: true }}>
+        <Typography.Text>
           {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
         </Typography.Text>
       ),
@@ -63,6 +65,7 @@ export function MerchantPurchaseOrdersTable({
       title: "Trạng thái",
       dataIndex: "status",
       key: "status",
+      width: 240,
       render: (status: OrderDto["status"], order) => (
         <Space orientation="vertical" size={4}>
           <CmsStatusTag label={orderStatusLabel(status)} tone={tone(status)} />
@@ -76,12 +79,14 @@ export function MerchantPurchaseOrdersTable({
       title: "Tổng tiền",
       dataIndex: "total",
       key: "total",
+      width: 150,
       align: "right",
       render: (value: string) => <Typography.Text strong>{formatPrice(value)}</Typography.Text>,
     },
     {
       title: "Điểm tích lũy",
       key: "earnedPoints",
+      width: 160,
       render: (_: unknown, order) =>
         order.status === "PAID" && (order.earnedPointsExact != null || order.earnedPoints != null)
           ? `+${order.earnedPointsExact ?? order.earnedPoints?.toLocaleString("vi-VN")} điểm`
@@ -91,14 +96,15 @@ export function MerchantPurchaseOrdersTable({
       title: "Thanh toán",
       dataIndex: "paidAt",
       key: "paidAt",
+      width: 180,
       render: (value: string | null) => value ? new Date(value).toLocaleString("vi-VN") : "—",
     },
     {
       title: "Thao tác",
       key: "actions",
-      fixed: "right",
+      width: 200,
       render: (_: unknown, order) => (
-        <Flex gap={8} wrap>
+        <Flex vertical align="start" gap={8}>
           {order.actions?.canRefund === true && !order.refundRequest ? (
             <Link to="/merchant/refund-requests">Xử lý yêu cầu hoàn tiền</Link>
           ) : null}
@@ -108,5 +114,5 @@ export function MerchantPurchaseOrdersTable({
     },
   ];
 
-  return <CmsDataTable label="Đơn mua hàng" rows={orders} columns={columns} rowKey="id" />;
+  return <CmsDataTable label="Đơn mua hàng" rows={orders} columns={columns} rowKey="id" tableLayout="fixed" scroll={{ x: 1538 }} />;
 }

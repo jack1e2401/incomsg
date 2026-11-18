@@ -21,25 +21,26 @@ export function MerchantOrders() {
   const voucherId = Number(params.get("voucherId"));
   const selectedVoucherId = Number.isSafeInteger(voucherId) && voucherId > 0 ? voucherId : null;
   return (
-    <>
+    <div className="grid min-w-0 gap-6">
       <CmsPageHeader title="Đơn hàng" />
-      <Segmented
-        aria-label="Chế độ xem đơn hàng"
-        value={showFees ? "fees" : "orders"}
-        onChange={(value) => setParams(value === "fees" ? { tab: "fees" } : {})}
-        options={[
-          { label: "Đơn mua và quà đổi thưởng", value: "orders" },
-          { label: "Sổ phí bán hàng", value: "fees" },
-        ]}
-        className="mb-5"
-      />
+      <div className="min-w-0 overflow-x-auto pb-1">
+        <Segmented
+          aria-label="Chế độ xem đơn hàng"
+          value={showFees ? "fees" : "orders"}
+          onChange={(value) => setParams(value === "fees" ? { tab: "fees" } : {})}
+          options={[
+            { label: "Đơn mua và quà đổi thưởng", value: "orders" },
+            { label: "Sổ phí bán hàng", value: "fees" },
+          ]}
+        />
+      </div>
       {showFees ? (
         <PlatformFeeLedger token={token} />
       ) : (
         <div className="space-y-8">
           {selectedOrderId === null && (
-            <section aria-labelledby="merchant-order-rewards">
-              <Typography.Title level={4} id="merchant-order-rewards" className="!mb-3">
+            <section aria-labelledby="merchant-order-rewards" className="grid min-w-0 gap-4">
+              <Typography.Title level={4} id="merchant-order-rewards" style={{ margin: 0 }}>
                 Quà đổi thưởng
               </Typography.Title>
               {selectedVoucherId !== null && (
@@ -54,8 +55,8 @@ export function MerchantOrders() {
             </section>
           )}
           {selectedVoucherId === null && (
-            <section aria-labelledby="merchant-purchase-orders">
-              <Typography.Title level={4} id="merchant-purchase-orders" className="!mb-3">
+            <section aria-labelledby="merchant-purchase-orders" className="grid min-w-0 gap-4">
+              <Typography.Title level={4} id="merchant-purchase-orders" style={{ margin: 0 }}>
                 Đơn mua hàng
               </Typography.Title>
               {selectedOrderId !== null ? (
@@ -67,7 +68,7 @@ export function MerchantOrders() {
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
