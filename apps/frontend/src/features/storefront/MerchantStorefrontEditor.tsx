@@ -257,12 +257,12 @@ export function MerchantStorefrontEditor() {
         </div>
       )}
 
-      <Card className="space-y-5 p-5 sm:p-6">
+      <Card className="space-y-6 rounded-[1.75rem] border-[#e4ece1] bg-white p-5 shadow-[0_12px_36px_-28px_rgba(30,56,37,0.28)] sm:p-7 lg:p-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-extrabold text-[#20392a]">Thương hiệu & nội dung đầu trang</h2>
           <StatusText tone="neutral">/s/{merchant.slug}</StatusText>
         </div>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 xl:gap-6">
           <StorefrontImageField
             label="Logo cửa hàng"
             value={draft.branding.logoUrl}

@@ -51,17 +51,18 @@ export function StorefrontImageField({
   }
 
   return (
-    <div className="space-y-2 rounded-2xl border border-[#e5ece3] bg-[#fcfdf9] p-4">
+    <div className="group space-y-3.5 rounded-2xl border border-[#e5ece3] bg-[#fbfcfa] p-4 transition-colors hover:border-[#c9d9c6] sm:p-5">
       <Field label={label} hint={hint}>
         <Input
           type="text"
           value={value ?? ""}
           onChange={(event) => onChange(event.target.value.trim() ? event.target.value : null)}
           placeholder="https://... hoặc /uploads/..."
+          className="border-[#e1e9dd] bg-white text-sm placeholder:text-[#93a092] focus-visible:ring-[#a8cdb0]"
         />
       </Field>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[#d7e2d5] bg-white px-3.5 py-2 text-xs font-bold text-[#2f563a] hover:bg-[#edf4e9]">
+      <div className="flex flex-wrap items-center gap-2 border-t border-[#edf1eb] pt-3">
+        <label className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border border-[#d7e2d5] bg-white px-3.5 py-2 text-xs font-bold text-[#2f563a] transition-colors hover:border-[#b8cdb5] hover:bg-[#edf4e9] focus-within:outline-none focus-within:ring-2 focus-within:ring-[#a8cdb0]">
           <UploadSimple aria-hidden="true" size={15} />
           {uploading ? "Đang tải ảnh..." : "Tải ảnh lên"}
           <input
@@ -78,7 +79,7 @@ export function StorefrontImageField({
             variant="ghost"
             size="sm"
             onClick={() => onChange(null)}
-            className="text-[#a4473a] hover:text-[#8d382d]"
+            className="min-h-10 rounded-xl px-3 text-[#a4473a] hover:bg-[#fff3f0] hover:text-[#8d382d]"
           >
             <Trash aria-hidden="true" size={15} /> Xóa ảnh
           </Button>
@@ -90,8 +91,8 @@ export function StorefrontImageField({
         </p>
       )}
       {previewSrc && (
-        <div className="mt-2 overflow-hidden rounded-xl border border-[#e5ece3] bg-[#edf2e9]">
-          <img src={previewSrc} alt={label} className="max-h-40 w-full object-cover" />
+        <div className="mt-3 h-32 overflow-hidden rounded-xl border border-[#e5ece3] bg-[#edf2e9] sm:h-36">
+          <img src={previewSrc} alt={label} className="h-full w-full object-cover" />
         </div>
       )}
     </div>
