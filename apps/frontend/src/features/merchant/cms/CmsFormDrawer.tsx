@@ -16,7 +16,8 @@ export function CmsFormDrawer({ open, title, onClose, children, footer, width = 
       title={title}
       open={open}
       onClose={onClose}
-      width={width}
+      size={width}
+      styles={{ wrapper: { maxWidth: "100vw" } }}
       footer={footer}
       destroyOnHidden
       keyboard

@@ -297,14 +297,6 @@ export function MerchantVouchers() {
                   statusBusy={busyId !== null}
                   onToggle={() => void toggle(definition)}
                   onDefinitionChange={updateDefinition}
-                  onInventoryChange={(availableQuantity) =>
-                    resource.setData(
-                      (current) =>
-                        current?.map((item) =>
-                          item.id === definition.id ? { ...item, availableQuantity } : item,
-                        ) ?? null,
-                    )
-                  }
                 />
               ))}
             </tbody>

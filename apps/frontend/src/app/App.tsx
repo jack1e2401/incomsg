@@ -51,6 +51,8 @@ import {
   MerchantVouchers,
 } from "../features/merchant/BackendMerchantPages";
 import { MerchantCategoriesPage } from "../features/merchant/MerchantCategoriesPage";
+import { MerchantInventoryPage } from "../features/merchant/MerchantInventoryPage";
+import { MerchantProductEditorPage } from "../features/merchant/MerchantProductEditorPage";
 import { MerchantCustomersPage } from "../features/customers/MerchantCustomersPage";
 import { MerchantCustomerDetailPage } from "../features/customers/MerchantCustomerDetailPage";
 import { MerchantAnalyticsPage } from "../features/analytics/MerchantAnalyticsPage";
@@ -116,7 +118,10 @@ function BackendRoutes() {
           <Route index element={<MerchantOverview />} />
           <Route path="store" element={<MerchantStore />} />
           <Route path="storefront" element={<MerchantStorefrontEditor />} />
+          <Route path="products/new" element={<MerchantProductEditorPage />} />
+          <Route path="products/:productId/edit" element={<MerchantProductEditorPage />} />
           <Route path="products" element={<MerchantProducts />} />
+          <Route path="inventory/:kind/:id" element={<MerchantInventoryPage />} />
           <Route path="events" element={<MerchantEventsPage />} />
           <Route path="challenges" element={<MerchantChallengesPage />} />
           <Route path="challenges/new" element={<MerchantChallengeEditorPage />} />

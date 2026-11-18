@@ -1,27 +1,19 @@
 import { useRef, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { DotsThreeVertical, Eye, EyeSlash, PencilSimple } from "@phosphor-icons/react";
 import { createCommerceClient } from "../../api/commerce-http";
-import type {
-  InventorySummaryDto,
-  VoucherDefinitionDto,
-  VoucherDefinitionPatch,
-} from "../../api/commerce-types";
-import { useResource } from "../../api/useResource";
-import { Button, BusyLabel, ErrorState, Field, Input, Textarea } from "../../components/ui";
+import type { VoucherDefinitionDto, VoucherDefinitionPatch } from "../../api/commerce-types";
+import { Button, BusyLabel, Field, Input, Textarea } from "../../components/ui";
 import { money } from "../../lib/utils";
-import { InventoryPanel, type InventoryAdjustment } from "./InventoryPanel";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 const menuItem =
   "flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm outline-none hover:bg-[#edf4e9] focus:bg-[#edf4e9] data-disabled:pointer-events-none data-disabled:opacity-50";
 
-type InventoryMode = "adjust" | "history";
 const dialogTitles = {
   edit: "Chỉnh sửa voucher",
-  adjust: "Điều chỉnh lượt phát hành",
-  history: "Lịch sử phát hành",
 };
 type RowProps = {
   definition: VoucherDefinitionDto;
@@ -29,7 +21,6 @@ type RowProps = {
   statusBusy: boolean;
   onToggle(): void;
   onDefinitionChange(definition: VoucherDefinitionDto): void;
-  onInventoryChange(quantity: number): void;
 };
 
 export function MerchantVoucherTableRow({
@@ -38,44 +29,16 @@ export function MerchantVoucherTableRow({
   statusBusy,
   onToggle,
   onDefinitionChange,
-  onInventoryChange,
 }: RowProps) {
   const [mode, setMode] = useState<keyof typeof dialogTitles | null>(null);
+  const navigate = useNavigate();
   const [dialogBusy, setDialogBusy] = useState(false);
-  const request = useRef<{ fingerprint: string; key: string } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const isDiscount = definition.type === "DISCOUNT";
   const terms =
     isDiscount && definition.discountAmount
       ? money(Number(definition.discountAmount))
       : definition.rewardDescription;
-
-  async function adjustInventory({ direction, quantity, reason }: InventoryAdjustment) {
-    const fingerprint = JSON.stringify([direction, quantity, reason]);
-    if (request.current?.fingerprint !== fingerprint) {
-      request.current = {
-        fingerprint,
-        key:
-          globalThis.crypto?.randomUUID?.() ??
-          `voucher-stock-${definition.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      };
-    }
-    setDialogBusy(true);
-    try {
-      const { inventory } = await api.adjustVoucherInventory(
-        definition.id,
-        direction,
-        { quantity, reason },
-        token,
-        request.current.key,
-      );
-      request.current = null;
-      onInventoryChange(inventory.availableQuantity);
-      return inventory;
-    } finally {
-      setDialogBusy(false);
-    }
-  }
 
   async function saveDefinition(patch: VoucherDefinitionPatch) {
     setDialogBusy(true);
@@ -142,12 +105,19 @@ export function MerchantVoucherTableRow({
               >
                 {isDiscount && (
                   <>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => setMode("adjust")}>
+                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}`)}>
                       Điều chỉnh lượt phát hành
                     </DropdownMenu.Item>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => setMode("history")}>
+                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}?tab=history`)}>
                       Lịch sử phát hành
                     </DropdownMenu.Item>
+                    <DropdownMenu.Separator className="my-1 h-px bg-[#edf1ea]" />
+                  </>
+                )}
+                {!isDiscount && definition.rewardProductId !== null && (
+                  <>
+                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/reward/${definition.rewardProductId}`)}>Điều chỉnh số lượng quà</DropdownMenu.Item>
+                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/reward/${definition.rewardProductId}?tab=history`)}>Lịch sử số lượng quà</DropdownMenu.Item>
                     <DropdownMenu.Separator className="my-1 h-px bg-[#edf1ea]" />
                   </>
                 )}
@@ -187,27 +157,7 @@ export function MerchantVoucherTableRow({
                 {dialogTitles[mode]}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm muted">{definition.title}</Dialog.Description>
-              {mode === "edit" ? (
-                <VoucherEditForm definition={definition} busy={dialogBusy} onSave={saveDefinition} />
-              ) : (
-                <>
-                  <div className="mt-5">
-                    <VoucherInventory
-                      definitionId={definition.id}
-                      token={token}
-                      mode={mode}
-                      onAdjust={adjustInventory}
-                    />
-                  </div>
-                  <div className="mt-5 flex justify-end">
-                    <Dialog.Close asChild>
-                      <Button variant="outline" disabled={dialogBusy}>
-                        Đóng
-                      </Button>
-                    </Dialog.Close>
-                  </div>
-                </>
-              )}
+              <VoucherEditForm definition={definition} busy={dialogBusy} onSave={saveDefinition} />
             </Dialog.Content>
           </Dialog.Portal>
         )}
@@ -215,7 +165,6 @@ export function MerchantVoucherTableRow({
     </>
   );
 }
-
 function VoucherEditForm({
   definition,
   busy,
@@ -317,42 +266,5 @@ function VoucherEditForm({
         </Button>
       </div>
     </form>
-  );
-}
-
-function VoucherInventory({
-  definitionId,
-  token,
-  mode,
-  onAdjust,
-}: {
-  definitionId: number;
-  token: string;
-  mode: InventoryMode;
-  onAdjust(adjustment: InventoryAdjustment): Promise<InventorySummaryDto>;
-}) {
-  const resource = useResource(() => api.getVoucherInventory(definitionId, token), [definitionId, token]);
-  if (resource.loading)
-    return (
-      <p role="status" className="text-sm muted">
-        Đang tải lượt phát hành…
-      </p>
-    );
-  if (resource.error || !resource.data) {
-    return (
-      <ErrorState message={resource.error ?? "Không tải được lượt phát hành."} retry={resource.reload} />
-    );
-  }
-  return (
-    <InventoryPanel
-      balance={resource.data.inventory}
-      movements={resource.data.movements}
-      mode={mode}
-      subject="voucher"
-      onAdjust={async (input) => {
-        const inventory = await onAdjust(input);
-        resource.setData((current) => (current ? { ...current, inventory } : null));
-      }}
-    />
   );
 }

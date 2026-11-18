@@ -74,7 +74,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
           : undefined
     : undefined;
   const pageTitle = location.pathname.split("/").filter(Boolean).length > 1
-    ? challengePageTitle ?? routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
+    ? (role === "merchant" && location.pathname.startsWith("/merchant/inventory/") ? "Tồn kho" : undefined) ?? challengePageTitle ?? routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
     : role === "admin" ? "Quản trị hệ thống" : "Cửa hàng";
   const breadcrumbs = role === "merchant"
     ? merchantBreadcrumbItems(location.pathname, location.search, pageTitle)
@@ -244,6 +244,9 @@ function merchantBreadcrumbItems(
   } else if (Number.isSafeInteger(requestId) && requestId > 0) {
     parent = { path: "/merchant/refund-requests", label: "Hoàn tiền" };
     current = `Yêu cầu #${requestId}`;
+  } else if (/^\/merchant\/inventory\/(product|reward|voucher)\/\d+\/?$/.test(pathname)) {
+    parent = pathname.includes("/inventory/voucher/") ? { path: "/merchant/vouchers", label: "Voucher" } : { path: "/merchant/products", label: "Sản phẩm" };
+    current = pathname.includes("/inventory/voucher/") ? "Lượt phát hành" : "Tồn kho";
   } else if (/^\/merchant\/challenges\/(new|\d+(\/edit)?)\/?$/.test(pathname)) {
     parent = { path: "/merchant/challenges", label: "Nhiệm vụ" };
   } else if (/^\/merchant\/products\/(new|\d+\/edit)\/?$/.test(pathname)) {
