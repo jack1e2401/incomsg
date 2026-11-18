@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
 import { MerchantChallengesPage } from "../../../apps/frontend/src/features/merchant/challenges/MerchantChallengesPage";
@@ -14,6 +15,19 @@ vi.mock("../../../apps/frontend/src/api/challenges-client", async (importOrigina
 const challenge = { id: 6, merchantId: 3, title: "Đơn đầu tiên", description: "Mô tả", type: "ORDER_COUNT" as const, status: "ACTIVE" as const, effectiveStatus: "ACTIVE" as const, targetValue: "3", rewardPoints: "20.0000000000", budgetTotal: "100.0000000000", budgetSpent: "20.0000000000", budgetRemaining: "80.0000000000", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z", isFeatured: true, milestones: [{ position: 1, thresholdValue: "1", title: "Mốc 1", description: "" }, { position: 2, thresholdValue: "2", title: "Mốc 2", description: "" }, { position: 3, thresholdValue: "3", title: "Mốc 3", description: "" }], hasProgress: true, lockedFields: true, inProgressCount: 5, completedCount: 2, waitingBudgetCount: 1, createdAt: "", updatedAt: "" };
 function renderMerchant(path = "/merchant/challenges") { const session = JSON.stringify({ accessToken: "merchant-token", user: { id: 2, email: "merchant@test.local", role: "MERCHANT", isActive: true } }); sessionStorage.setItem("loyalty.m2.session", session); sessionStorage.setItem("loyalty.auth.session", session); return render(<AuthSessionProvider><MemoryRouter initialEntries={[path]}><Routes><Route path="/merchant/challenges" element={<MerchantChallengesPage />} /><Route path="/merchant/challenges/new" element={<MerchantChallengeEditorPage />} /><Route path="/merchant/challenges/:challengeId/edit" element={<MerchantChallengeEditorPage />} /><Route path="/merchant/challenges/:challengeId" element={<MerchantChallengeDetailPage />} /></Routes></MemoryRouter></AuthSessionProvider>); }
 describe("merchant challenge CMS", () => {
+ it("keeps the challenge review open until the merchant explicitly saves", async () => {
+  const user = userEvent.setup();
+  renderMerchant("/merchant/challenges/6/edit");
+  await screen.findByRole("heading", { name: "Thông tin nhiệm vụ" });
+  fireEvent.submit(screen.getByLabelText("Tiêu đề").closest("form")!);
+  expect(screen.getByRole("heading", { name: "Mục tiêu và điểm thưởng" })).toBeInTheDocument();
+  expect(mocks.update).not.toHaveBeenCalled();
+  for (let step = 1; step < 4; step += 1) await user.click(screen.getByRole("button", { name: "Tiếp tục" }));
+  expect(screen.getByRole("heading", { name: "Rà soát nhiệm vụ" })).toBeInTheDocument();
+  expect(mocks.update).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(1));
+ });
  beforeEach(() => { sessionStorage.clear(); mocks.list.mockResolvedValue({ items: [challenge], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } }); mocks.create.mockResolvedValue({ challenge }); mocks.update.mockResolvedValue({ challenge }); mocks.get.mockResolvedValue({ challenge, participants: { items: [{ progressId: 9, membershipId: 4, memberId: 8, memberEmail: "member@test.local", currentValue: "2", targetValue: "3", rewardState: "IN_PROGRESS", rewardCycle: 1, completedAt: null, updatedAt: "" }], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } }, recentGrants: [] }); });
  afterEach(() => { cleanup(); vi.clearAllMocks(); });
  it("localizes every challenge type, status, and reward state", () => {

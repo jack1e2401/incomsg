@@ -147,6 +147,8 @@ export function MerchantChallengeEditorPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
+    if (step < 4) { next(); return; }
     const invalidStep = [0, 1, 2, 3].find((index) => validate(index, form, challenge, milestones));
     if (invalidStep !== undefined) { setError(validate(invalidStep, form, challenge, milestones)); setStep(invalidStep); return; }
     setBusy(true);
@@ -252,9 +254,9 @@ export function MerchantChallengeEditorPage() {
         <div className="flex flex-col-reverse justify-between gap-3 sm:flex-row">
           <Button type="button" variant="outline" disabled={step === 0 || busy} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }}>Quay lại</Button>
           {step < 4 ? (
-            <Button type="button" onClick={next}>Tiếp tục <ArrowRight size={17} /></Button>
+            <Button key="next" type="button" disabled={busy} onClick={(event) => { event.preventDefault(); next(); }}>Tiếp tục <ArrowRight size={17} /></Button>
           ) : (
-            <Button type="submit" disabled={busy}>{busy ? "Đang lưu…" : isNew ? "Lưu bản nháp" : "Lưu thay đổi"}</Button>
+            <Button key="save" type="submit" disabled={busy}>{busy ? "Đang lưu…" : isNew ? "Lưu bản nháp" : "Lưu thay đổi"}</Button>
           )}
         </div>
       </form>
