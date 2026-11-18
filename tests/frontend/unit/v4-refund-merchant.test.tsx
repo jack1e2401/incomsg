@@ -10,8 +10,28 @@ const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), approve: vi.fn(),
 vi.mock("../../../apps/frontend/src/api/refunds-client", () => ({ createRefundsClient: () => ({ listMerchantRefundRequests: mocks.list, getMerchantRefundRequest: mocks.get, approveMerchantRefundRequest: mocks.approve, rejectMerchantRefundRequest: mocks.reject }) }));
 const item = { id: 11, orderId: 21, memberId: 4, merchantId: 2, reason: "Hàng lỗi", status: "PENDING_MERCHANT" as const, requestedAt: "2026-11-17T00:00:00Z", merchantReviewedById: null, merchantReviewedAt: null, merchantDecisionReason: null, adminReviewedById: null, adminReviewedAt: null, adminDecisionReason: null, createdAt: "", updatedAt: "", orderTotalVnd: "50000", orderStatus: "PAID" as const, memberEmail: "m@test.local" };
 const detail = { refundRequest: item, order: { id: 21, merchantId: 2, memberId: 4, status: "PAID" as const, subtotal: "50000", discountAmount: "0", total: "50000", paidAt: null, items: [{ productId: 1, productName: "Tea", unitPrice: "50000", quantity: 1, lineTotal: "50000" }], earnedPointsExact: "5", actions: { canRefund: false, canCancel: false, requiresReconciliation: false } }, preview: { orderId: 21, refundAmountVnd: "50000", refundStatus: null, earningReversalExact: "5", walletBefore: { availablePoints: 10, netLifetimeEarned: "10", pointDebt: "0", fractionalCarry: "0" }, walletAfter: { availablePoints: 5, netLifetimeEarned: "5", pointDebt: "0", fractionalCarry: "0" }, tierBefore: "BRONZE", tierAfter: "BRONZE", discountVoucherRestorable: true, providerConfirmationRequired: false, challenges: [{ challengeId: 1, title: "First", type: "ORDER_COUNT", targetValue: "3", currentValueBefore: "3", currentValueAfter: "2", rewardStateBefore: "REWARDED", rewardStateAfter: "IN_PROGRESS", grantStatusBefore: "GRANTED", grantStatusAfter: "REVERSED", pointsToReverseExact: "5", budgetSpentBefore: "5", budgetSpentAfter: "0" }] } };
-function renderPage() { const s = JSON.stringify({ accessToken: "merchant-token", user: { id: 2, email: "merchant@test.local", role: "MERCHANT", isActive: true } }); sessionStorage.setItem("loyalty.m2.session", s); sessionStorage.setItem("loyalty.auth.session", s); return render(<AuthSessionProvider><MemoryRouter><MerchantRefundRequestsPage /></MemoryRouter></AuthSessionProvider>); }
+function renderPage(initialEntry = "/merchant/refund-requests") { const s = JSON.stringify({ accessToken: "merchant-token", user: { id: 2, email: "merchant@test.local", role: "MERCHANT", isActive: true } }); sessionStorage.setItem("loyalty.m2.session", s); sessionStorage.setItem("loyalty.auth.session", s); return render(<AuthSessionProvider><MemoryRouter initialEntries={[initialEntry]}><MerchantRefundRequestsPage /></MemoryRouter></AuthSessionProvider>); }
 describe("merchant refund request approvals", () => { beforeEach(() => { sessionStorage.clear(); mocks.list.mockResolvedValue({ items: [item], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } }); mocks.get.mockResolvedValue(detail); mocks.approve.mockResolvedValue({ refundRequest: { ...item, status: "PENDING_ADMIN" } }); mocks.reject.mockResolvedValue({ refundRequest: { ...item, status: "REJECTED" } }); }); afterEach(() => { cleanup(); vi.clearAllMocks(); });
+ it("renders refund requests in a named data table", async () => {
+   renderPage();
+   expect(await screen.findByRole("table", { name: "Yêu cầu hoàn tiền" })).toBeInTheDocument();
+ });
+ it("offers distinct refund filters and requests the selected backend status", async () => {
+   renderPage();
+   await screen.findByRole("table", { name: "Yêu cầu hoàn tiền" });
+   expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ status: "PENDING_MERCHANT" }), "merchant-token");
+   fireEvent.mouseDown(screen.getByRole("combobox", { name: "Lọc trạng thái" }));
+   expect(await screen.findByTitle("Tất cả trạng thái")).toBeInTheDocument();
+   expect(screen.getByTitle("Đã duyệt")).toBeInTheDocument();
+   expect(screen.getByTitle("Đang xử lý hoàn tiền")).toBeInTheDocument();
+   fireEvent.click(screen.getByTitle("Đã duyệt"));
+   await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ status: "APPROVED" }), "merchant-token"));
+ });
+ it("restores the selected refund detail from the URL", async () => {
+   renderPage("/merchant/refund-requests?requestId=11");
+   expect(await screen.findByText(/Nhiệm vụ: First/)).toBeInTheDocument();
+   expect(screen.getByRole("heading", { name: "Yêu cầu hoàn tiền #11" })).toBeInTheDocument();
+ });
  it("shows the preview and requires confirmation before executing the refund", async () => {
    mocks.approve.mockResolvedValue({ refundRequest: { ...item, status: "COMPLETED" } });
    renderPage();

@@ -14,3 +14,44 @@ test("challenge input rejects unknown challenge types and negative budget", () =
   assert.throws(() => readChallengeInput({ ...base, type: "UNKNOWN" }), (error: unknown) => error instanceof HttpError && error.statusCode === 400);
   assert.throws(() => readChallengeInput({ ...base, budgetTotal: "-1" }), HttpError);
 });
+
+test("challenge input accepts ordered custom milestones and defaults omitted milestones", () => {
+  const base = { title: "T", description: "D", type: "ORDER_COUNT", targetValue: "3", rewardPoints: "1", budgetTotal: "2", startsAt: "2026-11-01", endsAt: "2026-12-01" };
+  const custom = readChallengeInput({ ...base, milestones: [
+    { thresholdValue: "1", title: "Lần đầu", description: "Ghé quán" },
+    { thresholdValue: "3", title: "Thân quen", description: "Nhận điểm cuối" },
+  ] }) as { milestones: Array<{ thresholdValue: string; title: string; description: string }> };
+  assert.deepEqual(custom.milestones, [
+    { thresholdValue: "1", title: "Lần đầu", description: "Ghé quán" },
+    { thresholdValue: "3", title: "Thân quen", description: "Nhận điểm cuối" },
+  ]);
+
+  const legacy = readChallengeInput(base) as { milestones: Array<{ thresholdValue: string; title: string; description: string }> };
+  assert.deepEqual(legacy.milestones.map(({ thresholdValue, title }) => [thresholdValue, title]), [
+    ["1", "Mốc 1"], ["2", "Mốc 2"], ["3", "Mốc 3"],
+  ]);
+});
+
+test("challenge input rejects invalid milestone structures and copy", () => {
+  const base = { title: "T", description: "D", type: "ORDER_COUNT", targetValue: "3", rewardPoints: "1", budgetTotal: "2", startsAt: "2026-11-01", endsAt: "2026-12-01" };
+  const valid = [
+    { thresholdValue: "1", title: "A", description: "" },
+    { thresholdValue: "3", title: "B", description: "" },
+  ];
+  const invalidCases = [
+    [],
+    [{ thresholdValue: "1", description: "No title" }, { thresholdValue: "3", title: "B" }],
+    [{ thresholdValue: "1.5", title: "A" }, { thresholdValue: "3", title: "B" }],
+    [{ thresholdValue: "1", title: "A" }, { thresholdValue: "1", title: "B" }, { thresholdValue: "3", title: "C" }],
+    [{ thresholdValue: "2", title: "A" }, { thresholdValue: "1", title: "B" }, { thresholdValue: "3", title: "C" }],
+    [{ thresholdValue: "1", title: "A" }, { thresholdValue: "4", title: "B" }],
+    [{ thresholdValue: "1", title: "A" }, { thresholdValue: "2", title: "B" }],
+    Array.from({ length: 11 }, (_, index) => ({ thresholdValue: String(index + 1), title: `Mốc ${index + 1}` })),
+    [{ thresholdValue: "1", title: "A", description: "x".repeat(241) }, { thresholdValue: "3", title: "B" }],
+  ];
+  for (const milestones of invalidCases) {
+    assert.throws(() => readChallengeInput({ ...base, milestones }), HttpError);
+  }
+  assert.doesNotThrow(() => readChallengeInput({ ...base, milestones: valid }, true));
+  assert.equal("milestones" in readChallengeInput({ title: "renamed" }, true), false);
+});

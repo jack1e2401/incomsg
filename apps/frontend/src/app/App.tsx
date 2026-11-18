@@ -51,6 +51,8 @@ import {
   MerchantVouchers,
 } from "../features/merchant/BackendMerchantPages";
 import { MerchantCategoriesPage } from "../features/merchant/MerchantCategoriesPage";
+import { MerchantInventoryPage } from "../features/merchant/MerchantInventoryPage";
+import { MerchantProductEditorPage } from "../features/merchant/MerchantProductEditorPage";
 import { MerchantCustomersPage } from "../features/customers/MerchantCustomersPage";
 import { MerchantCustomerDetailPage } from "../features/customers/MerchantCustomerDetailPage";
 import { MerchantAnalyticsPage } from "../features/analytics/MerchantAnalyticsPage";
@@ -80,6 +82,7 @@ import { ChallengesPage } from "../features/challenges/ChallengesPage";
 import { ChallengeDetailPage } from "../features/challenges/ChallengeDetailPage";
 import { MerchantChallengesPage } from "../features/merchant/challenges/MerchantChallengesPage";
 import { MerchantChallengeDetailPage } from "../features/merchant/challenges/MerchantChallengeDetailPage";
+import { MerchantChallengeEditorPage } from "../features/merchant/challenges/MerchantChallengeEditorPage";
 import { MerchantRefundRequestsPage } from "../features/merchant/refunds/MerchantRefundRequestsPage";
 import { RewardsHubLayout } from "../features/storefront/RewardsHubLayout";
 
@@ -115,9 +118,14 @@ function BackendRoutes() {
           <Route index element={<MerchantOverview />} />
           <Route path="store" element={<MerchantStore />} />
           <Route path="storefront" element={<MerchantStorefrontEditor />} />
+          <Route path="products/new" element={<MerchantProductEditorPage />} />
+          <Route path="products/:productId/edit" element={<MerchantProductEditorPage />} />
           <Route path="products" element={<MerchantProducts />} />
+          <Route path="inventory/:kind/:id" element={<MerchantInventoryPage />} />
           <Route path="events" element={<MerchantEventsPage />} />
           <Route path="challenges" element={<MerchantChallengesPage />} />
+          <Route path="challenges/new" element={<MerchantChallengeEditorPage />} />
+          <Route path="challenges/:challengeId/edit" element={<MerchantChallengeEditorPage />} />
           <Route path="challenges/:challengeId" element={<MerchantChallengeDetailPage />} />
           <Route path="refund-requests" element={<MerchantRefundRequestsPage />} />
           <Route path="orders" element={<MerchantOrders />} />
@@ -133,7 +141,7 @@ function BackendRoutes() {
           <Route path="customers" element={<MerchantCustomersPage />} />
           <Route path="customers/:memberId" element={<MerchantCustomerDetailPage />} />
           <Route path="analytics" element={<MerchantAnalyticsPage />} />
-          <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
+          <Route path="rewards" element={<Navigate to="/merchant/orders?tab=rewards" replace />} />
         </Route>
       </Route>
       <Route path="/s/:slug" element={<StorefrontShellLayout />}>

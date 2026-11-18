@@ -5,7 +5,9 @@ import { createChallengesClient } from "../../api/challenges-client";
 import type { MemberChallengeDto } from "../../api/challenges-types";
 import { useResource } from "../../api/useResource";
 import { Button, Card, StatusText } from "../../components/ui";
-import { ChallengeProgress, formatChallengeGoal } from "./challenge-ui";
+import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
+import { useChallengeProgressAnimation } from "./useChallengeProgressAnimation";
+import { emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
 
 const challengesApi = createChallengesClient();
 const rewardText = (points: string) => `+${Number(points).toLocaleString("vi-VN")} điểm`;
@@ -24,8 +26,10 @@ export function ChallengeHeroCard({ slug, storeBase }: { slug: string; storeBase
   const [error, setError] = useState("");
   const data = resource.data;
   const hero = data?.heroChallenge;
-  if (resource.loading || resource.error || !hero) return null;
-  const progress = member ? (hero as MemberChallengeDto).progress : null;
+  const confirmedProgress = member && hero ? (hero as MemberChallengeDto).progress : null;
+  const progress = member && hero ? confirmedProgress ?? emptyChallengeProgress(hero) : null;
+  const animateReached = useChallengeProgressAnimation(hero?.id ?? 0, confirmedProgress);
+  if ((resource.loading && !data) || resource.error || !hero) return null;
   const todayDone = member && (data as import("../../api/challenges-types").MemberStoreChallengesResponse).checkedInToday;
   const loginTo = `/login?returnTo=${encodeURIComponent(`${storeBase}/challenges/${hero.id}`)}`;
   const checkIn = async () => {
@@ -49,7 +53,7 @@ export function ChallengeHeroCard({ slug, storeBase }: { slug: string; storeBase
         <div className="flex flex-wrap items-center gap-2"><StatusText tone="green">{rewardText(hero.rewardPoints)}</StatusText>{hero.endsAt && <span className="text-xs muted">{deadlineText(hero.endsAt)}</span>}</div>
         <h2 className="mt-2 text-xl font-extrabold text-[#20392a]">{member ? headline : hero.title}</h2>
         {member ? <p className="mt-1 font-semibold">{hero.title}</p> : <p className="mt-1 text-sm muted">{formatChallengeGoal(hero)}</p>}
-        {progress && <ChallengeProgress challenge={hero} progress={progress} />}
+        {progress && <ChallengeMilestonePath challenge={hero} progress={progress} animateReached={animateReached} compact />}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </div>
       <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">{action}<Link className="text-sm font-semibold text-[#357044] underline" to={`${storeBase}/challenges`}>Xem tất cả nhiệm vụ</Link></div>

@@ -17,6 +17,19 @@
 * {
   box-sizing: border-box;
 }
+html,
+body,
+.merchant-sidebar-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.merchant-sidebar-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 html {
   scroll-behavior: smooth;
 }
@@ -113,6 +126,7 @@ a {
   *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
   }
 }

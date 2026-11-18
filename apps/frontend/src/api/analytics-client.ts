@@ -6,6 +6,7 @@ import type {
   MerchantAnalyticsQuery,
   MerchantAnalyticsResponse,
 } from "./analytics-types";
+import { fetchWithSessionRefresh } from "./session-http";
 
 type FetchLike = typeof fetch;
 
@@ -17,10 +18,10 @@ async function requestAnalyticsJson<T>(
 ): Promise<T> {
   const headers = new Headers({ Accept: "application/json" });
   if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
-  const response = await fetcher(`${baseUrl.replace(/\/$/, "")}${path}`, {
+  const response = await fetchWithSessionRefresh(fetcher, baseUrl, path, {
     method: options.method ?? "GET",
     headers,
-  });
+  }, options.token);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error =

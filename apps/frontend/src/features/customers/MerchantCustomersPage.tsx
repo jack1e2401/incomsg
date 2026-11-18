@@ -128,7 +128,7 @@ export function MerchantCustomersPage() {
         <>
           <div className="surface overflow-x-auto rounded-3xl">
             <table aria-label="Danh sách khách hàng" className="w-full min-w-[920px] border-collapse text-left">
-              <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+              <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
                 <tr>
                   <th scope="col" className="px-5 py-4">
                     Khách hàng

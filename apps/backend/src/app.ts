@@ -25,7 +25,7 @@ import { merchantChallengeRoutes, publicChallengeRoutes, memberChallengeRoutes }
 import { memberRefundRequestRoutes, orderRefundRequestRoutes, merchantRefundRequestRoutes, adminRefundRequestRoutes } from "./modules/refunds/refunds.routes.js";
 
 export const app = express();
-app.use(cors({ origin: env.frontendOrigin }));
+app.use(cors({ origin: env.frontendOrigin, credentials: true }));
 app.use(express.json());
 app.use("/uploads", (request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");

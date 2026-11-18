@@ -266,7 +266,7 @@ export function MerchantVouchers() {
               <col className="w-[16%]" />
               <col className="w-[8%]" />
             </colgroup>
-            <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+            <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
               <tr>
                 <th scope="col" className="px-5 py-4">
                   Voucher
@@ -297,14 +297,6 @@ export function MerchantVouchers() {
                   statusBusy={busyId !== null}
                   onToggle={() => void toggle(definition)}
                   onDefinitionChange={updateDefinition}
-                  onInventoryChange={(availableQuantity) =>
-                    resource.setData(
-                      (current) =>
-                        current?.map((item) =>
-                          item.id === definition.id ? { ...item, availableQuantity } : item,
-                        ) ?? null,
-                    )
-                  }
                 />
               ))}
             </tbody>

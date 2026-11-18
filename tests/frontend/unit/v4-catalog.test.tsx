@@ -21,6 +21,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthSessionProvider } from "../../../apps/frontend/src/api/auth-session";
 import { MerchantProducts } from "../../../apps/frontend/src/features/merchant/MerchantProductsPage";
+import { MerchantProductEditorPage } from "../../../apps/frontend/src/features/merchant/MerchantProductEditorPage";
+import { MerchantCategoriesPage } from "../../../apps/frontend/src/features/merchant/MerchantCategoriesPage";
 import { PublicProductDetail } from "../../../apps/frontend/src/features/member/PublicProductDetail";
 import type { ProductCategoryDto, ProductDto } from "../../../apps/frontend/src/api/contracts/catalog";
 
@@ -81,6 +83,36 @@ describe("Workstream B — Product Catalog V2 UI", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("shows products in the shared named table and links creation to its dedicated page", async () => {
+    signInSession("MERCHANT");
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/merchant/categories")) return Response.json({ categories: [sampleCategory] });
+      if (url.includes("/api/merchant/products/15/stock/movements")) {
+        return Response.json({ inventory: { onHandQuantity: 4, reservedQuantity: 1, availableQuantity: 3 }, movements: [] });
+      }
+      if (url.includes("/api/merchant/products")) {
+        return Response.json({ items: [sampleProduct], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } });
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    render(
+      <AuthSessionProvider>
+        <MemoryRouter initialEntries={["/merchant/products"]}>
+          <Routes>
+            <Route path="/merchant/products" element={<MerchantProducts />} />
+            <Route path="/merchant/products/new" element={<MerchantProductEditorPage />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthSessionProvider>,
+    );
+
+    expect(await screen.findByRole("table", { name: "Sản phẩm" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thêm sản phẩm" }));
+    expect(await screen.findByRole("heading", { name: "Thêm sản phẩm" })).toBeInTheDocument();
   });
 
   it("renders paginated products with SKU, category, low-stock badge, filters, and category CRUD", async () => {
@@ -146,7 +178,9 @@ describe("Workstream B — Product Catalog V2 UI", () => {
       <AuthSessionProvider>
         <MemoryRouter initialEntries={["/merchant/products"]}>
           <Routes>
-            <Route path="/merchant/products" element={<MerchantProducts />} />
+          <Route path="/merchant/products" element={<MerchantProducts />} />
+          <Route path="/merchant/products/new" element={<MerchantProductEditorPage />} />
+          <Route path="/merchant/categories" element={<MerchantCategoriesPage />} />
           </Routes>
         </MemoryRouter>
       </AuthSessionProvider>,
@@ -174,9 +208,12 @@ describe("Workstream B — Product Catalog V2 UI", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Xóa danh mục Trà sữa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Xóa danh mục" }));
     await waitFor(() => {
       expect(screen.queryAllByText("Trà sữa")).toHaveLength(0);
     });
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại sản phẩm" }));
+    await screen.findByRole("table", { name: "Sản phẩm" });
 
     // Apply search + lowStock filter
     fireEvent.change(screen.getByLabelText("Tìm kiếm sản phẩm"), { target: { value: "CF-MUOI" } });
@@ -191,18 +228,22 @@ describe("Workstream B — Product Catalog V2 UI", () => {
 
     // Create product with V2 fields + gallery
     fireEvent.click(screen.getByRole("button", { name: "Thêm sản phẩm" }));
+    await screen.findByRole("heading", { name: "Thêm sản phẩm" });
     fireEvent.change(screen.getByLabelText("Tên sản phẩm"), { target: { value: "Matcha Latte" } });
     fireEvent.change(screen.getByLabelText("Mã SKU"), { target: { value: "MAT-01" } });
     fireEvent.change(screen.getByLabelText("Giá (VND)"), { target: { value: "55000" } });
     fireEvent.change(screen.getByLabelText("Ngưỡng cảnh báo tồn kho thấp"), { target: { value: "8" } });
-    fireEvent.change(screen.getByLabelText("Mô tả chi tiết (plain text)"), {
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.change(screen.getByLabelText("Mô tả chi tiết"), {
       target: { value: "Bột Uji Matcha" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Thêm ảnh" }));
     fireEvent.change(screen.getByLabelText("URL ảnh 1"), {
       target: { value: "/uploads/merchant-7/matcha.jpg" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Lưu sản phẩm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    expect(screen.getByText("Bột Uji Matcha")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tạo sản phẩm" }));
 
     await waitFor(() => {
       const postCall = calls.find((c) => c.url.endsWith("/api/merchant/products") && c.method === "POST");
@@ -217,6 +258,62 @@ describe("Workstream B — Product Catalog V2 UI", () => {
         images: [{ url: "/uploads/merchant-7/matcha.jpg", altText: null, sortOrder: 0 }],
       });
     });
+  });
+
+  it("validates product basics before advancing and keeps edits when moving back", async () => {
+    signInSession("MERCHANT");
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/merchant/categories")) return Response.json({ categories: [] });
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+    render(
+      <AuthSessionProvider>
+        <MemoryRouter initialEntries={["/merchant/products/new"]}>
+          <Routes><Route path="/merchant/products/new" element={<MerchantProductEditorPage />} /></Routes>
+        </MemoryRouter>
+      </AuthSessionProvider>,
+    );
+    await screen.findByRole("heading", { name: "Thêm sản phẩm" });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    expect(await screen.findByText("Nhập tên sản phẩm để tiếp tục.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tên sản phẩm"), { target: { value: "Trà đào" } });
+    fireEvent.change(screen.getByLabelText("Giá (VND)"), { target: { value: "42000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    expect(await screen.findByLabelText("Mô tả ngắn")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Mô tả ngắn"), { target: { value: "Trà trái cây" } });
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại" }));
+    expect(screen.getByLabelText("Tên sản phẩm")).toHaveValue("Trà đào");
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    expect(screen.getByLabelText("Mô tả ngắn")).toHaveValue("Trà trái cây");
+  });
+
+  it("loads a direct product edit URL from the existing paginated Merchant catalog", async () => {
+    signInSession("MERCHANT");
+    const product = { ...sampleProduct, id: 37, name: "Trà sen" };
+    const calls: string[] = [];
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/merchant/categories")) return Response.json({ categories: [sampleCategory] });
+      if (url.includes("/api/merchant/products")) {
+        calls.push(url);
+        return url.includes("page=2")
+          ? Response.json({ items: [product], pagination: { page: 2, limit: 20, totalItems: 21, totalPages: 2 } })
+          : Response.json({ items: [], pagination: { page: 1, limit: 20, totalItems: 21, totalPages: 2 } });
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    render(
+      <AuthSessionProvider>
+        <MemoryRouter initialEntries={["/merchant/products/37/edit"]}>
+          <Routes><Route path="/merchant/products/:productId/edit" element={<MerchantProductEditorPage />} /></Routes>
+        </MemoryRouter>
+      </AuthSessionProvider>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Chỉnh sửa sản phẩm #37" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Tên sản phẩm")).toHaveValue("Trà sen");
+    expect(calls).toHaveLength(2);
   });
 
   it("renders PublicProductDetail with gallery switcher and redirects guest to /login?returnTo=...", async () => {

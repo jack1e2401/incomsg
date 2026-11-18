@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CaretDown, ChartBar, Gauge, List, Megaphone, Package, SignOut, Storefront, UsersThree, X } from "@phosphor-icons/react";
 import { useAuthSession } from "../api/auth-session";
@@ -6,6 +6,8 @@ import { createCommerceClient } from "../api/commerce-http";
 import { useResource } from "../api/useResource";
 import { ErrorState, LoadingState } from "../components/ui";
 import { cn } from "../lib/utils";
+import { Breadcrumb, type BreadcrumbProps } from "antd";
+import { MerchantCmsProvider } from "../features/merchant/cms";
 
 const commerce = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
 
@@ -56,13 +58,29 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
     const active = merchantGroups.find((group) => group.links.some(([to]) => location.pathname === to || (to !== "/merchant" && location.pathname.startsWith(`${to}/`))));
     if (active) setExpandedGroups((current) => ({ ...current, [active.label]: true }));
   }, [location.pathname, role]);
+  useLayoutEffect(() => {
+    if (role !== "merchant") return;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname, role]);
   const routeLabels = role === "admin" ? adminLinks : merchantGroups.flatMap((group) => group.links);
+  const challengePageTitle = role === "merchant"
+    ? location.pathname === "/merchant/challenges/new"
+      ? "Tạo nhiệm vụ"
+      : /^\/merchant\/challenges\/\d+\/edit\/?$/.test(location.pathname)
+        ? "Chỉnh sửa nhiệm vụ"
+        : /^\/merchant\/challenges\/\d+\/?$/.test(location.pathname)
+          ? "Chi tiết nhiệm vụ"
+          : undefined
+    : undefined;
   const pageTitle = location.pathname.split("/").filter(Boolean).length > 1
-    ? location.pathname.includes("/challenges/")
-      ? "Chi tiết nhiệm vụ"
-      : routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
+    ? (role === "merchant" && location.pathname.startsWith("/merchant/inventory/") ? "Tồn kho" : undefined) ?? challengePageTitle ?? routeLabels.find(([to]) => to !== "/admin" && to !== "/merchant" && (location.pathname === to || location.pathname.startsWith(`${to}/`)))?.[1] ?? (role === "admin" ? "Quản trị hệ thống" : "Cửa hàng")
     : role === "admin" ? "Quản trị hệ thống" : "Cửa hàng";
+  const breadcrumbs = role === "merchant"
+    ? merchantBreadcrumbItems(location.pathname, location.search, pageTitle)
+    : undefined;
   return (
+    <MerchantCmsProvider enabled={role === "merchant"}>
     <div className="min-h-dvh bg-[#f7f8f4] lg:pl-[17rem]">
       {menuOpen && (
         <button
@@ -94,7 +112,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
             <span className="mt-0.5 block text-xs text-white/55">{role === "merchant" ? "Quản lý hoạt động" : "Quản lý hệ thống"}</span>
           </span>
         </div>
-        <nav aria-label="Điều hướng chính" className="mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3 pr-1">
+        <nav aria-label="Điều hướng chính" className={cn("mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3 pr-1", role === "merchant" && "merchant-sidebar-scroll")}>
           {role === "admin" ? links.map(([to, label]) => (
             <NavLink
               key={to}
@@ -161,7 +179,16 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
           <button aria-label="Mở menu" className="grid size-10 place-items-center rounded-xl text-[#294833] transition hover:bg-[#eaf0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#335e3d] lg:hidden" onClick={() => setMenuOpen(true)}>
             <List size={24} />
           </button>
-          <p className="font-bold text-[#294833]">{pageTitle}</p>
+          <div className="min-w-0">
+            {role === "merchant" && (
+              <Breadcrumb
+                aria-label="Breadcrumb"
+                className="mb-0.5 text-xs"
+                items={breadcrumbs}
+              />
+            )}
+            <p className="font-semibold text-[#294833]">{pageTitle}</p>
+          </div>
         </div>
         <button
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#45654b]"
@@ -177,6 +204,7 @@ export function BackendConsoleLayout({ role }: { role: "admin" | "merchant" }) {
         {role === "merchant" ? <MerchantAccess /> : <Outlet />}
       </main>
     </div>
+    </MerchantCmsProvider>
   );
 }
 
@@ -188,4 +216,50 @@ function MerchantAccess() {
   if (!resource.data?.merchant.isActive)
     return <ErrorState message="Cửa hàng chưa được Admin kích hoạt." retry={resource.reload} />;
   return <Outlet />;
+}
+
+function merchantBreadcrumbItems(
+  pathname: string,
+  search: string,
+  pageTitle: string,
+): BreadcrumbProps["items"] {
+  if (pathname === "/merchant") return [{ title: "Tổng quan" }];
+
+  let parent: { path: string; label: string } | null = null;
+  let current = pageTitle;
+  const query = new URLSearchParams(search);
+  const orderId = Number(query.get("orderId"));
+  const voucherId = Number(query.get("voucherId"));
+  const requestId = Number(query.get("requestId"));
+
+  if (Number.isSafeInteger(orderId) && orderId > 0) {
+    parent = { path: "/merchant/orders", label: "Đơn hàng" };
+    current = `Đơn #${orderId}`;
+  } else if (Number.isSafeInteger(voucherId) && voucherId > 0) {
+    parent = { path: "/merchant/orders", label: "Đơn hàng" };
+    current = `Quà đổi thưởng #${voucherId}`;
+  } else if (query.get("tab") === "fees") {
+    parent = { path: "/merchant/orders", label: "Đơn hàng" };
+    current = "Sổ phí bán hàng";
+  } else if (Number.isSafeInteger(requestId) && requestId > 0) {
+    parent = { path: "/merchant/refund-requests", label: "Hoàn tiền" };
+    current = `Yêu cầu #${requestId}`;
+  } else if (/^\/merchant\/inventory\/(product|reward|voucher)\/\d+\/?$/.test(pathname)) {
+    parent = pathname.includes("/inventory/voucher/") ? { path: "/merchant/vouchers", label: "Voucher" } : { path: "/merchant/products", label: "Sản phẩm" };
+    current = pathname.includes("/inventory/voucher/") ? "Lượt phát hành" : "Tồn kho";
+  } else if (/^\/merchant\/challenges\/(new|\d+(\/edit)?)\/?$/.test(pathname)) {
+    parent = { path: "/merchant/challenges", label: "Nhiệm vụ" };
+  } else if (/^\/merchant\/products\/(new|\d+\/edit)\/?$/.test(pathname)) {
+    parent = { path: "/merchant/products", label: "Sản phẩm" };
+    current = pathname.endsWith("/new") ? "Thêm sản phẩm" : "Chỉnh sửa sản phẩm";
+  } else if (/^\/merchant\/customers\/[^/]+\/?$/.test(pathname)) {
+    parent = { path: "/merchant/customers", label: "Khách hàng" };
+    current = "Chi tiết khách hàng";
+  }
+
+  return [
+    { title: <Link to="/merchant">Tổng quan</Link> },
+    ...(parent ? [{ title: <Link to={parent.path}>{parent.label}</Link> }] : []),
+    { title: current },
+  ];
 }

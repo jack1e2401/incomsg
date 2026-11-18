@@ -1,12 +1,7 @@
 import type { FormEvent } from "react";
-import { MagnifyingGlass } from "@phosphor-icons/react";
-import type {
-  ProductCategoryDto,
-  ProductKind,
-  ProductSortOption,
-  ProductStatus,
-} from "../../api/commerce-types";
-import { Button, Input, Select } from "../../components/ui";
+import { Button, Checkbox, Form, Input, Select } from "antd";
+import type { ProductCategoryDto, ProductKind, ProductSortOption, ProductStatus } from "../../api/commerce-types";
+import { CmsFilterBar } from "./cms";
 
 type Props = {
   qInput: string;
@@ -27,75 +22,62 @@ type Props = {
 
 export function MerchantProductFiltersBar(props: Props) {
   return (
-    <div className="surface mb-5 flex flex-wrap items-center gap-3 rounded-3xl p-4">
-      <form onSubmit={props.onSearchSubmit} className="flex min-w-[14rem] flex-1 items-center gap-2">
-        <Input
-          aria-label="Tìm kiếm sản phẩm"
-          placeholder="Tìm theo tên hoặc SKU..."
-          value={props.qInput}
-          onChange={(event) => props.onQInputChange(event.target.value)}
+    <CmsFilterBar label="Lọc sản phẩm">
+      <Form onSubmitCapture={props.onSearchSubmit} className="flex min-w-[16rem] flex-1 items-end gap-2">
+        <label className="min-w-0 flex-1 text-xs text-[#59685e]">
+          <span className="mb-1 block">Tìm kiếm sản phẩm</span>
+          <Input
+            aria-label="Tìm kiếm sản phẩm"
+            placeholder="Tên sản phẩm hoặc SKU"
+            value={props.qInput}
+            onChange={(event) => props.onQInputChange(event.target.value)}
+          />
+        </label>
+        <Button htmlType="submit">Tìm</Button>
+      </Form>
+      <label className="min-w-40 text-xs text-[#59685e]">
+        <span className="mb-1 block">Danh mục</span>
+        <Select
+          aria-label="Lọc theo danh mục"
+          className="w-full"
+          value={props.categoryFilter}
+          onChange={props.onCategoryFilterChange}
+          options={[{ value: "", label: "Tất cả danh mục" }, ...props.categories.map((category) => ({ value: String(category.id), label: category.name }))]}
         />
-        <Button type="submit" size="sm" variant="outline">
-          <MagnifyingGlass size={15} /> Tìm
-        </Button>
-      </form>
-
-      <Select
-        aria-label="Lọc theo danh mục"
-        className="w-auto min-w-[10rem]"
-        value={props.categoryFilter}
-        onChange={(event) => props.onCategoryFilterChange(event.target.value)}
-      >
-        <option value="">Tất cả danh mục</option>
-        {props.categories.map((cat) => (
-          <option key={cat.id} value={String(cat.id)}>
-            {cat.name}
-          </option>
-        ))}
-      </Select>
-
-      <Select
-        aria-label="Lọc theo trạng thái"
-        className="w-auto min-w-[9rem]"
-        value={props.statusFilter}
-        onChange={(event) => props.onStatusFilterChange(event.target.value as "" | ProductStatus)}
-      >
-        <option value="">Tất cả trạng thái</option>
-        <option value="ACTIVE">Đang hoạt động</option>
-        <option value="HIDDEN">Đã ẩn</option>
-      </Select>
-
-      <Select
-        aria-label="Lọc theo loại"
-        className="w-auto min-w-[8rem]"
-        value={props.kindFilter}
-        onChange={(event) => props.onKindFilterChange(event.target.value as "" | ProductKind)}
-      >
-        <option value="">Tất cả loại</option>
-        <option value="SALE">Bán</option>
-        <option value="REWARD">Đổi thưởng</option>
-      </Select>
-
-      <Select
-        aria-label="Sắp xếp"
-        className="w-auto min-w-[9rem]"
-        value={props.sort}
-        onChange={(event) => props.onSortChange(event.target.value as ProductSortOption)}
-      >
-        <option value="newest">Mới nhất</option>
-        <option value="price_asc">Giá tăng dần</option>
-        <option value="price_desc">Giá giảm dần</option>
-        <option value="name_asc">Tên A–Z</option>
-      </Select>
-
-      <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#f7f9f5] px-3 py-2 text-xs font-semibold text-[#294432]">
-        <input
-          type="checkbox"
-          checked={props.lowStockOnly}
-          onChange={(event) => props.onLowStockOnlyChange(event.target.checked)}
-        />
-        Sắp hết hàng
       </label>
-    </div>
+      <label className="min-w-40 text-xs text-[#59685e]">
+        <span className="mb-1 block">Trạng thái</span>
+        <Select
+          aria-label="Lọc theo trạng thái"
+          className="w-full"
+          value={props.statusFilter}
+          onChange={props.onStatusFilterChange}
+          options={[{ value: "", label: "Tất cả trạng thái" }, { value: "ACTIVE", label: "Đang hoạt động" }, { value: "HIDDEN", label: "Đã ẩn" }]}
+        />
+      </label>
+      <label className="min-w-36 text-xs text-[#59685e]">
+        <span className="mb-1 block">Loại</span>
+        <Select
+          aria-label="Lọc theo loại"
+          className="w-full"
+          value={props.kindFilter}
+          onChange={props.onKindFilterChange}
+          options={[{ value: "", label: "Tất cả loại" }, { value: "SALE", label: "Bán" }, { value: "REWARD", label: "Đổi thưởng" }]}
+        />
+      </label>
+      <label className="min-w-36 text-xs text-[#59685e]">
+        <span className="mb-1 block">Sắp xếp</span>
+        <Select
+          aria-label="Sắp xếp"
+          className="w-full"
+          value={props.sort}
+          onChange={props.onSortChange}
+          options={[{ value: "newest", label: "Mới nhất" }, { value: "price_asc", label: "Giá tăng dần" }, { value: "price_desc", label: "Giá giảm dần" }, { value: "name_asc", label: "Tên A–Z" }]}
+        />
+      </label>
+      <Checkbox checked={props.lowStockOnly} onChange={(event) => props.onLowStockOnlyChange(event.target.checked)}>
+        Sắp hết hàng
+      </Checkbox>
+    </CmsFilterBar>
   );
 }

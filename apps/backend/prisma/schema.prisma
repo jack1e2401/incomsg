@@ -167,6 +167,24 @@ model User {
   refundRequestsAsMember RefundRequest[] @relation("RefundMember")
   refundRequestsAsMerchantReviewer RefundRequest[] @relation("RefundMerchantReviewer")
   refundRequestsAsAdminReviewer RefundRequest[] @relation("RefundAdminReviewer")
+  refreshSessions                  RefreshSession[]
+}
+
+model RefreshSession {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  familyId     String          @db.Char(36)
+  tokenHash    String          @unique @db.Char(64)
+  createdAt    DateTime        @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById Int?            @unique
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy   RefreshSession? @relation("RefreshSessionRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces     RefreshSession? @relation("RefreshSessionRotation")
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId, revokedAt])
 }
 
 model EmailBlacklistEntry {
@@ -825,8 +843,20 @@ model Challenge {
  updatedAt DateTime @updatedAt
  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
  progresses ChallengeProgress[]
+ milestones ChallengeMilestone[]
  @@index([merchantId, status, startsAt])
  @@index([merchantId, type])
+}
+model ChallengeMilestone {
+ id Int @id @default(autoincrement())
+ challengeId Int
+ position Int
+ thresholdValue Decimal @db.Decimal(15,0)
+ title String @db.VarChar(80)
+ description String @db.VarChar(240)
+ challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+ @@unique([challengeId, position])
+ @@unique([challengeId, thresholdValue])
 }
 model MemberActivity {
  id Int @id @default(autoincrement())

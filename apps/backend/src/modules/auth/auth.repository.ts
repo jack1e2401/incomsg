@@ -68,6 +68,53 @@ async function assertNotBlacklisted(tx: Prisma.TransactionClient, email: string)
 }
 
 export const authRepository = {
+  async createRefreshSession(input: { userId: number; familyId: string; tokenHash: string; expiresAt: Date }) {
+    return prisma.refreshSession.create({ data: input, select: { id: true } });
+  },
+
+  async findRefreshSession(tokenHash: string) {
+    return prisma.refreshSession.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, familyId: true, expiresAt: true, revokedAt: true },
+    });
+  },
+
+  async rotateRefreshSession(input: {
+    currentId: number;
+    userId: number;
+    familyId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    now: Date;
+  }): Promise<boolean> {
+    return prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshSession.updateMany({
+        where: { id: input.currentId, revokedAt: null, expiresAt: { gt: input.now } },
+        data: { revokedAt: input.now },
+      });
+      if (revoked.count !== 1) return false;
+
+      const replacement = await tx.refreshSession.create({
+        data: {
+          userId: input.userId,
+          familyId: input.familyId,
+          tokenHash: input.tokenHash,
+          expiresAt: input.expiresAt,
+        },
+        select: { id: true },
+      });
+      await tx.refreshSession.update({
+        where: { id: input.currentId },
+        data: { replacedById: replacement.id },
+      });
+      return true;
+    }, { isolationLevel: "Serializable" });
+  },
+
+  async revokeRefreshFamily(familyId: string, now = new Date()): Promise<void> {
+    await prisma.refreshSession.updateMany({ where: { familyId, revokedAt: null }, data: { revokedAt: now } });
+  },
+
   async createMember(email: string, passwordHash: string): Promise<UserDto> {
     return prisma.$transaction(async (tx) => {
       await assertNotBlacklisted(tx, email);

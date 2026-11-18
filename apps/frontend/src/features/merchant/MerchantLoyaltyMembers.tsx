@@ -64,7 +64,7 @@ export function MerchantLoyaltyMembers({ token, memberId }: { token: string; mem
             aria-label="Điểm Loyalty theo thành viên"
             className="w-full min-w-[780px] border-collapse text-left"
           >
-            <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+            <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
               <tr>
                 <th scope="col" className="px-5 py-4">
                   Thành viên

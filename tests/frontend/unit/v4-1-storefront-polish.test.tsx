@@ -249,6 +249,35 @@ describe("V4.1 Storefront UI Polish & Routing", () => {
     expect(screen.getByRole("link", { name: "Quay lại Đơn hàng" })).toHaveAttribute("href", "/s/ca-phe-moc/orders");
   });
 
+  it("presents the signed-out profile as a clear storefront member entry point", async () => {
+    storefrontFetchHandler = async () => Response.json(sampleStorefront);
+
+    render(
+      <AuthSessionProvider>
+        <MemoryRouter initialEntries={["/s/ca-phe-moc/profile"]}>
+          <Routes>
+            <Route path="/s/:slug" element={<StorefrontShellLayout />}>
+              <Route path="profile" element={<StorefrontProfilePage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthSessionProvider>,
+    );
+
+    const entry = await screen.findByRole("region", { name: "Thành viên Tiệm Cà Phê Mộc" });
+    expect(entry.parentElement).toHaveClass("mx-auto", "max-w-md");
+    expect(within(entry).getByText("Đăng nhập để tích điểm, đổi ưu đãi và theo dõi đơn hàng của bạn tại cửa hàng này.")).toBeInTheDocument();
+    expect(within(entry).getByRole("link", { name: /Đăng nhập/ })).toHaveAttribute(
+      "href",
+      "/login?returnTo=%2Fs%2Fca-phe-moc%2Fprofile",
+    );
+    expect(within(entry).getByRole("link", { name: "Tạo tài khoản" })).toHaveAttribute(
+      "href",
+      "/register?returnTo=%2Fs%2Fca-phe-moc%2Fprofile",
+    );
+    expect(screen.getByRole("navigation", { name: "Điều hướng Mini App" })).toHaveTextContent("Cá nhân");
+  });
+
   it("redirects legacy /member/:merchantId routes safely to /s/:slug/*", async () => {
     commerceFetchHandler = async () =>
       Response.json({
