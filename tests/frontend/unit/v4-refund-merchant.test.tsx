@@ -16,6 +16,17 @@ describe("merchant refund request approvals", () => { beforeEach(() => { session
    renderPage();
    expect(await screen.findByRole("table", { name: "Yêu cầu hoàn tiền" })).toBeInTheDocument();
  });
+ it("offers distinct refund filters and requests the selected backend status", async () => {
+   renderPage();
+   await screen.findByRole("table", { name: "Yêu cầu hoàn tiền" });
+   expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ status: "PENDING_MERCHANT" }), "merchant-token");
+   fireEvent.mouseDown(screen.getByRole("combobox", { name: "Lọc trạng thái" }));
+   expect(await screen.findByTitle("Tất cả trạng thái")).toBeInTheDocument();
+   expect(screen.getByTitle("Đã duyệt")).toBeInTheDocument();
+   expect(screen.getByTitle("Đang xử lý hoàn tiền")).toBeInTheDocument();
+   fireEvent.click(screen.getByTitle("Đã duyệt"));
+   await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ status: "APPROVED" }), "merchant-token"));
+ });
  it("restores the selected refund detail from the URL", async () => {
    renderPage("/merchant/refund-requests?requestId=11");
    expect(await screen.findByText(/Nhiệm vụ: First/)).toBeInTheDocument();

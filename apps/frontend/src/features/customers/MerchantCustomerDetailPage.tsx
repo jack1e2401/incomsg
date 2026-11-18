@@ -175,7 +175,7 @@ export function MerchantCustomerDetailPage() {
               ) : (
                 <div className="surface overflow-x-auto rounded-3xl">
                   <table className="w-full min-w-[700px] border-collapse text-left text-sm">
-                    <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+                    <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
                       <tr>
                         <th scope="col" className="px-5 py-3.5">
                           Đơn hàng
@@ -235,7 +235,7 @@ export function MerchantCustomerDetailPage() {
               ) : (
                 <div className="surface overflow-x-auto rounded-3xl">
                   <table className="w-full min-w-[700px] border-collapse text-left text-sm">
-                    <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+                    <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
                       <tr>
                         <th scope="col" className="px-5 py-3.5">
                           Thời gian
@@ -285,7 +285,7 @@ export function MerchantCustomerDetailPage() {
               ) : (
                 <div className="surface overflow-x-auto rounded-3xl">
                   <table className="w-full min-w-[680px] border-collapse text-left text-sm">
-                    <thead className="bg-[#f7f9f5] text-xs font-bold uppercase tracking-wide text-[#65746a]">
+                    <thead className="bg-[#edf3ee] text-xs font-bold uppercase tracking-wide text-[#344b3b]">
                       <tr>
                         <th scope="col" className="px-5 py-3.5">
                           Voucher

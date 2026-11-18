@@ -176,7 +176,7 @@ export function MerchantLoyaltyTransactions() {
           {resource.error && <ErrorState message={resource.error} retry={resource.reload} />}
           <Card className="overflow-x-auto">
             <table className="w-full text-left text-sm" aria-label="Sổ giao dịch điểm">
-              <thead className="bg-[#f7f9f5] text-xs muted">
+              <thead className="bg-[#edf3ee] text-xs font-bold text-[#344b3b]">
                 <tr>
                   {["Thời gian", "Giao dịch", "Thành viên", "Điểm (+/−)", "Số dư sau", "Thao tác"].map(
                     (heading) => (

@@ -14,7 +14,6 @@ const limit = 20;
 const states: (RefundRequestStatus | "ALL")[] = [
   "ALL",
   "PENDING_MERCHANT",
-  "PENDING_ADMIN",
   "APPROVED",
   "PROCESSING",
   "COMPLETED",
@@ -152,7 +151,7 @@ export function MerchantRefundRequestsPage() {
           value={status}
           options={states.map((value) => ({
             value,
-            label: value === "ALL" ? "Tất cả trạng thái" : refundRequestStatusLabel(value),
+            label: value === "ALL" ? "Tất cả trạng thái" : value === "APPROVED" ? "Đã duyệt" : refundRequestStatusLabel(value),
           }))}
           onChange={(value: RefundRequestStatus | "ALL") => {
             setStatus(value);

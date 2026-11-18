@@ -130,7 +130,7 @@ export function MerchantChallengeDetailPage() {
 
         <div className="hidden md:block">
           <table className="w-full table-fixed text-left text-sm">
-            <thead className="bg-[#f8faf6] text-xs uppercase tracking-[.06em] text-[#718075]"><tr>
+            <thead className="bg-[#edf3ee] text-xs uppercase tracking-[.06em] text-[#344b3b]"><tr>
               <th className="w-[38%] px-5 py-3 font-bold">Thành viên</th>
               <th className="w-[24%] px-3 py-3 font-bold">Tiến độ</th>
               <th className="w-[20%] px-3 py-3 font-bold">Trạng thái thưởng</th>

@@ -136,7 +136,7 @@ function BackendRoutes() {
           <Route path="customers" element={<MerchantCustomersPage />} />
           <Route path="customers/:memberId" element={<MerchantCustomerDetailPage />} />
           <Route path="analytics" element={<MerchantAnalyticsPage />} />
-          <Route path="rewards" element={<Navigate to="/merchant/orders" replace />} />
+          <Route path="rewards" element={<Navigate to="/merchant/orders?tab=rewards" replace />} />
         </Route>
       </Route>
       <Route path="/s/:slug" element={<StorefrontShellLayout />}>
