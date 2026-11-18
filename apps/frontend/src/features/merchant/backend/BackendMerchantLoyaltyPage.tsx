@@ -121,7 +121,7 @@ export function MerchantLoyalty() {
         ) : !config || !form ? (
           <EmptyState title="Chưa có cấu hình" description="Cấu hình chưa khả dụng." />
         ) : (
-          <div className="space-y-6 max-w-4xl">
+          <div className="mx-auto w-full max-w-4xl space-y-6">
             <div className="rounded-2xl bg-[#fff8eb] p-4 text-xs leading-5 text-[#97682a]">
               <p className="font-bold">
                 Lưu ý: Thay đổi tỷ lệ hoặc hạng tích điểm chỉ áp dụng cho các đơn hàng phát sinh sau này.
@@ -303,7 +303,7 @@ export function MerchantLoyalty() {
       ) : history.error ? (
         <ErrorState message={history.error} retry={history.reload} />
       ) : (
-        <Card className="max-w-4xl p-5 sm:p-7">
+        <Card className="mx-auto w-full max-w-4xl p-5 sm:p-7">
           <MerchantLoyaltyHistory versions={history.data?.versions ?? []} />
         </Card>
       )}

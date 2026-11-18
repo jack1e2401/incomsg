@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { OrderDto } from "../../../api/commerce-types";
 import { formatPrice, orderStatusLabel } from "../merchant-page-support";
 import { CmsDataTable, CmsStatusTag } from "../cms";
+import { refundRequestStatusLabel } from "../../refunds/refund-status";
 
 export type MerchantOrderRow = OrderDto & { memberEmail?: string };
 
@@ -19,9 +20,9 @@ const tone = (status: OrderDto["status"]) => {
 
 function refundLabel(order: OrderDto): string[] {
   const labels: string[] = [];
-  if (order.refundStatus === "PENDING_PROVIDER") labels.push("Chờ cổng xác nhận hoàn tiền");
+  if (order.refundStatus === "PENDING_PROVIDER") labels.push("Chờ cổng xác nhận");
   if (order.refundStatus === "COMPLETED" && order.status !== "REFUNDED") labels.push("Đã hoàn tiền");
-  if (order.refundRequest) labels.push(`Yêu cầu hoàn tiền: ${order.refundRequest.status}`);
+  if (order.refundRequest) labels.push(`Hoàn tiền: ${refundRequestStatusLabel(order.refundRequest.status)}`);
   return labels;
 }
 
@@ -37,13 +38,13 @@ export function MerchantPurchaseOrdersTable({
       title: "Đơn hàng",
       dataIndex: "id",
       key: "id",
-      width: 118,
-      render: (_: unknown, order) => <Link to={`/merchant/orders?orderId=${order.id}`}>Đơn #{order.id}</Link>,
+      width: 90,
+      render: (_: unknown, order) => <Link to={`/merchant/orders?orderId=${order.id}`}>#{order.id}</Link>,
     },
     {
       title: "Thành viên",
       key: "member",
-      width: 230,
+      width: 170,
       render: (_: unknown, order) => (
         <div className="min-w-0 break-words">
           <div>#{order.memberId}</div>
@@ -54,7 +55,7 @@ export function MerchantPurchaseOrdersTable({
     {
       title: "Sản phẩm",
       key: "items",
-      width: 260,
+      width: 180,
       render: (_: unknown, order) => (
         <Typography.Text>
           {order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}
@@ -65,12 +66,12 @@ export function MerchantPurchaseOrdersTable({
       title: "Trạng thái",
       dataIndex: "status",
       key: "status",
-      width: 240,
+      width: 160,
       render: (status: OrderDto["status"], order) => (
         <Space orientation="vertical" size={4}>
           <CmsStatusTag label={orderStatusLabel(status)} tone={tone(status)} />
           {refundLabel(order).map((label) => (
-            <CmsStatusTag key={label} label={label} tone={label.startsWith("Yêu cầu") ? "warning" : "info"} />
+            <Typography.Text key={label} type="secondary" style={{ fontSize: 12, whiteSpace: "normal" }}>{label}</Typography.Text>
           ))}
         </Space>
       ),
@@ -79,14 +80,14 @@ export function MerchantPurchaseOrdersTable({
       title: "Tổng tiền",
       dataIndex: "total",
       key: "total",
-      width: 150,
+      width: 120,
       align: "right",
       render: (value: string) => <Typography.Text strong>{formatPrice(value)}</Typography.Text>,
     },
     {
       title: "Điểm tích lũy",
       key: "earnedPoints",
-      width: 160,
+      width: 120,
       render: (_: unknown, order) =>
         order.status === "PAID" && (order.earnedPointsExact != null || order.earnedPoints != null)
           ? `+${order.earnedPointsExact ?? order.earnedPoints?.toLocaleString("vi-VN")} điểm`
@@ -96,13 +97,13 @@ export function MerchantPurchaseOrdersTable({
       title: "Thanh toán",
       dataIndex: "paidAt",
       key: "paidAt",
-      width: 180,
+      width: 145,
       render: (value: string | null) => value ? new Date(value).toLocaleString("vi-VN") : "—",
     },
     {
       title: "Thao tác",
       key: "actions",
-      width: 200,
+      width: 160,
       render: (_: unknown, order) => (
         <Flex vertical align="start" gap={8}>
           {order.actions?.canRefund === true && !order.refundRequest ? (
@@ -114,5 +115,5 @@ export function MerchantPurchaseOrdersTable({
     },
   ];
 
-  return <CmsDataTable label="Đơn mua hàng" rows={orders} columns={columns} rowKey="id" tableLayout="fixed" scroll={{ x: 1538 }} />;
+  return <CmsDataTable label="Đơn mua hàng" rows={orders} columns={columns} rowKey="id" tableLayout="fixed" scroll={{ x: 1145 }} emptyText="Không tìm thấy đơn hàng phù hợp." />;
 }

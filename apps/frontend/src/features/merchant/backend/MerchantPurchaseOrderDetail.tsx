@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Card, Descriptions, Flex, Typography, type TableColumnsType } from "antd";
 import { Link } from "react-router-dom";
 import { CmsDataTable, CmsDetailLayout, CmsStatusTag } from "../cms";
+import { refundRequestStatusLabel } from "../../refunds/refund-status";
 import { formatPrice, orderStatusLabel } from "../merchant-page-support";
 import { OrderLoyaltyPolicySnapshot } from "../../orders/OrderLoyaltyPolicySnapshot";
 import type { MerchantOrderRow } from "./MerchantPurchaseOrdersTable";
@@ -70,7 +71,7 @@ export function MerchantPurchaseOrderDetail({
           <CmsStatusTag label="Đã hoàn tiền" tone="info" />
         ) : null}
         {order.refundRequest ? (
-          <CmsStatusTag label={`Yêu cầu hoàn tiền: ${order.refundRequest.status}`} tone="warning" />
+          <CmsStatusTag label={`Yêu cầu hoàn tiền: ${refundRequestStatusLabel(order.refundRequest.status)}`} tone="warning" />
         ) : null}
       </Card>
       <Card title="Sản phẩm trong đơn" size="small">

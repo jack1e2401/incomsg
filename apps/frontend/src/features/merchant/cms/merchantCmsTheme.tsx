@@ -22,7 +22,7 @@ export const merchantCmsTheme = {
   components: {
     Button: { fontWeight: 600 },
     Card: { bodyPadding: 16, borderRadiusLG: 8 },
-    Table: { headerBg: "#f3f6f3", headerColor: "#53645a", rowHoverBg: "#f7faf7" },
+    Table: { headerBg: "#edf3ee", headerColor: "#344b3b", rowHoverBg: "#f4f9f4" },
   },
 };
 

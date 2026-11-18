@@ -53,6 +53,25 @@ describe("M7 Merchant Experience", () => {
     vi.restoreAllMocks();
   });
 
+  it("prioritizes purchases, filters them by member and opens rewards separately", async () => {
+    const order = { id: 847, merchantId: 7, memberId: 9, memberEmail: "lan@example.test", status: "PAID", subtotal: "6000", discountAmount: "0", total: "6000", paidAt: null, items: [], earnedPointsExact: null };
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/merchant/orders")) return Response.json({ orders: [order] });
+      if (url.includes("/api/merchant/rewards")) return Response.json({ rewards: [] });
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+    renderMerchantPage("/merchant/orders", <MerchantOrders />);
+    expect(await screen.findByRole("link", { name: "#847" })).toBeInTheDocument();
+    expect(screen.queryByText("Không có quà tặng trong danh sách này.")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tìm đơn hàng"), { target: { value: "khong-co" } });
+    expect(screen.queryByRole("link", { name: "#847" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tìm đơn hàng"), { target: { value: "lan@example" } });
+    expect(screen.getByRole("link", { name: "#847" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Quà đổi thưởng"));
+    expect(await screen.findByText("Không có quà tặng trong danh sách này.")).toBeInTheDocument();
+  });
+
   it("renders loyalty policy change warning and formula preview in MerchantLoyalty", async () => {
     const config = {
       merchantId: 7,
@@ -271,7 +290,7 @@ describe("M7 Merchant Experience", () => {
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
 
     await waitFor(() => {
-      expect(screen.getByText("Đơn #77")).toBeInTheDocument();
+      expect(screen.getByText("#77")).toBeInTheDocument();
       expect(screen.getByText("Đã thanh toán")).toBeInTheDocument();
     });
 
@@ -476,7 +495,7 @@ describe("M7 Merchant Experience", () => {
 
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
 
-    await waitFor(() => expect(screen.getByText("Đơn #79")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("#79")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /^hoàn tiền$/i })).not.toBeInTheDocument();
   });
 
@@ -517,7 +536,7 @@ describe("M7 Merchant Experience", () => {
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
 
     await waitFor(() => {
-      expect(screen.getByText("Đơn #88")).toBeInTheDocument();
+      expect(screen.getByText("#88")).toBeInTheDocument();
       expect(screen.getByText("Đang hoàn tiền")).toBeInTheDocument();
       expect(screen.getByText("Chờ cổng xác nhận hoàn tiền")).toBeInTheDocument();
       // Since actions.canRefund is false, refund button should not be rendered
@@ -645,7 +664,7 @@ describe("M7 Merchant Experience", () => {
 
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
 
-    await waitFor(() => expect(screen.getByText("Đơn #99")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("#99")).toBeInTheDocument());
     expect(screen.getByRole("link", { name: /xử lý yêu cầu hoàn tiền/i })).toHaveAttribute(
       "href",
       "/merchant/refund-requests",
@@ -682,7 +701,7 @@ describe("M7 Merchant Experience", () => {
     });
 
     renderMerchantPage("/merchant/orders", <MerchantOrders />);
-    await waitFor(() => expect(screen.getByText("Đơn #88")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("#88")).toBeInTheDocument());
     expect(screen.getByText("Chờ cổng xác nhận hoàn tiền")).toBeInTheDocument();
     expect(screen.queryByText(/^Đã hoàn tiền$/i)).not.toBeInTheDocument();
   });
