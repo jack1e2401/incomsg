@@ -7,6 +7,7 @@ import { formatChallengeProgress, formatChallengeRemaining } from "./challenge-u
 const NODE_SPACING = 144;
 
 function formatFinalState(progress: ChallengeProgressDto): string | null {
+  if (progress.rewardState === "LIMIT_REACHED") return "Đã hoàn thành, suất thưởng đã hết.";
   if (progress.rewardState === "WAITING_BUDGET") return "Mục tiêu hoàn thành, đang chờ ngân sách.";
   if (progress.rewardState === "REWARDED") return "Đã nhận phần thưởng.";
   return null;
@@ -44,7 +45,7 @@ export function ChallengeMilestonePath({
     return `${path} Q 50 ${middleY} ${point.x} ${point.y}`;
   }, "");
   const mostRecentReached = milestones.reduce(
-    (latest, milestone, index) => ["reached", "reward-pending", "rewarded"].includes(milestone.state) ? index : latest,
+    (latest, milestone, index) => ["reached", "reward-pending", "rewarded", "limit-reached"].includes(milestone.state) ? index : latest,
     -1,
   );
   const progressPercent = getChallengeMilestonePathProgress(challenge, progress, milestones);
@@ -109,6 +110,7 @@ export function ChallengeMilestonePath({
                     milestone.state === "current" && "border-[#3e754a] bg-white text-[#3e754a] shadow-[0_0_0_5px_#e7f2dd]",
                     milestone.state === "upcoming" && "border-[#d6e1d1] bg-white text-[#94a198]",
                     milestone.state === "reward-pending" && "border-amber-400 bg-amber-50 text-amber-700",
+                    milestone.state === "limit-reached" && "border-[#d6e1d1] bg-[#f0f3ee] text-[#627069]",
                     milestone.state === "rewarded" && "border-[#3e754a] bg-[#c8ed9c] text-[#23442e]",
                     shouldAnimate && "scale-110 shadow-[0_0_0_7px_#e7f2dd]",
                   )}

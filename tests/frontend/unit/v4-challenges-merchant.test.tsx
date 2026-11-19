@@ -373,7 +373,7 @@ describe("merchant challenge CMS", () => {
     await waitFor(() =>
       expect(mocks.update).toHaveBeenCalledWith(
         6,
-        expect.objectContaining({ title: "Tên đã cập nhật", budgetTotal: "100" }),
+        expect.objectContaining({ title: "Tên đã cập nhật" }),
         "merchant-token",
       ),
     );
@@ -381,6 +381,7 @@ describe("merchant challenge CMS", () => {
     expect(patch).not.toHaveProperty("type");
     expect(patch).not.toHaveProperty("targetValue");
     expect(patch).not.toHaveProperty("rewardPoints");
+    expect(patch).not.toHaveProperty("budgetTotal");
     expect(patch).not.toHaveProperty("startsAt");
   });
   it("prevents reducing a campaign budget below points already issued", async () => {
@@ -394,6 +395,43 @@ describe("merchant challenge CMS", () => {
       await screen.findByText("Ngân sách không được thấp hơn số điểm ngân sách đã sử dụng."),
     ).toBeInTheDocument();
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("saves a recipient cap independently from the points budget", async () => {
+    renderMerchant("/merchant/challenges/new");
+    await screen.findByRole("heading", { name: "Tạo nhiệm vụ" });
+    fireEvent.change(screen.getByLabelText("Tiêu đề"), { target: { value: "Nhiệm vụ giới hạn" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.change(screen.getByLabelText("Ngày bắt đầu"), { target: { value: "2026-11-01T00:00" } });
+    fireEvent.change(screen.getByLabelText("Ngày kết thúc"), { target: { value: "2026-12-01T00:00" } });
+    fireEvent.change(screen.getByLabelText("Giới hạn thưởng"), { target: { value: "limited" } });
+    fireEvent.change(screen.getByLabelText("Số người nhận thưởng tối đa"), { target: { value: "120" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu bản nháp" }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ maxRewardRecipients: 120, budgetTotal: "1" }),
+      "merchant-token",
+    ));
+  });
+  it("increases a running cap without resending the existing budget", async () => {
+    const running = { ...challenge, maxRewardRecipients: 100, rewardSlotsRemaining: 0,
+      startsAt: new Date(Date.now() - 3_600_000).toISOString(), endsAt: new Date(Date.now() + 3_600_000).toISOString() };
+    mocks.get.mockResolvedValueOnce({ challenge: running, participants: { items: [], pagination: {} }, recentGrants: [] });
+    renderMerchant("/merchant/challenges/6/edit");
+    await screen.findByRole("heading", { name: "Chỉnh sửa nhiệm vụ" });
+    const next = () => fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    next();
+    next();
+    expect(screen.getByText(/thông báo cho toàn bộ hội viên/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Số người nhận thưởng tối đa"), { target: { value: "120" } });
+    next();
+    next();
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thay đổi" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(
+      6, expect.objectContaining({ maxRewardRecipients: 120 }), "merchant-token",
+    ));
+    expect(mocks.update.mock.calls[0][1]).not.toHaveProperty("budgetTotal");
   });
   it("configures, previews, validates, and saves milestone stages in step 4", async () => {
     renderMerchant("/merchant/challenges/new");

@@ -7,7 +7,7 @@ import { useResource } from "../../api/useResource";
 import { Button, Card, StatusText } from "../../components/ui";
 import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
 import { useChallengeProgressAnimation } from "./useChallengeProgressAnimation";
-import { emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
+import { emptyChallengeProgress, formatChallengeGoal, formatRewardLimit } from "./challenge-ui";
 
 const challengesApi = createChallengesClient();
 const rewardText = (points: string) => `+${Number(points).toLocaleString("vi-VN")} điểm`;
@@ -39,20 +39,33 @@ export function ChallengeHeroCard({ slug, storeBase }: { slug: string; storeBase
     catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể điểm danh."); }
     finally { setBusy(false); }
   };
-  const action = !member
+  const detailPath = `${storeBase}/challenges/${hero.id}`;
+  const slotsUnavailable = hero.rewardSlotsRemaining === 0 && !confirmedProgress?.rewardSlotClaimed;
+  const completed = confirmedProgress && confirmedProgress.rewardState !== "IN_PROGRESS";
+  const action = slotsUnavailable || completed
+    ? <Button asChild variant="outline"><Link to={detailPath}>Xem nhiệm vụ</Link></Button> : !member
     ? <Button asChild><Link to={loginTo}>Đăng nhập để bắt đầu</Link></Button>
     : hero.type === "DAILY_CHECKIN"
       ? <Button disabled={busy || todayDone} onClick={() => void checkIn()}>{todayDone ? "Đã điểm danh hôm nay" : busy ? "Đang điểm danh" : "Điểm danh ngay"}</Button>
       : hero.type === "ORDER_COUNT"
         ? <Button asChild><Link to={`${storeBase}/products`}>Mua thêm đơn</Link></Button>
         : <Button asChild><Link to={`${storeBase}/challenges/${hero.id}`}>Xem nhiệm vụ</Link></Button>;
-  const headline = progress?.rewardState === "WAITING_BUDGET" ? "Hoàn thành — đang chờ bổ sung ngân sách" : hero.type === "DAILY_CHECKIN" && !todayDone ? `Điểm danh ngay hôm nay để nhận ${Number(hero.rewardPoints).toLocaleString("vi-VN")} điểm` : progress && Number(progress.remainingValue) > 0 ? `Chỉ còn ${Number(progress.remainingValue).toLocaleString("vi-VN")} ${hero.type === "ORDER_COUNT" ? "đơn" : hero.type === "DAILY_CHECKIN" ? "ngày" : "₫"} nữa để nhận ${Number(hero.rewardPoints).toLocaleString("vi-VN")} điểm!` : "Tiếp tục nhiệm vụ để nhận thưởng";
+  const headline = progress?.rewardState === "WAITING_BUDGET" ? "Hoàn thành — đang chờ bổ sung ngân sách"
+    : progress?.rewardState === "REWARDED" ? "Đã nhận thưởng"
+    : slotsUnavailable ? "Đã hết suất thưởng"
+    : hero.type === "DAILY_CHECKIN" && !todayDone
+      ? `Điểm danh ngay hôm nay để nhận ${Number(hero.rewardPoints).toLocaleString("vi-VN")} điểm`
+    : progress && Number(progress.remainingValue) > 0
+      ? `Chỉ còn ${Number(progress.remainingValue).toLocaleString("vi-VN")} ${hero.type === "ORDER_COUNT" ? "đơn" : hero.type === "DAILY_CHECKIN" ? "ngày" : "₫"} nữa để nhận ${Number(hero.rewardPoints).toLocaleString("vi-VN")} điểm!`
+    : "Tiếp tục nhiệm vụ để nhận thưởng";
+  const limit = formatRewardLimit(hero);
   return <Card className="border-[#dbe7d8] bg-[#f8fbf6] p-5 sm:p-7">
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2"><StatusText tone="green">{rewardText(hero.rewardPoints)}</StatusText>{hero.endsAt && <span className="text-xs muted">{deadlineText(hero.endsAt)}</span>}</div>
         <h2 className="mt-2 text-xl font-extrabold text-[#20392a]">{member ? headline : hero.title}</h2>
         {member ? <p className="mt-1 font-semibold">{hero.title}</p> : <p className="mt-1 text-sm muted">{formatChallengeGoal(hero)}</p>}
+        {limit && <p className="mt-1 text-sm muted">{limit}</p>}
         {progress && <ChallengeMilestonePath challenge={hero} progress={progress} animateReached={animateReached} compact />}
         {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
       </div>

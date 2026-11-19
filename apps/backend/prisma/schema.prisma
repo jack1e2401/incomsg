@@ -143,6 +143,7 @@ enum LoyaltyPolicyVersionSource {
 }
 
 model User {
+  challengeLimitNoticeReads ChallengeLimitNoticeRead[]
   id                               Int                       @id @default(autoincrement())
   email                            String                    @unique @db.VarChar(191)
   passwordHash                     String                    @db.VarChar(255)
@@ -812,6 +813,7 @@ enum ChallengeRewardState {
   IN_PROGRESS
   WAITING_BUDGET
   REWARDED
+  LIMIT_REACHED
 }
 
 enum ChallengeRewardGrantStatus {
@@ -840,6 +842,8 @@ model Challenge {
   rewardPoints Decimal             @db.Decimal(38, 12)
   budgetTotal  Decimal             @db.Decimal(38, 12)
   budgetSpent  Decimal             @default(0) @db.Decimal(38, 12)
+  maxRewardRecipients Int?
+  rewardSlotsClaimed  Int           @default(0)
   startsAt     DateTime
   endsAt       DateTime
   isFeatured   Boolean             @default(false)
@@ -849,9 +853,34 @@ model Challenge {
   merchant     Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   progresses   ChallengeProgress[]
   milestones   ChallengeMilestone[]
+  limitNotices ChallengeLimitNotice[]
 
   @@index([merchantId, status, startsAt])
   @@index([merchantId, type])
+}
+
+model ChallengeLimitNotice {
+  id          Int       @id @default(autoincrement())
+  challengeId Int?
+  title       String    @db.VarChar(191)
+  previousLimit Int
+  newLimit    Int
+  actorId     Int
+  createdAt   DateTime  @default(now())
+  challenge   Challenge? @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+  reads       ChallengeLimitNoticeRead[]
+
+  @@index([challengeId, id])
+}
+
+model ChallengeLimitNoticeRead {
+  noticeId Int
+  memberId Int
+  notice   ChallengeLimitNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  member   User @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([memberId, noticeId])
+  @@index([noticeId])
 }
 
 model ChallengeMilestone {
@@ -891,6 +920,7 @@ model ChallengeProgress {
   currentValue Decimal                  @default(0) @db.Decimal(15, 0)
   rewardState  ChallengeRewardState     @default(IN_PROGRESS)
   rewardCycle  Int                      @default(1)
+  rewardSlotClaimed Boolean             @default(false)
   completedAt  DateTime?
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt

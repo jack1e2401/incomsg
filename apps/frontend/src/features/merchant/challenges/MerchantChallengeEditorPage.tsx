@@ -12,8 +12,8 @@ import { ChallengeMilestoneEditor } from "./ChallengeMilestoneEditor";
 import { buildDefaultChallengeMilestones, reconcileChallengeMilestonesForTarget, validateChallengeMilestones } from "../../challenges/challenge-milestone-defaults";
 
 const api = createChallengesClient();
-type Form = { title: string; description: string; type: ChallengeType; targetValue: string; rewardPoints: string; budgetTotal: string; startsAt: string; endsAt: string; isFeatured: boolean };
-const empty: Form = { title: "", description: "", type: "ORDER_COUNT", targetValue: "1", rewardPoints: "1", budgetTotal: "1", startsAt: "", endsAt: "", isFeatured: false };
+type Form = { title: string; description: string; type: ChallengeType; targetValue: string; rewardPoints: string; budgetTotal: string; startsAt: string; endsAt: string; isFeatured: boolean; limited: boolean; recipientLimit: string };
+const empty: Form = { title: "", description: "", type: "ORDER_COUNT", targetValue: "1", rewardPoints: "1", budgetTotal: "1", startsAt: "", endsAt: "", isFeatured: false, limited: false, recipientLimit: "100" };
 
 function localInput(value: string) {
   const date = new Date(value);
@@ -47,6 +47,8 @@ function toForm(challenge: MerchantChallengeDto): Form {
     startsAt: localInput(challenge.startsAt),
     endsAt: localInput(challenge.endsAt),
     isFeatured: challenge.isFeatured,
+    limited: challenge.maxRewardRecipients != null,
+    recipientLimit: challenge.maxRewardRecipients?.toString() ?? "100",
   };
 }
 
@@ -63,6 +65,13 @@ function validate(step: number, form: Form, existing?: MerchantChallengeDto, mil
     }
     if (!Number.isFinite(Number(form.budgetTotal)) || Number(form.budgetTotal) < 0) return "Ngân sách phải là số không âm.";
     if (existing && !decimalAtLeast(form.budgetTotal, existing.budgetSpent)) return "Ngân sách không được thấp hơn số điểm ngân sách đã sử dụng.";
+    const limit = Number(form.recipientLimit);
+    if (form.limited && (!/^\d+$/.test(form.recipientLimit) || limit < 1 || limit > 2_147_483_647)) {
+      return "Số người nhận thưởng phải là số nguyên dương hợp lệ.";
+    }
+    if (existing?.lockedFields && existing.maxRewardRecipients != null && limit < existing.maxRewardRecipients) {
+      return "Chỉ có thể tăng số suất sau khi nhiệm vụ đã kích hoạt.";
+    }
   }
   if (step === 3) return validateChallengeMilestones(milestones, form.targetValue);
   return "";
@@ -95,6 +104,8 @@ export function MerchantChallengeEditorPage() {
   );
   const challenge = resource.data?.challenge;
   const locked = Boolean(challenge?.lockedFields);
+  const canIncreaseLimit = Boolean(challenge?.effectiveStatus === "ACTIVE" &&
+    challenge.maxRewardRecipients != null && new Date(challenge.startsAt) <= new Date());
 
   useEffect(() => {
     if (challenge) {
@@ -155,19 +166,23 @@ export function MerchantChallengeEditorPage() {
     setError("");
     try {
       const dates = { startsAt: new Date(form.startsAt).toISOString(), endsAt: new Date(form.endsAt).toISOString() };
+      const maxRewardRecipients = form.limited ? Number(form.recipientLimit) : null;
+      const limitPatch = maxRewardRecipients !== (challenge?.maxRewardRecipients ?? null) ? { maxRewardRecipients } : {};
+      const budgetPatch = challenge && form.budgetTotal === trimDecimal(challenge.budgetTotal)
+        ? {} : { budgetTotal: form.budgetTotal };
       const saved = isNew
         ? await api.createMerchantChallenge({
           title: form.title.trim(), description: form.description, type: form.type,
           targetValue: form.targetValue, rewardPoints: form.rewardPoints, budgetTotal: form.budgetTotal,
-          ...dates, isFeatured: form.isFeatured, milestones, status: "DRAFT",
+          ...dates, isFeatured: form.isFeatured, milestones, maxRewardRecipients, status: "DRAFT",
         } satisfies CreateChallengeInput, token)
         : await api.updateMerchantChallenge(id, (locked ? {
-          title: form.title.trim(), description: form.description, budgetTotal: form.budgetTotal,
-          endsAt: dates.endsAt, isFeatured: form.isFeatured, milestones,
+          title: form.title.trim(), description: form.description, ...budgetPatch,
+          endsAt: dates.endsAt, isFeatured: form.isFeatured, milestones, ...limitPatch,
         } : {
           title: form.title.trim(), description: form.description, type: form.type,
-          targetValue: form.targetValue, rewardPoints: form.rewardPoints, budgetTotal: form.budgetTotal,
-          ...dates, isFeatured: form.isFeatured, milestones,
+          targetValue: form.targetValue, rewardPoints: form.rewardPoints, ...budgetPatch,
+          ...dates, isFeatured: form.isFeatured, milestones, ...limitPatch,
         }) satisfies UpdateChallengeInput, token);
       navigate(`/merchant/challenges/${saved.challenge.id}`);
     } catch (reason) {
@@ -219,8 +234,20 @@ export function MerchantChallengeEditorPage() {
               <Field label="Ngày bắt đầu"><Input disabled={locked} type="datetime-local" value={form.startsAt} onChange={(event) => update("startsAt", event.target.value)} /></Field>
               <Field label="Ngày kết thúc"><Input type="datetime-local" value={form.endsAt} onChange={(event) => update("endsAt", event.target.value)} /></Field>
               <Field label="Ngân sách tổng (điểm)"><Input type="number" min="0" step="any" value={form.budgetTotal} onChange={(event) => update("budgetTotal", event.target.value)} /></Field>
+              {!locked && <Field label="Giới hạn thưởng">
+                <Select value={form.limited ? "limited" : "unlimited"} onChange={(event) => update("limited", event.target.value === "limited")}>
+                  <option value="unlimited">Không giới hạn</option>
+                  <option value="limited">Giới hạn số người nhận</option>
+                </Select>
+              </Field>}
+              {form.limited && <Field label="Số người nhận thưởng tối đa">
+                <Input type="number" min={locked ? challenge?.maxRewardRecipients ?? 1 : 1} max={2_147_483_647} step="1"
+                  disabled={locked && !canIncreaseLimit} value={form.recipientLimit}
+                  onChange={(event) => update("recipientLimit", event.target.value)} />
+              </Field>}
             </div>
             {challenge && <p className="text-sm muted">Đã sử dụng {Number(challenge.budgetSpent).toLocaleString("vi-VN")} điểm · Còn {Number(challenge.budgetRemaining).toLocaleString("vi-VN")} điểm.</p>}
+            {canIncreaseLimit && <p className="text-sm muted">Tăng số suất sẽ thông báo cho toàn bộ hội viên. Người hoàn thành trước được xét trước.</p>}
             <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-[#e5ebe2] px-4 text-sm font-semibold text-[#435748]"><input className="size-4 accent-[#315e3d]" type="checkbox" checked={form.isFeatured} onChange={(event) => update("isFeatured", event.target.checked)} />Nổi bật trên cửa hàng</label>
           </>}
 
@@ -231,6 +258,7 @@ export function MerchantChallengeEditorPage() {
 
           {step === 4 && <>
             <Card className="space-y-4 bg-[#f8faf6] p-5">
+              <p className="text-sm font-semibold">Số suất thưởng · {form.limited ? Number(form.recipientLimit).toLocaleString("vi-VN") : "Không giới hạn"}</p>
               <div><p className="text-xs font-bold uppercase tracking-[.08em] text-[#738276]">Tên nhiệm vụ</p><p className="mt-1 font-extrabold text-[#20392a]">{form.title || "Chưa đặt tên"}</p></div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div><p className="text-xs font-bold uppercase tracking-[.08em] text-[#738276]">Loại</p><p className="mt-1 font-semibold">{challengeTypeLabel(form.type)}</p></div>

@@ -58,6 +58,7 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  await prisma.challengeLimitNotice.deleteMany({ where: { challenge: { merchantId } } });
   await prisma.refundRequest.deleteMany({ where: { merchantId } });
   await prisma.orderRefund.deleteMany({ where: { order: { merchantId } } });
   await prisma.challengeProgressEntry.deleteMany({ where: { progress: { challenge: { merchantId } } } });
@@ -108,6 +109,95 @@ test("challenge CMS activation, public privacy, and daily check-in are scoped", 
   assert.equal(first.json.alreadyCheckedInToday, false);
   const again = await req(`/api/member/stores/${slug}/check-in`, "POST", memberToken);
   assert.equal(again.json.alreadyCheckedInToday, true);
+});
+
+test("recipient caps preserve completion order, budget waiting and global notices", async () => {
+  const createMember = async (name: string) => {
+    const user = await prisma.user.create({ data: { email: `${slug}-quota-${name}@test.local`, passwordHash: "x", role: "MEMBER" } });
+    extraMemberIds.push(user.id);
+    return { id: user.id, token: await signAccessToken(user.id) };
+  };
+  const [first, second, third, outside] = await Promise.all(["first", "second", "third", "outside"].map(createMember));
+  const now = Date.now();
+  const config = {
+    title: "Limited check-in", description: "First finishers", type: "DAILY_CHECKIN", status: "ACTIVE",
+    targetValue: "1", rewardPoints: "10", budgetTotal: "10",
+    startsAt: new Date(now - 60_000).toISOString(), endsAt: new Date(now + 3_600_000).toISOString(),
+  };
+  const create = await req("/api/merchant/challenges", "POST", merchantToken, { ...config, maxRewardRecipients: 1 });
+  assert.equal(create.status, 201);
+  const id = (create.json.challenge as { id: number }).id;
+  const unlimited = await req("/api/merchant/challenges", "POST", merchantToken, { ...config, title: "Unlimited check-in", budgetTotal: "30" });
+  assert.equal(unlimited.status, 201);
+  assert.equal((unlimited.json.challenge as { maxRewardRecipients: null }).maxRewardRecipients, null);
+  const unlimitedId = (unlimited.json.challenge as { id: number }).id;
+  for (const member of [first, second, third]) {
+    assert.equal((await req(`/api/member/stores/${slug}/check-in`, "POST", member.token)).status, 200);
+  }
+  const progress = async (id: number, userId: number) => prisma.challengeProgress.findFirstOrThrow({
+    where: { challengeId: id, membership: { merchantId, memberId: userId } },
+    include: { grants: true },
+  });
+  assert.equal((await progress(id, first.id)).rewardState, "REWARDED");
+  assert.equal((await progress(id, second.id)).rewardState, "LIMIT_REACHED");
+  assert.equal((await progress(id, third.id)).rewardState, "LIMIT_REACHED");
+  assert.equal((await progress(unlimitedId, third.id)).rewardState, "REWARDED");
+  assert.equal((await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { maxRewardRecipients: null })).status, 409);
+  const increase = await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { maxRewardRecipients: 2 });
+  assert.equal(increase.status, 200);
+  assert.equal(increase.json.replenishedCount, 0);
+  assert.equal((await progress(id, second.id)).rewardState, "WAITING_BUDGET");
+  assert.equal((await progress(id, third.id)).rewardState, "LIMIT_REACHED");
+  const grant = await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { budgetTotal: "30" });
+  assert.equal(grant.json.replenishedCount, 1);
+  assert.equal((await progress(id, second.id)).grants.length, 1);
+  assert.equal((await progress(id, third.id)).grants.length, 0);
+  const secondIncrease = await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { maxRewardRecipients: 3 });
+  assert.equal(secondIncrease.json.replenishedCount, 1);
+  assert.equal((await progress(id, third.id)).rewardState, "REWARDED");
+  assert.equal((await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { maxRewardRecipients: 2 })).status, 409);
+  assert.equal((await req(`/api/merchant/challenges/${id}`, "PATCH", merchantToken, { maxRewardRecipients: 3 })).status, 200);
+  assert.equal(await prisma.challengeLimitNotice.count({ where: { challengeId: id } }), 2);
+  const unreadPath = "/api/member/challenge-limit-notices/unread";
+  assert.equal((await req(unreadPath, "GET", merchantToken)).status, 403);
+  const unread = await req(unreadPath, "GET", outside.token);
+  assert.equal(unread.status, 200);
+  const notice = unread.json.notice as { id: number; challengeId: number; newLimit: number };
+  assert.equal(notice.challengeId, id);
+  assert.equal(notice.newLimit, 2);
+  const readPath = `/api/member/challenge-limit-notices/${notice.id}/read`;
+  assert.equal((await req(readPath, "POST", outside.token)).status, 200);
+  assert.equal((await req(readPath, "POST", outside.token)).status, 200);
+  assert.equal(((await req(unreadPath, "GET", outside.token)).json.notice as { newLimit: number }).newLimit, 3);
+  assert.equal(((await req(unreadPath, "GET", first.token)).json.notice as { id: number }).id, notice.id);
+  await prisma.challengeLimitNotice.deleteMany({ where: { challengeId: id } });
+  await req(`/api/merchant/challenges/${id}/archive`, "POST", merchantToken);
+  await req(`/api/merchant/challenges/${unlimitedId}/archive`, "POST", merchantToken);
+});
+
+test("two concurrent check-ins cannot both claim the final reward slot", async () => {
+  const now = Date.now();
+  const create = await req("/api/merchant/challenges", "POST", merchantToken, {
+    title: "One concurrent slot", description: "Only one winner", type: "DAILY_CHECKIN", status: "ACTIVE",
+    targetValue: "1", rewardPoints: "10", budgetTotal: "20", maxRewardRecipients: 1,
+    startsAt: new Date(now - 60_000).toISOString(), endsAt: new Date(now + 3_600_000).toISOString(),
+  });
+  assert.equal(create.status, 201);
+  const challengeId = (create.json.challenge as { id: number }).id;
+  const tokens = await Promise.all([1, 2].map(async (index) => {
+    const user = await prisma.user.create({ data: { email: `${slug}-quota-race-${index}@test.local`, passwordHash: "x", role: "MEMBER" } });
+    extraMemberIds.push(user.id);
+    return signAccessToken(user.id);
+  }));
+  const results = await Promise.all(tokens.map((token) => req(`/api/member/stores/${slug}/check-in`, "POST", token)));
+  assert.deepEqual(results.map((result) => result.status), [200, 200]);
+  const progress = await prisma.challengeProgress.findMany({ where: { challengeId }, include: { grants: true } });
+  assert.deepEqual(progress.map((row) => row.rewardState).sort(), ["LIMIT_REACHED", "REWARDED"]);
+  assert.equal(progress.flatMap((row) => row.grants).length, 1);
+  const challenge = await prisma.challenge.findUniqueOrThrow({ where: { id: challengeId } });
+  assert.equal(challenge.rewardSlotsClaimed, 1);
+  assert.equal(challenge.budgetSpent.toFixed(0), "10");
+  await req(`/api/merchant/challenges/${challengeId}/archive`, "POST", merchantToken);
 });
 
 test("refund approval gates mock refunds and blocks merchant bypass", async () => {

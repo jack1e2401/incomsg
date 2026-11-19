@@ -1,6 +1,6 @@
 import type { ChallengeProgressDto, PublicChallengeDto } from "../../api/challenges-types";
 
-export type ChallengeMilestoneState = "reached" | "current" | "upcoming" | "reward-pending" | "rewarded";
+export type ChallengeMilestoneState = "reached" | "current" | "upcoming" | "reward-pending" | "rewarded" | "limit-reached";
 
 export interface ChallengeMilestone {
   key: string;
@@ -35,6 +35,7 @@ function formatThreshold(challenge: PublicChallengeDto, threshold: bigint): stri
 }
 
 function finalState(progress: ChallengeProgressDto): ChallengeMilestoneState | null {
+  if (progress.rewardState === "LIMIT_REACHED") return "limit-reached";
   if (progress.rewardState === "WAITING_BUDGET") return "reward-pending";
   if (progress.rewardState === "REWARDED") return "rewarded";
   return null;

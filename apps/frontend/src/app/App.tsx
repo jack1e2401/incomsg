@@ -80,6 +80,7 @@ import { PublicEventsPage } from "../features/events/PublicEventsPage";
 import { PublicEventDetailPage } from "../features/events/PublicEventDetailPage";
 import { ChallengesPage } from "../features/challenges/ChallengesPage";
 import { ChallengeDetailPage } from "../features/challenges/ChallengeDetailPage";
+import { ChallengeLimitAnnouncement } from "../features/challenges/ChallengeLimitAnnouncement";
 import { MerchantChallengesPage } from "../features/merchant/challenges/MerchantChallengesPage";
 import { MerchantChallengeDetailPage } from "../features/merchant/challenges/MerchantChallengeDetailPage";
 import { MerchantChallengeEditorPage } from "../features/merchant/challenges/MerchantChallengeEditorPage";
@@ -90,7 +91,7 @@ import { RewardsHubLayout } from "../features/storefront/RewardsHubLayout";
 const useBackend = import.meta.env.VITE_API_MODE !== "mock";
 
 export function App() {
-  return <AuthSessionProvider>{useBackend ? <BackendRoutes /> : <DemoRoutes />}</AuthSessionProvider>;
+  return <AuthSessionProvider>{useBackend ? <><ChallengeLimitAnnouncement /><BackendRoutes /></> : <DemoRoutes />}</AuthSessionProvider>;
 }
 
 function BackendRoutes() {

@@ -3,17 +3,22 @@ import type { ChallengeType, ChallengeStatus } from "../../generated/prisma/enum
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/http-error.js";
 import { merchantService } from "../merchant/merchant.service.js";
-import { grantChallengeReward } from "./challenges.engine.js";
+import { withTransactionRetry } from "../loyalty/loyalty.transaction.js";
+import { lockChallenge, recordChallengeProgress, settleChallengeRewards } from "./challenges.rewards.js";
 import { buildDefaultChallengeMilestones, type ChallengeMilestoneInput } from "./challenges.milestones.js";
 
-export type ChallengeInput = { title: string; description: string; type: ChallengeType; targetValue: Prisma.Decimal; rewardPoints: Prisma.Decimal; budgetTotal: Prisma.Decimal; startsAt: Date; endsAt: Date; isFeatured: boolean; milestones: ChallengeMilestoneInput[]; status?: "DRAFT" | "ACTIVE" };
+export type ChallengeInput = { title: string; description: string; type: ChallengeType; targetValue: Prisma.Decimal; rewardPoints: Prisma.Decimal; budgetTotal: Prisma.Decimal; startsAt: Date; endsAt: Date; isFeatured: boolean; milestones: ChallengeMilestoneInput[]; maxRewardRecipients?: number | null; status?: "DRAFT" | "ACTIVE" };
 export type ChallengePatch = Partial<ChallengeInput>;
 type ChallengeMilestoneRow = { position: number; thresholdValue: Prisma.Decimal; title: string; description: string };
 type ChallengeRow = Prisma.ChallengeGetPayload<{ include: { milestones: true; _count: { select: { progresses: true } } } }> & { inProgressCount?: number; completedCount?: number; waitingBudgetCount?: number };
 const challengeInclude = { milestones: { orderBy: { position: "asc" } }, _count: { select: { progresses: true } } } as const;
 const pagination = (page: number, limit: number, totalItems: number) => ({ page, limit, totalItems, totalPages: totalItems ? Math.ceil(totalItems / limit) : 0 });
 const paged = (query: Record<string, unknown>) => ({ page: Math.max(1, Number(query.page) || 1), limit: Math.min(100, Math.max(1, Number(query.limit) || 20)) });
-const publicSelect = { id: true, merchantId: true, title: true, description: true, type: true, status: true, targetValue: true, rewardPoints: true, startsAt: true, endsAt: true, isFeatured: true, milestones: { orderBy: { position: "asc" } } } as const;
+const publicSelect = { id: true, merchantId: true, title: true, description: true, type: true, status: true, targetValue: true, rewardPoints: true, startsAt: true, endsAt: true, isFeatured: true, maxRewardRecipients: true, rewardSlotsClaimed: true, milestones: { orderBy: { position: "asc" } } } as const;
+const quota = (c: { maxRewardRecipients: number | null; rewardSlotsClaimed: number }) => ({
+  maxRewardRecipients: c.maxRewardRecipients,
+  rewardSlotsRemaining: c.maxRewardRecipients === null ? null : c.maxRewardRecipients - c.rewardSlotsClaimed,
+});
 function milestoneDtos(rows: ChallengeMilestoneRow[] | undefined, type: ChallengeType, targetValue: Prisma.Decimal | string) {
   if (!rows?.length) {
     return buildDefaultChallengeMilestones(type, typeof targetValue === "string" ? targetValue : targetValue.toFixed(0))
@@ -38,9 +43,9 @@ function milestoneRows(challengeId: number, milestones: ChallengeMilestoneInput[
 function sameMilestoneStructure(existing: ChallengeMilestoneInput[], next: ChallengeMilestoneInput[]) {
   return existing.length === next.length && existing.every((milestone, index) => milestone.thresholdValue === next[index]?.thresholdValue);
 }
-function publicDto(c: { id: number; merchantId: number; title: string; description: string; type: ChallengeType; status: ChallengeStatus; targetValue: Prisma.Decimal; rewardPoints: Prisma.Decimal; startsAt: Date; endsAt: Date; isFeatured: boolean; milestones?: ChallengeMilestoneRow[] }, now = new Date()) {
+function publicDto(c: Prisma.ChallengeGetPayload<{ select: typeof publicSelect }>, now = new Date()) {
   const effectiveStatus = ["ACTIVE", "PAUSED"].includes(c.status) && c.endsAt < now ? "ENDED" : c.status;
-  return { id: c.id, merchantId: c.merchantId, title: c.title, description: c.description, type: c.type, effectiveStatus, targetValue: c.targetValue.toFixed(0), rewardPoints: c.rewardPoints.toFixed(12), startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString(), isFeatured: c.isFeatured, milestones: milestoneDtos(c.milestones, c.type, c.targetValue) };
+  return { id: c.id, merchantId: c.merchantId, title: c.title, description: c.description, type: c.type, effectiveStatus, targetValue: c.targetValue.toFixed(0), rewardPoints: c.rewardPoints.toFixed(12), startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString(), isFeatured: c.isFeatured, milestones: milestoneDtos(c.milestones, c.type, c.targetValue), ...quota(c) };
 }
 function dateInHcm(now: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); }
 function dayRange(dateKey: string) { return { start: new Date(`${dateKey}T00:00:00+07:00`), end: new Date(`${dateKey}T00:00:00+07:00`).getTime() + 86400000 }; }
@@ -66,13 +71,13 @@ export const challengesService = {
     };
     const [items, totalItems] = await Promise.all([prisma.challenge.findMany({ where, include: challengeInclude, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }), prisma.challenge.count({ where })]);
     const grouped = items.length ? await prisma.challengeProgress.groupBy({ by: ["challengeId", "rewardState"], where: { challengeId: { in: items.map((c) => c.id) } }, _count: { _all: true } }) : [];
-    const counts = new Map<number, { IN_PROGRESS: number; REWARDED: number; WAITING_BUDGET: number }>();
-    for (const row of grouped) { const value = counts.get(row.challengeId) ?? { IN_PROGRESS: 0, REWARDED: 0, WAITING_BUDGET: 0 }; value[row.rewardState] = row._count._all; counts.set(row.challengeId, value); }
+    const counts = new Map<number, Partial<Record<Prisma.ChallengeProgressGroupByOutputType["rewardState"], number>>>();
+    for (const row of grouped) { const value = counts.get(row.challengeId) ?? {}; value[row.rewardState] = row._count._all; counts.set(row.challengeId, value); }
     return { items: items.map((c) => { const count = counts.get(c.id); return this.toMerchantDto({ ...c, inProgressCount: count?.IN_PROGRESS, completedCount: count?.REWARDED, waitingBudgetCount: count?.WAITING_BUDGET }); }), pagination: pagination(page, limit, totalItems) };
   },
   toMerchantDto(c: ChallengeRow) {
     const now = new Date(); const effectiveStatus = ["ACTIVE", "PAUSED"].includes(c.status) && c.endsAt < now ? "ENDED" : c.status;
-    return { id: c.id, merchantId: c.merchantId, title: c.title, description: c.description, type: c.type, status: c.status, effectiveStatus, targetValue: c.targetValue.toFixed(0), rewardPoints: c.rewardPoints.toFixed(12), budgetTotal: c.budgetTotal.toFixed(12), budgetSpent: c.budgetSpent.toFixed(12), budgetRemaining: c.budgetTotal.minus(c.budgetSpent).toFixed(12), startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString(), isFeatured: c.isFeatured, milestones: milestoneDtos(c.milestones, c.type, c.targetValue), hasProgress: Boolean(c._count?.progresses), lockedFields: Boolean(c.activatedAt || c._count?.progresses), inProgressCount: c.inProgressCount ?? 0, completedCount: c.completedCount ?? 0, waitingBudgetCount: c.waitingBudgetCount ?? 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString() };
+    return { id: c.id, merchantId: c.merchantId, title: c.title, description: c.description, type: c.type, status: c.status, effectiveStatus, targetValue: c.targetValue.toFixed(0), rewardPoints: c.rewardPoints.toFixed(12), budgetTotal: c.budgetTotal.toFixed(12), budgetSpent: c.budgetSpent.toFixed(12), budgetRemaining: c.budgetTotal.minus(c.budgetSpent).toFixed(12), startsAt: c.startsAt.toISOString(), endsAt: c.endsAt.toISOString(), isFeatured: c.isFeatured, milestones: milestoneDtos(c.milestones, c.type, c.targetValue), hasProgress: Boolean(c._count?.progresses), lockedFields: Boolean(c.activatedAt || c._count?.progresses), inProgressCount: c.inProgressCount ?? 0, completedCount: c.completedCount ?? 0, waitingBudgetCount: c.waitingBudgetCount ?? 0, createdAt: c.createdAt.toISOString(), updatedAt: c.updatedAt.toISOString(), ...quota(c) };
   },
   async create(ownerId: number, input: ChallengeInput) {
     const merchant = await merchantService.getOwnStore(ownerId);
@@ -100,10 +105,22 @@ export const challengesService = {
   },
   async update(ownerId: number, id: number, patch: ChallengePatch) {
     const merchant = await merchantService.getOwnStore(ownerId);
-    return prisma.$transaction(async (tx) => {
-      const existing = await tx.challenge.findFirst({ where: { id, merchantId: merchant.id }, include: challengeInclude });
-      if (!existing) throw new HttpError(404, "CHALLENGE_NOT_FOUND");
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      await lockChallenge(tx, id, merchant.id);
+      const existing = await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude });
       const isLocked = Boolean(existing.activatedAt || existing._count.progresses);
+      const previousLimit = existing.maxRewardRecipients;
+      const nextLimit = patch.maxRewardRecipients;
+      const limitChanged = nextLimit !== undefined && nextLimit !== previousLimit;
+      const liveLimitChange = isLocked && limitChanged;
+      const now = new Date();
+      if (liveLimitChange && (
+        existing.status !== "ACTIVE" || existing.startsAt > now || existing.endsAt < now ||
+        previousLimit === null || typeof nextLimit !== "number" || nextLimit <= previousLimit ||
+        (patch.endsAt !== undefined && patch.endsAt < now)
+      )) {
+        throw new HttpError(409, "CHALLENGE_REWARD_LIMIT_LOCKED");
+      }
       if (isLocked) {
         const changedLocked =
           (patch.type !== undefined && patch.type !== existing.type) ||
@@ -138,6 +155,7 @@ export const challengesService = {
             ...(patch.title !== undefined ? { title: patch.title } : {}),
             ...(patch.description !== undefined ? { description: patch.description } : {}),
             ...(patch.budgetTotal !== undefined ? { budgetTotal: patch.budgetTotal } : {}),
+            ...(limitChanged ? { maxRewardRecipients: nextLimit } : {}),
             ...(patch.endsAt !== undefined ? { endsAt: patch.endsAt } : {}),
             ...(patch.isFeatured !== undefined ? { isFeatured: patch.isFeatured } : {}),
           }
@@ -148,19 +166,27 @@ export const challengesService = {
         await tx.challengeMilestone.createMany({ data: milestoneRows(id, milestonesToSave) });
         c = await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude });
       }
-      const replenishedCount = patch.budgetTotal && c.status === "ACTIVE" ? await this.replenish(tx, id) : 0;
-      const refreshed = replenishedCount > 0 ? await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude }) : c;
+      if (liveLimitChange && previousLimit !== null && nextLimit != null) {
+        await tx.challengeLimitNotice.create({
+          data: { challengeId: id, title: c.title, previousLimit, newLimit: nextLimit, actorId: ownerId },
+        });
+      }
+      const settles = (patch.budgetTotal !== undefined || liveLimitChange) && c.status === "ACTIVE";
+      const replenishedCount = settles ? await settleChallengeRewards(tx, c) : 0;
+      const refreshed = settles ? await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude }) : c;
       return { challenge: this.toMerchantDto(refreshed), replenishedCount };
-    }, { isolationLevel: "Serializable" });
-  },
-  async replenish(tx: Prisma.TransactionClient, challengeId: number) {
-    const challenge = await tx.challenge.findUniqueOrThrow({ where: { id: challengeId } }); if (challenge.status !== "ACTIVE") return 0;
-    const queue = await tx.challengeProgress.findMany({ where: { challengeId, rewardState: "WAITING_BUDGET" }, orderBy: [{ completedAt: "asc" }, { id: "asc" }] }); let granted = 0;
-    for (const progress of queue) { if (!await grantChallengeReward(tx, challengeId, progress.id, progress.membershipId, challenge.rewardPoints, new Date())) break; granted += 1; } return granted;
+    }, { isolationLevel: "Serializable" }));
   },
   async activate(ownerId: number, id: number) {
     const merchant = await merchantService.getOwnStore(ownerId);
-    return prisma.$transaction(async (tx) => { const challenge = await tx.challenge.findFirst({ where: { id, merchantId: merchant.id } }); if (!challenge) throw new HttpError(404, "CHALLENGE_NOT_FOUND"); this.validateActivation(challenge); const active = await tx.challenge.update({ where: { id }, data: { status: "ACTIVE", activatedAt: challenge.activatedAt ?? new Date() }, include: challengeInclude }); const replenishedCount = await this.replenish(tx, id); const refreshed = replenishedCount > 0 ? await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude }) : active; return { challenge: this.toMerchantDto(refreshed), replenishedCount }; }, { isolationLevel: "Serializable" });
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
+      const challenge = await lockChallenge(tx, id, merchant.id);
+      this.validateActivation(challenge);
+      const active = await tx.challenge.update({ where: { id }, data: { status: "ACTIVE", activatedAt: challenge.activatedAt ?? new Date() } });
+      const replenishedCount = await settleChallengeRewards(tx, active);
+      const refreshed = await tx.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude });
+      return { challenge: this.toMerchantDto(refreshed), replenishedCount };
+    }, { isolationLevel: "Serializable" }));
   },
   async setStatus(ownerId: number, id: number, status: "PAUSED" | "ARCHIVED") { const merchant = await merchantService.getOwnStore(ownerId); const c = await prisma.challenge.updateMany({ where: { id, merchantId: merchant.id }, data: { status } }); if (!c.count) throw new HttpError(404, "CHALLENGE_NOT_FOUND"); const updated = await prisma.challenge.findUniqueOrThrow({ where: { id }, include: challengeInclude }); return { challenge: this.toMerchantDto(updated) }; },
   async detail(ownerId: number, id: number, query: Record<string, unknown>) {
@@ -168,16 +194,18 @@ export const challengesService = {
     const challenge = await prisma.challenge.findFirst({ where: { id, merchantId: merchant.id }, include: challengeInclude });
     if (!challenge) throw new HttpError(404, "CHALLENGE_NOT_FOUND");
     const where = { challengeId: id };
-    const [items, totalItems, grants, inProgressCount, completedCount, waitingBudgetCount] = await Promise.all([
+    const [items, totalItems, grants, inProgressCount, completedCount, waitingBudgetCount, limitChanges] = await Promise.all([
       prisma.challengeProgress.findMany({ where, include: { membership: { include: { member: { select: { id: true, email: true } } } } }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit }),
       prisma.challengeProgress.count({ where }),
       prisma.challengeRewardGrant.findMany({ where: { progress: { challengeId: id } }, include: { progress: { include: { membership: { include: { member: { select: { id: true, email: true } } } } } } }, orderBy: { grantedAt: "desc" }, take: 20 }),
       prisma.challengeProgress.count({ where: { challengeId: id, rewardState: "IN_PROGRESS" } }),
       prisma.challengeProgress.count({ where: { challengeId: id, rewardState: "REWARDED" } }),
       prisma.challengeProgress.count({ where: { challengeId: id, rewardState: "WAITING_BUDGET" } }),
+      prisma.challengeLimitNotice.findMany({ where: { challengeId: id }, orderBy: { id: "desc" }, take: 20 }),
     ]);
     return {
       challenge: this.toMerchantDto({ ...challenge, inProgressCount, completedCount, waitingBudgetCount }),
+      limitChanges,
       participants: {
         items: items.map((p) => ({
           progressId: p.id,
@@ -230,9 +258,24 @@ export const challengesService = {
     const checkedInToday = membership ? Boolean(await prisma.memberActivity.findFirst({ where: { membershipId: membership.id, type: "DAILY_CHECKIN", occurredAt: { gte: range.start, lt: new Date(range.end) } }, select: { id: true } })) : false;
     const progress = membership ? await prisma.challengeProgress.findMany({ where: { membershipId: membership.id, challengeId: { in: list.challenges.map((c) => c.id) } }, include: { grants: { where: { status: "GRANTED" }, orderBy: { cycle: "desc" }, take: 1 } } }) : [];
     const byId = new Map(progress.map((p) => [p.challengeId, p]));
-    const enrich = (item: typeof list.challenges[number]) => { const p = byId.get(item.id); const current = new Prisma.Decimal(p?.currentValue ?? 0); const target = new Prisma.Decimal(item.targetValue); return { ...item, progress: p ? { currentValue: current.toFixed(0), targetValue: target.toFixed(0), remainingValue: Prisma.Decimal.max(target.minus(current), 0).toFixed(0), percent: Math.min(100, current.div(target).mul(100).toNumber()), rewardState: p.rewardState, rewardCycle: p.rewardCycle, completedAt: p.completedAt?.toISOString() ?? null, grantedAt: p.grants[0]?.grantedAt.toISOString() ?? null } : null }; };
+    const enrich = (item: typeof list.challenges[number]) => {
+      const progress = byId.get(item.id);
+      if (!progress) return { ...item, progress: null };
+      const target = new Prisma.Decimal(item.targetValue);
+      const current = progress.currentValue;
+      return { ...item, progress: {
+        currentValue: current.toFixed(0), targetValue: target.toFixed(0),
+        remainingValue: Prisma.Decimal.max(target.minus(current), 0).toFixed(0),
+        percent: Math.min(100, current.div(target).mul(100).toNumber()),
+        rewardState: progress.rewardState, rewardCycle: progress.rewardCycle,
+        rewardSlotClaimed: progress.rewardSlotClaimed,
+        completedAt: progress.completedAt?.toISOString() ?? null,
+        grantedAt: progress.grants[0]?.grantedAt.toISOString() ?? null,
+      } };
+    };
     const enriched = list.challenges.map(enrich);
-    const activeIncomplete = enriched.filter((c) => c.effectiveStatus === "ACTIVE" && c.progress?.rewardState !== "REWARDED");
+    const activeIncomplete = enriched.filter((c) => c.effectiveStatus === "ACTIVE" &&
+      c.progress?.rewardState !== "REWARDED" && (c.rewardSlotsRemaining !== 0 || c.progress?.rewardSlotClaimed));
     const inProgress = activeIncomplete
       .filter((c) => c.progress && Number(c.progress.currentValue) > 0 && c.progress.rewardState === "IN_PROGRESS")
       .sort((a, b) => (b.progress?.percent ?? 0) - (a.progress?.percent ?? 0) || Number(b.isFeatured) - Number(a.isFeatured));
@@ -253,11 +296,25 @@ export const challengesService = {
   },
   async checkIn(memberId: number, slug: string) {
     const merchant = await prisma.merchant.findFirst({ where: { slug, isActive: true }, select: { id: true } }); if (!merchant) throw new HttpError(404, "STORE_NOT_FOUND"); const now = new Date(); const dateKey = dateInHcm(now); const range = dayRange(dateKey); const membership = await prisma.merchantMembership.upsert({ where: { memberId_merchantId: { memberId, merchantId: merchant.id } }, create: { memberId, merchantId: merchant.id }, update: {} });
-    return prisma.$transaction(async (tx) => {
+    return withTransactionRetry(() => prisma.$transaction(async (tx) => {
       const exists = await tx.memberActivity.findFirst({ where: { membershipId: membership.id, type: "DAILY_CHECKIN", occurredAt: { gte: range.start, lt: new Date(range.end) } } }); if (exists) return { checkedIn: true, alreadyCheckedInToday: true, dateKey, updatedChallenges: [] };
-      const activity = await tx.memberActivity.create({ data: { membershipId: membership.id, type: "DAILY_CHECKIN", eventKey: `checkin-${membership.id}-${dateKey}`, occurredAt: now } }); const active = await tx.challenge.findMany({ where: { merchantId: merchant.id, type: "DAILY_CHECKIN", status: "ACTIVE", startsAt: { lte: now }, endsAt: { gte: now } } }); const updatedChallenges = [];
-      for (const c of active) { const p = await tx.challengeProgress.upsert({ where: { challengeId_membershipId: { challengeId: c.id, membershipId: membership.id } }, create: { challengeId: c.id, membershipId: membership.id }, update: {} }); await tx.challengeProgressEntry.create({ data: { progressId: p.id, activityId: activity.id, deltaValue: 1 } }); const value = p.currentValue.plus(1); const qualifies = value.greaterThanOrEqualTo(c.targetValue) && p.rewardState === "IN_PROGRESS"; await tx.challengeProgress.update({ where: { id: p.id }, data: { currentValue: value, ...(qualifies ? { rewardState: "WAITING_BUDGET", completedAt: now } : {}) } }); let awarded = false; if (qualifies) awarded = await grantChallengeReward(tx, c.id, p.id, membership.id, c.rewardPoints, now); updatedChallenges.push({ challengeId: c.id, title: c.title, currentValue: value.toFixed(0), targetValue: c.targetValue.toFixed(0), rewardState: awarded ? "REWARDED" : qualifies ? "WAITING_BUDGET" : p.rewardState, pointsAwardedExact: awarded ? c.rewardPoints.toFixed(12) : null }); }
+      const activity = await tx.memberActivity.create({ data: { membershipId: membership.id, type: "DAILY_CHECKIN", eventKey: `checkin-${membership.id}-${dateKey}`, occurredAt: now } });
+      const active = await tx.challenge.findMany({
+        where: { merchantId: merchant.id, type: "DAILY_CHECKIN", status: "ACTIVE", startsAt: { lte: now }, endsAt: { gte: now } },
+        orderBy: { id: "asc" }, select: { id: true },
+      });
+      const updatedChallenges = [];
+      for (const { id } of active) {
+        const challenge = await lockChallenge(tx, id);
+        if (challenge.status !== "ACTIVE" || now < challenge.startsAt || now > challenge.endsAt) continue;
+        const { progress, awarded } = await recordChallengeProgress(tx, challenge, activity, new Prisma.Decimal(1));
+        updatedChallenges.push({
+          challengeId: id, title: challenge.title, currentValue: progress.currentValue.toFixed(0),
+          targetValue: challenge.targetValue.toFixed(0), rewardState: progress.rewardState,
+          pointsAwardedExact: awarded ? challenge.rewardPoints.toFixed(12) : null,
+        });
+      }
       return { checkedIn: true, alreadyCheckedInToday: false, dateKey, updatedChallenges };
-    }, { isolationLevel: "Serializable" });
+    }, { isolationLevel: "Serializable" }));
   },
 };

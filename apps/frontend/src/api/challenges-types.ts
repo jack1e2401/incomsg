@@ -1,7 +1,7 @@
 export type ChallengeType = "ORDER_COUNT" | "DAILY_CHECKIN" | "SPEND_TOTAL";
 export type ChallengeStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ARCHIVED";
 export type ChallengeEffectiveStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED";
-export type ChallengeRewardState = "IN_PROGRESS" | "WAITING_BUDGET" | "REWARDED";
+export type ChallengeRewardState = "IN_PROGRESS" | "WAITING_BUDGET" | "REWARDED" | "LIMIT_REACHED";
 export type ChallengeRewardGrantStatus = "GRANTED" | "REVERSED";
 export type MemberActivityType = "ORDER_PAID" | "DAILY_CHECKIN" | "ORDER_REFUNDED";
 
@@ -34,6 +34,8 @@ export interface MerchantChallengeDto {
   budgetTotal: string;
   budgetSpent: string;
   budgetRemaining: string;
+  maxRewardRecipients: number | null;
+  rewardSlotsRemaining: number | null;
   startsAt: string;
   endsAt: string;
   isFeatured: boolean;
@@ -86,6 +88,16 @@ export interface MerchantChallengeDetailResponse {
     pagination: ChallengePaginationDto;
   };
   recentGrants: ChallengeGrantHistoryDto[];
+  limitChanges: Array<{ id: number; previousLimit: number; newLimit: number; actorId: number; createdAt: string }>;
+}
+
+export interface ChallengeLimitNotice {
+  id: number;
+  title: string;
+  previousLimit: number;
+  newLimit: number;
+  challengeId: number | null;
+  storeSlug: string | null;
 }
 
 export interface MerchantChallengeMutationResponse {
@@ -100,6 +112,7 @@ export interface CreateChallengeInput {
   targetValue: string | number;
   rewardPoints: string | number;
   budgetTotal: string | number;
+  maxRewardRecipients?: number | null;
   startsAt: string;
   endsAt: string;
   isFeatured?: boolean;
@@ -114,6 +127,7 @@ export interface UpdateChallengeInput {
   targetValue?: string | number;
   rewardPoints?: string | number;
   budgetTotal?: string | number;
+  maxRewardRecipients?: number | null;
   startsAt?: string;
   endsAt?: string;
   isFeatured?: boolean;
@@ -135,6 +149,7 @@ export interface ChallengeProgressDto {
   percent: number;
   rewardState: ChallengeRewardState;
   rewardCycle: number;
+  rewardSlotClaimed?: boolean;
   completedAt: string | null;
   grantedAt: string | null;
 }
@@ -148,6 +163,8 @@ export interface PublicChallengeDto {
   effectiveStatus: ChallengeEffectiveStatus;
   targetValue: string;
   rewardPoints: string;
+  maxRewardRecipients: number | null;
+  rewardSlotsRemaining: number | null;
   startsAt: string;
   endsAt: string;
   isFeatured: boolean;

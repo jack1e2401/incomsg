@@ -1,6 +1,7 @@
 import { Prisma } from "../../generated/prisma/client.js";
 import type { Prisma as PrismaTypes } from "../../generated/prisma/client.js";
 import { exactPoints } from "../loyalty/loyalty.balance.js";
+import { lockChallenge, recordChallengeProgress, reserveChallengeSlots } from "./challenges.rewards.js";
 
 /** Runs inside completePaidOrder's transaction; never opens a nested transaction. */
 export async function processPaidOrderChallenges(
@@ -12,7 +13,7 @@ export async function processPaidOrderChallenges(
   const challenges = await tx.challenge.findMany({ where: {
     merchantId: order.merchantId, status: "ACTIVE", startsAt: { lte: occurredAt }, endsAt: { gte: occurredAt },
     type: { in: ["ORDER_COUNT", "SPEND_TOTAL"] },
-  } });
+  }, orderBy: { id: "asc" } });
   const membershipId = existingMembershipId ?? (await tx.merchantMembership.upsert({
     where: { memberId_merchantId: { memberId: order.memberId, merchantId: order.merchantId } },
     create: { memberId: order.memberId, merchantId: order.merchantId }, update: {},
@@ -22,51 +23,12 @@ export async function processPaidOrderChallenges(
     membershipId, type: "ORDER_PAID", eventKey: `order-paid-${order.id}`,
     orderId: order.id, amountVnd: order.total, occurredAt,
   } });
-  for (const challenge of challenges) {
+  for (const { id } of challenges) {
+    const challenge = await lockChallenge(tx, id);
+    if (challenge.status !== "ACTIVE" || occurredAt < challenge.startsAt || occurredAt > challenge.endsAt) continue;
     const delta = challenge.type === "ORDER_COUNT" ? new Prisma.Decimal(1) : order.total;
-    const progress = await tx.challengeProgress.upsert({
-      where: { challengeId_membershipId: { challengeId: challenge.id, membershipId } },
-      create: { challengeId: challenge.id, membershipId }, update: {},
-    });
-    await tx.challengeProgressEntry.create({ data: { progressId: progress.id, activityId: activity.id, deltaValue: delta } });
-    const currentValue = progress.currentValue.plus(delta);
-    const qualifies = currentValue.greaterThanOrEqualTo(challenge.targetValue);
-    const waiting = qualifies && progress.rewardState === "IN_PROGRESS";
-    const result = await tx.challengeProgress.update({ where: { id: progress.id }, data: {
-      currentValue, ...(waiting ? { completedAt: occurredAt } : {}),
-      ...(waiting ? { rewardState: "WAITING_BUDGET" } : {}),
-    } });
-    if (waiting) await grantChallengeReward(tx, challenge.id, result.id, membershipId, challenge.rewardPoints, occurredAt);
+    await recordChallengeProgress(tx, challenge, activity, delta);
   }
-}
-
-export async function grantChallengeReward(
-  tx: PrismaTypes.TransactionClient, challengeId: number, progressId: number, membershipId: number,
-  rewardPoints: Prisma.Decimal, now: Date,
-): Promise<boolean> {
-  const held = await tx.$executeRaw`UPDATE Challenge SET budgetSpent = budgetSpent + ${rewardPoints} WHERE id = ${challengeId} AND status = 'ACTIVE' AND budgetTotal - budgetSpent >= ${rewardPoints}`;
-  if (held !== 1) return false;
-  const progress = await tx.challengeProgress.findUniqueOrThrow({ where: { id: progressId } });
-  const wallet = await tx.loyaltyWallet.upsert({ where: { membershipId }, create: { membershipId }, update: {} });
-  const balanceAfter = wallet.exactBalance.plus(rewardPoints);
-  const lifetimeAfter = wallet.netLifetimeEarned.plus(rewardPoints);
-  const walletUpdated = await tx.loyaltyWallet.updateMany({
-    where: { id: wallet.id, exactBalance: wallet.exactBalance, netLifetimeEarned: wallet.netLifetimeEarned },
-    data: { exactBalance: { increment: rewardPoints }, netLifetimeEarned: { increment: rewardPoints } },
-  });
-  if (walletUpdated.count !== 1) throw Object.assign(new Error("Concurrent wallet change"), { code: "P2034" });
-  const transaction = await tx.pointTransaction.create({ data: {
-    walletId: wallet.id, type: "EARN", source: "CHALLENGE_REWARD", delta: rewardPoints, balanceAfter,
-    reason: `Challenge reward #${challengeId}`, eventRef: `challenge-reward-${progressId}-${progress.rewardCycle}`,
-  } });
-  await tx.challengeRewardGrant.create({ data: {
-    progressId, cycle: progress.rewardCycle, pointsGranted: rewardPoints, earnTransactionId: transaction.id, grantedAt: now,
-  } });
-  await tx.challengeProgress.update({ where: { id: progressId }, data: { rewardState: "REWARDED" } });
-  const tiers = await tx.loyaltyTier.findMany({ where: { merchantId: (await tx.merchantMembership.findUniqueOrThrow({ where: { id: membershipId } })).merchantId }, orderBy: { minLifetimePoints: "asc" } });
-  const eligible = tiers.filter((tier) => lifetimeAfter.greaterThanOrEqualTo(tier.minLifetimePoints)).at(-1);
-  if (eligible) await tx.merchantMembership.update({ where: { id: membershipId }, data: { tierId: eligible.id } });
-  return true;
 }
 
 export function decimalText(value: Prisma.Decimal): string { return exactPoints(value); }
@@ -99,7 +61,21 @@ export async function reverseOrderChallenges(tx: PrismaTypes.TransactionClient, 
       await tx.merchantMembership.update({ where: { id: progress.membershipId }, data: { tierId: tier?.id ?? null } });
       reversals += 1;
     }
-    await tx.challengeProgress.update({ where: { id: progress.id }, data: { currentValue: after, rewardState: "IN_PROGRESS", rewardCycle: grant ? { increment: 1 } : undefined, completedAt: null } });
+    const releaseSlot = progress.rewardSlotClaimed && progress.rewardCycle === 1 && !grant;
+    await tx.challengeProgress.update({
+      where: { id: progress.id },
+      data: {
+        currentValue: after, rewardState: "IN_PROGRESS", completedAt: null,
+        ...(grant ? { rewardCycle: { increment: 1 } } : {}),
+        ...(releaseSlot ? { rewardSlotClaimed: false } : {}),
+      },
+    });
+    if (releaseSlot) {
+      const refreshed = await tx.challenge.update({
+        where: { id: challenge.id }, data: { rewardSlotsClaimed: { decrement: 1 } },
+      });
+      if (refreshed.status === "ACTIVE") await reserveChallengeSlots(tx, refreshed);
+    }
   }
   return reversals;
 }

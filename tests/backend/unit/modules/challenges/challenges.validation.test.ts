@@ -3,6 +3,15 @@ import test from "node:test";
 import { readChallengeInput } from "../../../../../apps/backend/src/modules/challenges/challenges.validation.js";
 import { HttpError } from "../../../../../apps/backend/src/lib/http-error.js";
 
+test("recipient cap is an optional positive database integer, or null for unlimited", () => {
+  assert.equal(readChallengeInput({ maxRewardRecipients: 100 }, true).maxRewardRecipients, 100);
+  assert.equal(readChallengeInput({ maxRewardRecipients: null }, true).maxRewardRecipients, null);
+  assert.equal("maxRewardRecipients" in readChallengeInput({ title: "Renamed" }, true), false);
+  for (const invalid of [0, -1, 2.5, "100", true, 2_147_483_648]) {
+    assert.throws(() => readChallengeInput({ maxRewardRecipients: invalid }, true), HttpError);
+  }
+});
+
 test("challenge input parses fixed point values and ISO dates", () => {
   const input = readChallengeInput({ title: "Five visits", description: "Visit us", type: "ORDER_COUNT", targetValue: "5", rewardPoints: "1.250000000001", budgetTotal: "2.5", startsAt: "2026-11-01T00:00:00Z", endsAt: "2026-12-01T00:00:00Z" }) as { targetValue: { toFixed: (places: number) => string }; rewardPoints: { toFixed: (places: number) => string } };
   assert.equal(input.targetValue.toFixed(0), "5");

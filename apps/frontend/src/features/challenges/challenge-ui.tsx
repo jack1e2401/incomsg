@@ -51,9 +51,18 @@ export function ChallengeProgress({ challenge, progress }: { challenge: PublicCh
   );
 }
 
+export function formatRewardLimit(challenge: PublicChallengeDto): string | null {
+  const { maxRewardRecipients, rewardSlotsRemaining } = challenge;
+  if (maxRewardRecipients == null) return null;
+  const terms = `Thưởng cho ${maxRewardRecipients.toLocaleString("vi-VN")} người đầu tiên hoàn thành`;
+  if (rewardSlotsRemaining === 0) return `${terms} · Đã hết suất`;
+  return `${terms} · Còn ${rewardSlotsRemaining?.toLocaleString("vi-VN") ?? "–"} suất`;
+}
+
 export const challengeStatusLabel = (progress: ChallengeProgressDto | null | undefined, effectiveStatus: string) => {
-  if (effectiveStatus === "ENDED") return "Hết hạn";
+  if (progress?.rewardState === "LIMIT_REACHED") return "Đã hoàn thành · Hết suất thưởng";
   if (progress?.rewardState === "WAITING_BUDGET") return "Chờ ngân sách";
   if (progress?.rewardState === "REWARDED") return "Đã nhận thưởng";
+  if (effectiveStatus === "ENDED") return "Hết hạn";
   return "Đang làm";
 };

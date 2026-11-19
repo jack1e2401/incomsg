@@ -121,7 +121,7 @@ export function MerchantChallengeDetailPage() {
   if (resource.error || !resource.data)
     return <ErrorState message={resource.error ?? "Không tìm thấy nhiệm vụ."} retry={resource.reload} />;
 
-  const { challenge, participants, recentGrants } = resource.data;
+  const { challenge, participants, recentGrants, limitChanges = [] } = resource.data;
   const totalBudget = Number(challenge.budgetTotal);
   const usedBudget = Number(challenge.budgetSpent);
   const usedPercent =
@@ -192,6 +192,12 @@ export function MerchantChallengeDetailPage() {
             label="Ngân sách còn lại"
             value={`${formatPts(challenge.budgetRemaining)} điểm`}
             detail={`Tổng ngân sách ${formatPts(challenge.budgetTotal)} điểm`}
+          />
+          <Metric
+            icon={UsersThree}
+            label="Suất thưởng"
+            value={challenge.maxRewardRecipients == null ? "Không giới hạn" : `${(challenge.rewardSlotsRemaining ?? 0).toLocaleString("vi-VN")} còn lại`}
+            detail={challenge.maxRewardRecipients == null ? undefined : `Tối đa ${challenge.maxRewardRecipients.toLocaleString("vi-VN")} hội viên`}
           />
         </div>
         <div className="mt-5 rounded-2xl border border-[#e8ede5] p-4 sm:px-5">
@@ -307,6 +313,16 @@ export function MerchantChallengeDetailPage() {
           </Button>
         </nav>
       </Card>
+
+      {limitChanges.length > 0 && <Card className="p-5 sm:p-6">
+        <h2 className="text-lg font-extrabold">Lịch sử tăng suất thưởng</h2>
+        <ul className="mt-2 divide-y divide-[#edf1ea]">
+          {limitChanges.map((change) => <li key={change.id} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
+            <span>{change.previousLimit.toLocaleString("vi-VN")} → {change.newLimit.toLocaleString("vi-VN")} suất</span>
+            <time dateTime={change.createdAt}>{dateTime(change.createdAt)}</time>
+          </li>)}
+        </ul>
+      </Card>}
 
       <Card className="p-5 sm:p-6">
         <div className="flex items-start gap-3">

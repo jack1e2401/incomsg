@@ -11,6 +11,8 @@ const challenge = (overrides: Partial<PublicChallengeDto> = {}): PublicChallenge
   effectiveStatus: "ACTIVE",
   targetValue: "3",
   rewardPoints: "150",
+  maxRewardRecipients: null,
+  rewardSlotsRemaining: null,
   startsAt: "2026-11-01T00:00:00Z",
   endsAt: "2026-12-01T00:00:00Z",
   isFeatured: true,

@@ -50,7 +50,7 @@ export function useChallengeProgressAnimation(
     const newlyRewarded = sameChallenge && prior.rewardState !== "REWARDED" && rewardState === "REWARDED";
     const shouldAnimate = Boolean(
       sameChallenge && (
-        (progressIncreased && rewardState !== "WAITING_BUDGET") || newlyRewarded
+        (progressIncreased && rewardState !== "WAITING_BUDGET" && rewardState !== "LIMIT_REACHED") || newlyRewarded
       ),
     );
 

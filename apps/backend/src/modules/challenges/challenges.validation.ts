@@ -33,6 +33,13 @@ export function readChallengeInput(value: unknown, partial = false) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new HttpError(400, "INVALID_INPUT");
   const body = value as Record<string, unknown>;
   const result: Record<string, unknown> = {};
+  const limit = body.maxRewardRecipients;
+  if (limit !== undefined) {
+    if (limit !== null && (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 2_147_483_647)) {
+      throw new HttpError(400, "INVALID_INPUT");
+    }
+    result.maxRewardRecipients = limit;
+  }
   const text = (key: string, max: number, required: boolean) => { const v = body[key]; if (v === undefined && !required) return; if (typeof v !== "string" || !v.trim() || v.length > max) throw new HttpError(400, "INVALID_INPUT"); result[key] = v.trim(); };
   text("title", 191, !partial); text("description", 20000, !partial);
   if (body.type !== undefined || !partial) { if (!["ORDER_COUNT", "DAILY_CHECKIN", "SPEND_TOTAL"].includes(String(body.type))) throw new HttpError(400, "INVALID_INPUT"); result.type = body.type as ChallengeType; }

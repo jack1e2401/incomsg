@@ -9,7 +9,7 @@ import { useResource } from "../../api/useResource";
 import { Button, Card, ErrorState, LoadingState, StatusText } from "../../components/ui";
 import { ChallengeMilestonePath } from "./ChallengeMilestonePath";
 import { useChallengeProgressAnimation } from "./useChallengeProgressAnimation";
-import { challengeStatusLabel, emptyChallengeProgress, formatChallengeGoal } from "./challenge-ui";
+import { challengeStatusLabel, emptyChallengeProgress, formatChallengeGoal, formatRewardLimit } from "./challenge-ui";
 import { useStorefrontShell } from "../storefront/storefront-context";
 
 const api = createChallengesClient();
@@ -81,7 +81,10 @@ export function ChallengeDetailPage() {
     }
   }
 
-  const action = member
+  const canAct = currentChallenge.effectiveStatus === "ACTIVE" &&
+    (currentChallenge.rewardSlotsRemaining !== 0 || currentProgress?.rewardSlotClaimed) &&
+    (!currentProgress || currentProgress.rewardState === "IN_PROGRESS");
+  const action = !canAct ? null : member
     ? currentChallenge.type === "DAILY_CHECKIN"
       ? <Button disabled={busy || checkedInToday} onClick={() => void checkIn()}>{checkedInToday ? "Đã điểm danh hôm nay" : busy ? "Đang điểm danh" : "Điểm danh hôm nay"}</Button>
       : <Button asChild><Link to={`${storeBase}/products`}>Tiếp tục tích lũy</Link></Button>
@@ -142,7 +145,7 @@ export function ChallengeDetailPage() {
           <div className="flex flex-col gap-3 border-t border-[#edf1eb] pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-bold text-[#2d4433]">{formatChallengeGoal(currentChallenge)}</p>
-              <p className="mt-1 text-xs text-[#718075]">Điểm thưởng được trao khi hoàn thành toàn bộ mục tiêu.</p>
+              <p className="mt-1 text-xs text-[#718075]">{formatRewardLimit(currentChallenge) ?? "Điểm thưởng được trao khi hoàn thành toàn bộ mục tiêu."}</p>
             </div>
             {action}
           </div>

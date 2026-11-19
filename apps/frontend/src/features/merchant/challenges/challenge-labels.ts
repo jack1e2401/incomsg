@@ -22,6 +22,7 @@ const statusLabels: Record<ChallengeEffectiveStatus, string> = {
 const rewardStateLabels: Record<ChallengeRewardState, string> = {
   IN_PROGRESS: "Đang thực hiện",
   WAITING_BUDGET: "Chờ ngân sách",
+  LIMIT_REACHED: "Hết suất thưởng",
   REWARDED: "Đã nhận thưởng",
 };
 

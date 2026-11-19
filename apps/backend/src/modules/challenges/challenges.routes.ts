@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireRole } from "../../middleware/auth.js";
+import { getUnreadChallengeLimitNotice, markChallengeLimitNoticeRead } from "./challenges.limit-notices.js";
 import { activateChallenge, archiveChallenge, createChallenge, listChallenges, pauseChallenge, updateChallenge, publicChallenges, publicChallenge, memberChallenges, memberCheckIn, getChallenge, deleteChallenge, memberChallenge } from "./challenges.controller.js";
 export const merchantChallengeRoutes = Router();
 merchantChallengeRoutes.use(authenticate, requireRole("MERCHANT"));
@@ -16,6 +17,8 @@ publicChallengeRoutes.get("/:slug/challenges", publicChallenges);
 publicChallengeRoutes.get("/:slug/challenges/:challengeId", publicChallenge);
 export const memberChallengeRoutes = Router();
 memberChallengeRoutes.use(authenticate, requireRole("MEMBER"));
+memberChallengeRoutes.get("/challenge-limit-notices/unread", getUnreadChallengeLimitNotice);
+memberChallengeRoutes.post("/challenge-limit-notices/:noticeId/read", markChallengeLimitNoticeRead);
 memberChallengeRoutes.get("/stores/:slug/challenges", memberChallenges);
 memberChallengeRoutes.get("/stores/:slug/challenges/:challengeId", memberChallenge);
 memberChallengeRoutes.post("/stores/:slug/check-in", memberCheckIn);

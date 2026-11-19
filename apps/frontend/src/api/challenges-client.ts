@@ -1,6 +1,7 @@
 import { requestJson, translateApiError } from "./commerce/shared";
 import type {
   CreateChallengeInput,
+  ChallengeLimitNotice,
   ListMerchantChallengesParams,
   MemberCheckinResponse,
   MemberStoreChallengeDetailResponse,
@@ -19,6 +20,7 @@ export function translateChallengeError(code: string): string {
     CHALLENGE_LOCKED_FIELDS: "Không thể sửa loại nhiệm vụ, mục tiêu, điểm thưởng hoặc ngày bắt đầu sau khi đã kích hoạt.",
     CHALLENGE_FIELDS_LOCKED: "Không thể sửa loại nhiệm vụ, mục tiêu, điểm thưởng hoặc ngày bắt đầu sau khi đã kích hoạt.",
     CHALLENGE_INVALID_BUDGET: "Ngân sách tổng phải lớn hơn hoặc bằng tổng điểm đã phát.",
+    CHALLENGE_REWARD_LIMIT_LOCKED: "Chỉ có thể tăng số suất của nhiệm vụ giới hạn đang diễn ra.",
     CHALLENGE_INSUFFICIENT_BUDGET_TO_ACTIVATE: "Ngân sách phải lớn hơn hoặc bằng điểm thưởng để kích hoạt.",
     INVALID_CHALLENGE_CONFIGURATION: "Cấu hình nhiệm vụ chưa hợp lệ hoặc ngân sách thấp hơn điểm thưởng.",
     CHALLENGE_INVALID_DATE_RANGE: "Ngày kết thúc phải lớn hơn ngày bắt đầu.",
@@ -35,6 +37,18 @@ export function createChallengesClient(
   fetcher: typeof fetch = fetch,
 ) {
   return {
+    getUnreadChallengeLimitNotice(token: string) {
+      return requestJson<{ notice: ChallengeLimitNotice | null }>(
+        fetcher, baseUrl, "/api/member/challenge-limit-notices/unread", { token },
+      );
+    },
+
+    markChallengeLimitNoticeRead(noticeId: number, token: string) {
+      return requestJson<{ read: true }>(
+        fetcher, baseUrl, `/api/member/challenge-limit-notices/${noticeId}/read`, { method: "POST", token },
+      );
+    },
+
     listMerchantChallenges(params: ListMerchantChallengesParams = {}, token: string) {
       const search = new URLSearchParams();
       if (params.status) search.set("status", params.status);
