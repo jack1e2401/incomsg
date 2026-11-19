@@ -29,7 +29,7 @@ export function ConfirmActionDialog({
     <Dialog.Root open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-[#14251b]/45 backdrop-blur-[2px]" />
-        <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl p-6 shadow-2xl outline-none sm:p-7">
+        <Dialog.Content className="surface fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-3xl p-6 shadow-2xl outline-none sm:p-7">
           <span
             className={`grid h-12 w-12 place-items-center rounded-2xl ${destructive ? "bg-[#fae7e3] text-[#a4473a]" : "bg-[#edf4e9] text-[#4c8054]"}`}
           >
