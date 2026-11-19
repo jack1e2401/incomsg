@@ -91,8 +91,8 @@ export function MerchantVouchers() {
     }
   }
 
-  async function toggle(definition: VoucherDefinitionDto) {
-    if (busyId !== null) return;
+  async function toggle(definition: VoucherDefinitionDto): Promise<void> {
+    if (busyId !== null) throw new Error("Đang cập nhật trạng thái voucher khác.");
     setBusyId(definition.id);
     setError("");
     setNotice("");
@@ -105,7 +105,7 @@ export function MerchantVouchers() {
       updateDefinition(response.definition);
       setNotice("Đã cập nhật voucher.");
     } catch (reason) {
-      setError(message(reason));
+      throw new Error(message(reason));
     } finally {
       setBusyId(null);
     }
@@ -295,7 +295,7 @@ export function MerchantVouchers() {
                   definition={definition}
                   token={token}
                   statusBusy={busyId !== null}
-                  onToggle={() => void toggle(definition)}
+                  onToggle={() => toggle(definition)}
                   onDefinitionChange={updateDefinition}
                 />
               ))}

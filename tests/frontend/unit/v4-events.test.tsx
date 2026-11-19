@@ -110,6 +110,9 @@ describe("V4 Events UI", () => {
       if (url.includes("/api/merchant/events/10/publish") && method === "POST") {
         return Response.json({ event: { ...draftEvent, status: "PUBLISHED" } });
       }
+      if (url.includes("/api/merchant/events/11/unpublish") && method === "POST") {
+        return Response.json({ event: { ...publishedEvent, status: "DRAFT" } });
+      }
       if (url.includes("/api/merchant/events/10") && method === "DELETE") {
         return Response.json({ deleted: true });
       }
@@ -166,10 +169,28 @@ describe("V4 Events UI", () => {
     // Publish draft
     const publishBtn = await screen.findByRole("button", { name: "Xuất bản" });
     fireEvent.click(publishBtn);
+    expect(screen.getByText("Xuất bản sự kiện?")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/api/merchant/events/10/publish"))).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận xuất bản" }));
     await waitFor(() => {
-      expect(calls.some((c) => c.method === "POST" && c.url.includes("/api/merchant/events/10/publish"))).toBe(
-        true,
-      );
+      expect(
+        calls.some((c) => c.method === "POST" && c.url.includes("/api/merchant/events/10/publish")),
+      ).toBe(true);
+    });
+
+    const unpublishBtn = await screen.findByRole("button", { name: "Gỡ xuất bản" });
+    fireEvent.click(unpublishBtn);
+    expect(screen.getByText("Gỡ sự kiện khỏi trang công khai?")).toBeInTheDocument();
+    expect(
+      calls.some((c) => c.method === "POST" && c.url.includes("/api/merchant/events/11/unpublish")),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận gỡ xuất bản" }));
+    await waitFor(() => {
+      expect(
+        calls.some((c) => c.method === "POST" && c.url.includes("/api/merchant/events/11/unpublish")),
+      ).toBe(true);
     });
 
     // Delete draft confirmation dialog
@@ -180,8 +201,36 @@ describe("V4 Events UI", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Xóa bản nháp" }));
     await waitFor(() => {
-      expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/api/merchant/events/10"))).toBe(true);
+      expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/api/merchant/events/10"))).toBe(
+        true,
+      );
     });
+  });
+
+  it("distinguishes an empty filtered event list and can reset the filters", async () => {
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/merchant/me")) {
+        return Response.json({ merchant: { id: 2, name: "Mộc Cafe", slug: "moc-cafe", isActive: true } });
+      }
+      if (url.includes("/api/merchant/events") && url.includes("status=PUBLISHED")) {
+        return Response.json({ items: [], pagination: { page: 1, limit: 10, totalItems: 0, totalPages: 0 } });
+      }
+      if (url.includes("/api/merchant/events")) {
+        return Response.json({
+          items: [draftEvent],
+          pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 },
+        });
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    renderMerchantEvents();
+    await screen.findByText("Workshop Pha Chế");
+    fireEvent.change(screen.getByLabelText("Lọc theo trạng thái"), { target: { value: "PUBLISHED" } });
+    expect(await screen.findByText("Không tìm thấy sự kiện")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa bộ lọc" }));
+    expect(await screen.findByText("Workshop Pha Chế")).toBeInTheDocument();
   });
 
   it("renders PublicEventsPage with store context, scope filter, and links", async () => {
@@ -240,7 +289,10 @@ describe("V4 Events UI", () => {
     expect(screen.getByText(/Quán Mộc Quận 1/)).toBeInTheDocument();
     expect(screen.getByText(/<script>alert\(1\)<\/script>/)).toBeInTheDocument();
     expect(container.querySelector("script")).toBeNull();
-    expect(screen.getByRole("link", { name: /Tất cả sự kiện/i })).toHaveAttribute("href", "/s/moc-cafe/events");
+    expect(screen.getByRole("link", { name: /Tất cả sự kiện/i })).toHaveAttribute(
+      "href",
+      "/s/moc-cafe/events",
+    );
     expect(screen.getByRole("link", { name: /Quay lại cửa hàng/i })).toHaveAttribute("href", "/s/moc-cafe");
   });
 });

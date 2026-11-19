@@ -2,10 +2,11 @@ import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { DotsThreeVertical, Eye, EyeSlash, PencilSimple } from "@phosphor-icons/react";
+import { DotsThreeVertical, PencilSimple } from "@phosphor-icons/react";
 import { createCommerceClient } from "../../api/commerce-http";
 import type { VoucherDefinitionDto, VoucherDefinitionPatch } from "../../api/commerce-types";
 import { Button, BusyLabel, Field, Input, Textarea } from "../../components/ui";
+import { ConfirmActionDialog } from "../../components/ui/ConfirmActionDialog";
 import { money } from "../../lib/utils";
 
 const api = createCommerceClient(import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000");
@@ -19,7 +20,7 @@ type RowProps = {
   definition: VoucherDefinitionDto;
   token: string;
   statusBusy: boolean;
-  onToggle(): void;
+  onToggle(): Promise<void>;
   onDefinitionChange(definition: VoucherDefinitionDto): void;
 };
 
@@ -31,6 +32,8 @@ export function MerchantVoucherTableRow({
   onDefinitionChange,
 }: RowProps) {
   const [mode, setMode] = useState<keyof typeof dialogTitles | null>(null);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusError, setStatusError] = useState("");
   const navigate = useNavigate();
   const [dialogBusy, setDialogBusy] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -48,6 +51,17 @@ export function MerchantVoucherTableRow({
       setMode(null);
     } finally {
       setDialogBusy(false);
+    }
+  }
+
+  async function confirmToggleStatus() {
+    if (statusBusy) return;
+    setStatusError("");
+    try {
+      await onToggle();
+      setStatusDialogOpen(false);
+    } catch (reason) {
+      setStatusError(reason instanceof Error ? reason.message : "Không thể cập nhật trạng thái voucher.");
     }
   }
 
@@ -76,14 +90,29 @@ export function MerchantVoucherTableRow({
           </div>
         </td>
         <td className="px-4 py-4">
-          <span
-            className={
-              "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold " +
-              (definition.isActive ? "bg-[#edf4e9] text-[#357044]" : "bg-[#fff3dd] text-[#97682a]")
-            }
-          >
-            {definition.isActive ? "Đang hoạt động" : "Đã tắt"}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={
+                "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold " +
+                (definition.isActive ? "bg-[#edf4e9] text-[#357044]" : "bg-[#fff3dd] text-[#97682a]")
+              }
+            >
+              {definition.isActive ? "Đang hoạt động" : "Đã tắt"}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={statusBusy}
+              aria-label={`${definition.isActive ? "Tắt" : "Bật"} voucher ${definition.title}`}
+              onClick={() => {
+                setStatusError("");
+                setStatusDialogOpen(true);
+              }}
+            >
+              {definition.isActive ? "Tắt" : "Bật"}
+            </Button>
+          </div>
         </td>
         <td className="px-4 py-4 text-right">
           <DropdownMenu.Root>
@@ -105,10 +134,16 @@ export function MerchantVoucherTableRow({
               >
                 {isDiscount && (
                   <>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}`)}>
+                    <DropdownMenu.Item
+                      className={menuItem}
+                      onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}`)}
+                    >
                       Điều chỉnh lượt phát hành
                     </DropdownMenu.Item>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}?tab=history`)}>
+                    <DropdownMenu.Item
+                      className={menuItem}
+                      onSelect={() => navigate(`/merchant/inventory/voucher/${definition.id}?tab=history`)}
+                    >
                       Lịch sử phát hành
                     </DropdownMenu.Item>
                     <DropdownMenu.Separator className="my-1 h-px bg-[#edf1ea]" />
@@ -116,8 +151,20 @@ export function MerchantVoucherTableRow({
                 )}
                 {!isDiscount && definition.rewardProductId !== null && (
                   <>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/reward/${definition.rewardProductId}`)}>Điều chỉnh số lượng quà</DropdownMenu.Item>
-                    <DropdownMenu.Item className={menuItem} onSelect={() => navigate(`/merchant/inventory/reward/${definition.rewardProductId}?tab=history`)}>Lịch sử số lượng quà</DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className={menuItem}
+                      onSelect={() => navigate(`/merchant/inventory/reward/${definition.rewardProductId}`)}
+                    >
+                      Điều chỉnh số lượng quà
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className={menuItem}
+                      onSelect={() =>
+                        navigate(`/merchant/inventory/reward/${definition.rewardProductId}?tab=history`)
+                      }
+                    >
+                      Lịch sử số lượng quà
+                    </DropdownMenu.Item>
                     <DropdownMenu.Separator className="my-1 h-px bg-[#edf1ea]" />
                   </>
                 )}
@@ -127,10 +174,6 @@ export function MerchantVoucherTableRow({
                   onSelect={() => setMode("edit")}
                 >
                   <PencilSimple size={16} /> Chỉnh sửa voucher
-                </DropdownMenu.Item>
-                <DropdownMenu.Item className={menuItem} disabled={statusBusy} onSelect={onToggle}>
-                  {definition.isActive ? <EyeSlash size={16} /> : <Eye size={16} />}
-                  {definition.isActive ? "Tắt voucher" : "Bật voucher"}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
@@ -162,6 +205,25 @@ export function MerchantVoucherTableRow({
           </Dialog.Portal>
         )}
       </Dialog.Root>
+      <ConfirmActionDialog
+        open={statusDialogOpen}
+        onOpenChange={(open) => {
+          if (!statusBusy) {
+            setStatusDialogOpen(open);
+            if (!open) setStatusError("");
+          }
+        }}
+        title={definition.isActive ? "Tắt voucher?" : "Bật voucher?"}
+        description={
+          definition.isActive
+            ? `Tạm dừng lượt đổi mới cho “${definition.title}”.`
+            : `Cho phép thành viên đổi “${definition.title}” trở lại.`
+        }
+        confirmLabel={definition.isActive ? "Tắt voucher" : "Bật voucher"}
+        busy={statusBusy}
+        error={statusError}
+        onConfirm={confirmToggleStatus}
+      />
     </>
   );
 }

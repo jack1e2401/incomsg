@@ -1,7 +1,22 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Flex, Input, Space, Spin, Typography, type TableColumnsType } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Flex,
+  Input,
+  Space,
+  Spin,
+  Typography,
+  type TableColumnsType,
+} from "antd";
 import { createRefundsClient, translateRefundRequestError } from "../../../api/refunds-client";
-import type { ExtendedRefundPreviewDto, RefundRequestDetailResponse, RefundRequestStatus } from "../../../api/refunds-types";
+import type {
+  ExtendedRefundPreviewDto,
+  RefundRequestDetailResponse,
+  RefundRequestStatus,
+} from "../../../api/refunds-types";
 import { CmsDataTable, CmsDetailLayout, CmsStatusTag } from "../cms";
 import { isRefundAwaitingMerchant, refundRequestStatusLabel } from "../../refunds/refund-status";
 import { challengeRewardStateLabel } from "../challenges/challenge-labels";
@@ -69,18 +84,24 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"approve" | "reject" | null>(null);
 
   useEffect(() => {
     let active = true;
     setData(null);
     setError("");
-    api.getMerchantRefundRequest(requestId, token).then((result) => {
-      if (active) setData(result);
-    }).catch((cause: unknown) => {
-      if (active) setError(translateRefundRequestError(cause instanceof Error ? cause.message : "INVALID_INPUT"));
-    });
-    return () => { active = false; };
+    api
+      .getMerchantRefundRequest(requestId, token)
+      .then((result) => {
+        if (active) setData(result);
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setError(translateRefundRequestError(cause instanceof Error ? cause.message : "INVALID_INPUT"));
+      });
+    return () => {
+      active = false;
+    };
   }, [requestId, token]);
 
   async function decide(action: "approve" | "reject") {
@@ -88,9 +109,10 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
     setBusy(true);
     setError("");
     try {
-      const { refundRequest } = action === "approve"
-        ? await api.approveMerchantRefundRequest(requestId, token, note.trim() || undefined)
-        : await api.rejectMerchantRefundRequest(requestId, note.trim(), token);
+      const { refundRequest } =
+        action === "approve"
+          ? await api.approveMerchantRefundRequest(requestId, token, note.trim() || undefined)
+          : await api.rejectMerchantRefundRequest(requestId, note.trim(), token);
       onUpdated(refundRequest.status);
     } catch (cause) {
       setError(translateRefundRequestError(cause instanceof Error ? cause.message : "INVALID_INPUT"));
@@ -99,24 +121,51 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
     }
   }
 
-  if (!data && !error) return <Flex justify="center" className="py-12"><Spin description="Đang tải yêu cầu hoàn tiền…" /></Flex>;
-  if (error && !data) return <Alert type="error" showIcon title="Không tải được yêu cầu hoàn tiền" description={error} action={<Button onClick={onClose}>Quay lại danh sách</Button>} />;
+  if (!data && !error)
+    return (
+      <Flex justify="center" className="py-12">
+        <Spin description="Đang tải yêu cầu hoàn tiền…" />
+      </Flex>
+    );
+  if (error && !data)
+    return (
+      <Alert
+        type="error"
+        showIcon
+        title="Không tải được yêu cầu hoàn tiền"
+        description={error}
+        action={<Button onClick={onClose}>Quay lại danh sách</Button>}
+      />
+    );
   if (!data) return null;
 
   const pending = isRefundAwaitingMerchant(data.refundRequest.status);
   const providerRequired = data.preview.providerConfirmationRequired;
-  const statusTone = data.refundRequest.status === "COMPLETED"
-    ? "success"
-    : data.refundRequest.status === "REJECTED" || data.refundRequest.status === "FAILED"
-      ? "error"
-      : pending || data.refundRequest.status === "PROCESSING"
-        ? "warning"
-        : "info";
+  const statusTone =
+    data.refundRequest.status === "COMPLETED"
+      ? "success"
+      : data.refundRequest.status === "REJECTED" || data.refundRequest.status === "FAILED"
+        ? "error"
+        : pending || data.refundRequest.status === "PROCESSING"
+          ? "warning"
+          : "info";
   const orderColumns: TableColumnsType<RefundRequestDetailResponse["order"]["items"][number]> = [
     { title: "Sản phẩm", dataIndex: "productName", key: "productName" },
     { title: "Số lượng", dataIndex: "quantity", key: "quantity", align: "right", width: 110 },
-    { title: "Đơn giá", dataIndex: "unitPrice", key: "unitPrice", align: "right", render: (value: string) => money(value) },
-    { title: "Thành tiền", dataIndex: "lineTotal", key: "lineTotal", align: "right", render: (value: string) => money(value) },
+    {
+      title: "Đơn giá",
+      dataIndex: "unitPrice",
+      key: "unitPrice",
+      align: "right",
+      render: (value: string) => money(value),
+    },
+    {
+      title: "Thành tiền",
+      dataIndex: "lineTotal",
+      key: "lineTotal",
+      align: "right",
+      render: (value: string) => money(value),
+    },
   ];
 
   return (
@@ -130,14 +179,25 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
       <Card title="Thông tin yêu cầu" size="small">
         <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
           <Descriptions.Item label="Đơn hàng">#{data.order.id}</Descriptions.Item>
-          <Descriptions.Item label="Thành viên">{data.member?.email ?? `#${data.order.memberId}`}</Descriptions.Item>
+          <Descriptions.Item label="Thành viên">
+            {data.member?.email ?? `#${data.order.memberId}`}
+          </Descriptions.Item>
           <Descriptions.Item label="Tổng tiền">{money(data.order.total)}</Descriptions.Item>
-          <Descriptions.Item label="Gửi lúc">{new Date(data.refundRequest.requestedAt).toLocaleString("vi-VN")}</Descriptions.Item>
-          <Descriptions.Item label="Lý do" span={{ xs: 1, sm: 2, lg: 3 }}>{data.refundRequest.reason}</Descriptions.Item>
+          <Descriptions.Item label="Gửi lúc">
+            {new Date(data.refundRequest.requestedAt).toLocaleString("vi-VN")}
+          </Descriptions.Item>
+          <Descriptions.Item label="Lý do" span={{ xs: 1, sm: 2, lg: 3 }}>
+            {data.refundRequest.reason}
+          </Descriptions.Item>
         </Descriptions>
       </Card>
       <Card title="Sản phẩm trong đơn" size="small">
-        <CmsDataTable label="Sản phẩm trong đơn" rows={data.order.items} columns={orderColumns} rowKey="productId" />
+        <CmsDataTable
+          label="Sản phẩm trong đơn"
+          rows={data.order.items}
+          columns={orderColumns}
+          rowKey="productId"
+        />
       </Card>
       {pending ? (
         <Card title="Tác động dự kiến khi hoàn tiền" size="small">
@@ -146,13 +206,21 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
           </Typography.Paragraph>
           <RefundPreview preview={data.preview} />
           {providerRequired ? (
-            <Alert className="mt-4" type="warning" showIcon title="Chưa thể hoàn qua VNPay" description="Đơn đã thanh toán qua VNPay. Hệ thống chưa hỗ trợ hoàn tiền qua cổng này." />
+            <Alert
+              className="mt-4"
+              type="warning"
+              showIcon
+              title="Chưa thể hoàn qua VNPay"
+              description="Đơn đã thanh toán qua VNPay. Hệ thống chưa hỗ trợ hoàn tiền qua cổng này."
+            />
           ) : null}
         </Card>
       ) : (
         <Card title="Kết quả xử lý" size="small">
           <Typography.Paragraph className="!mb-0">
-            {data.refundRequest.adminDecisionReason ?? data.refundRequest.merchantDecisionReason ?? refundRequestStatusLabel(data.refundRequest.status)}
+            {data.refundRequest.adminDecisionReason ??
+              data.refundRequest.merchantDecisionReason ??
+              refundRequestStatusLabel(data.refundRequest.status)}
           </Typography.Paragraph>
         </Card>
       )}
@@ -162,7 +230,7 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
             <Input.TextArea
               aria-label="Ghi chú hoặc lý do từ chối"
               maxLength={255}
-              disabled={busy || confirming}
+              disabled={busy || confirming !== null}
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder="Nhập ghi chú; bắt buộc khi từ chối"
@@ -172,19 +240,44 @@ export function MerchantRefundReviewDetail({ requestId, token, onClose, onUpdate
               <Alert
                 type="warning"
                 showIcon
-                title={`Xác nhận hoàn ${money(data.preview.refundAmountVnd)} cho đơn #${data.order.id}?`}
-                description="Hành động này sẽ gửi yêu cầu hoàn tiền để hệ thống xử lý."
+                title={
+                  confirming === "approve"
+                    ? `Xác nhận hoàn ${money(data.preview.refundAmountVnd)} cho đơn #${data.order.id}?`
+                    : "Xác nhận từ chối yêu cầu hoàn tiền?"
+                }
+                description={
+                  confirming === "approve"
+                    ? "Hành động này sẽ gửi yêu cầu hoàn tiền để hệ thống xử lý."
+                    : `Yêu cầu sẽ bị từ chối với lý do: “${note.trim()}”.`
+                }
                 action={
                   <Flex gap={8} wrap>
-                    <Button disabled={busy} onClick={() => setConfirming(false)}>Quay lại</Button>
-                    <Button type="primary" loading={busy} onClick={() => void decide("approve")}>Xác nhận hoàn tiền</Button>
+                    <Button disabled={busy} onClick={() => setConfirming(null)}>
+                      Quay lại
+                    </Button>
+                    <Button
+                      type={confirming === "reject" ? "default" : "primary"}
+                      danger={confirming === "reject"}
+                      loading={busy}
+                      onClick={() => void decide(confirming)}
+                    >
+                      {confirming === "approve" ? "Xác nhận hoàn tiền" : "Xác nhận từ chối"}
+                    </Button>
                   </Flex>
                 }
               />
             ) : (
               <Flex gap={8} wrap>
-                <Button danger disabled={busy || !note.trim()} onClick={() => void decide("reject")}>Từ chối</Button>
-                <Button type="primary" disabled={busy || providerRequired} onClick={() => setConfirming(true)}>Duyệt hoàn tiền</Button>
+                <Button danger disabled={busy || !note.trim()} onClick={() => setConfirming("reject")}>
+                  Từ chối
+                </Button>
+                <Button
+                  type="primary"
+                  disabled={busy || providerRequired}
+                  onClick={() => setConfirming("approve")}
+                >
+                  Duyệt hoàn tiền
+                </Button>
               </Flex>
             )}
           </Space>

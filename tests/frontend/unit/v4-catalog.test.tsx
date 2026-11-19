@@ -87,14 +87,26 @@ describe("Workstream B — Product Catalog V2 UI", () => {
 
   it("shows products in the shared named table and links creation to its dedicated page", async () => {
     signInSession("MERCHANT");
-    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+    const patches: unknown[] = [];
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith("/api/merchant/products/15") && init?.method === "PATCH") {
+        const patch = JSON.parse(String(init.body));
+        patches.push(patch);
+        return Response.json({ product: { ...sampleProduct, ...patch } });
+      }
       if (url.endsWith("/api/merchant/categories")) return Response.json({ categories: [sampleCategory] });
       if (url.includes("/api/merchant/products/15/stock/movements")) {
-        return Response.json({ inventory: { onHandQuantity: 4, reservedQuantity: 1, availableQuantity: 3 }, movements: [] });
+        return Response.json({
+          inventory: { onHandQuantity: 4, reservedQuantity: 1, availableQuantity: 3 },
+          movements: [],
+        });
       }
       if (url.includes("/api/merchant/products")) {
-        return Response.json({ items: [sampleProduct], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } });
+        return Response.json({
+          items: [sampleProduct],
+          pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 },
+        });
       }
       return Response.json({ error: "Not found" }, { status: 404 });
     });
@@ -111,8 +123,47 @@ describe("Workstream B — Product Catalog V2 UI", () => {
     );
 
     expect(await screen.findByRole("table", { name: "Sản phẩm" })).toBeInTheDocument();
+    const hideButton = screen.getByRole("button", { name: "Ẩn sản phẩm Cà phê muối" });
+    fireEvent.click(hideButton);
+    expect(screen.getByText("Ẩn sản phẩm?")).toBeInTheDocument();
+    expect(patches).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Xác nhận ẩn" }));
+    await waitFor(() => expect(patches).toEqual([{ status: "HIDDEN" }]));
     fireEvent.click(screen.getByRole("button", { name: "Thêm sản phẩm" }));
     expect(await screen.findByRole("heading", { name: "Thêm sản phẩm" })).toBeInTheDocument();
+  });
+
+  it("explains an empty filtered result and lets the merchant clear filters", async () => {
+    signInSession("MERCHANT");
+    mockFetchHandler = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/merchant/categories")) return Response.json({ categories: [sampleCategory] });
+      if (url.includes("/api/merchant/products")) {
+        return Response.json(
+          url.includes("q=no-match")
+            ? { items: [], pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 0 } }
+            : { items: [sampleProduct], pagination: { page: 1, limit: 20, totalItems: 1, totalPages: 1 } },
+        );
+      }
+      return Response.json({ error: "Not found" }, { status: 404 });
+    });
+
+    render(
+      <AuthSessionProvider>
+        <MemoryRouter initialEntries={["/merchant/products"]}>
+          <Routes>
+            <Route path="/merchant/products" element={<MerchantProducts />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthSessionProvider>,
+    );
+
+    await screen.findByText("Cà phê muối");
+    fireEvent.change(screen.getByLabelText("Tìm kiếm sản phẩm"), { target: { value: "no-match" } });
+    fireEvent.submit(screen.getByLabelText("Tìm kiếm sản phẩm").closest("form")!);
+    expect(await screen.findByText("Không tìm thấy sản phẩm")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Xóa bộ lọc" }));
+    expect(await screen.findByText("Cà phê muối")).toBeInTheDocument();
   });
 
   it("renders paginated products with SKU, category, low-stock badge, filters, and category CRUD", async () => {
@@ -178,9 +229,9 @@ describe("Workstream B — Product Catalog V2 UI", () => {
       <AuthSessionProvider>
         <MemoryRouter initialEntries={["/merchant/products"]}>
           <Routes>
-          <Route path="/merchant/products" element={<MerchantProducts />} />
-          <Route path="/merchant/products/new" element={<MerchantProductEditorPage />} />
-          <Route path="/merchant/categories" element={<MerchantCategoriesPage />} />
+            <Route path="/merchant/products" element={<MerchantProducts />} />
+            <Route path="/merchant/products/new" element={<MerchantProductEditorPage />} />
+            <Route path="/merchant/categories" element={<MerchantCategoriesPage />} />
           </Routes>
         </MemoryRouter>
       </AuthSessionProvider>,
@@ -221,9 +272,9 @@ describe("Workstream B — Product Catalog V2 UI", () => {
     fireEvent.click(screen.getByLabelText("Sắp hết hàng"));
 
     await waitFor(() => {
-      expect(
-        calls.some((call) => call.url.includes("/api/merchant/products?q=CF-MUOI&lowStock=true")),
-      ).toBe(true);
+      expect(calls.some((call) => call.url.includes("/api/merchant/products?q=CF-MUOI&lowStock=true"))).toBe(
+        true,
+      );
     });
 
     // Create product with V2 fields + gallery
@@ -269,7 +320,9 @@ describe("Workstream B — Product Catalog V2 UI", () => {
     render(
       <AuthSessionProvider>
         <MemoryRouter initialEntries={["/merchant/products/new"]}>
-          <Routes><Route path="/merchant/products/new" element={<MerchantProductEditorPage />} /></Routes>
+          <Routes>
+            <Route path="/merchant/products/new" element={<MerchantProductEditorPage />} />
+          </Routes>
         </MemoryRouter>
       </AuthSessionProvider>,
     );
@@ -297,7 +350,10 @@ describe("Workstream B — Product Catalog V2 UI", () => {
       if (url.includes("/api/merchant/products")) {
         calls.push(url);
         return url.includes("page=2")
-          ? Response.json({ items: [product], pagination: { page: 2, limit: 20, totalItems: 21, totalPages: 2 } })
+          ? Response.json({
+              items: [product],
+              pagination: { page: 2, limit: 20, totalItems: 21, totalPages: 2 },
+            })
           : Response.json({ items: [], pagination: { page: 1, limit: 20, totalItems: 21, totalPages: 2 } });
       }
       return Response.json({ error: "Not found" }, { status: 404 });
@@ -306,7 +362,9 @@ describe("Workstream B — Product Catalog V2 UI", () => {
     render(
       <AuthSessionProvider>
         <MemoryRouter initialEntries={["/merchant/products/37/edit"]}>
-          <Routes><Route path="/merchant/products/:productId/edit" element={<MerchantProductEditorPage />} /></Routes>
+          <Routes>
+            <Route path="/merchant/products/:productId/edit" element={<MerchantProductEditorPage />} />
+          </Routes>
         </MemoryRouter>
       </AuthSessionProvider>,
     );

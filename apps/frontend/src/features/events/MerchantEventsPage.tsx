@@ -35,10 +35,11 @@ export function MerchantEventsPage() {
 
   const [formTarget, setFormTarget] = useState<MerchantEventDto | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MerchantEventDto | null>(null);
+  const [publishTarget, setPublishTarget] = useState<MerchantEventDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [publishError, setPublishError] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -56,11 +57,7 @@ export function MerchantEventsPage() {
   }, [token]);
 
   const resource = useResource(
-    () =>
-      eventsApi.listMerchantEvents(
-        { status: statusFilter, q: searchQuery, page, limit: 10 },
-        token,
-      ),
+    () => eventsApi.listMerchantEvents({ status: statusFilter, q: searchQuery, page, limit: 10 }, token),
     [token, statusFilter, searchQuery, page],
   );
 
@@ -74,7 +71,6 @@ export function MerchantEventsPage() {
     if (!formTarget || busy) return;
     setBusy(true);
     setFormError("");
-    setActionError("");
     setNotice("");
     try {
       if (formTarget === "new") {
@@ -93,22 +89,28 @@ export function MerchantEventsPage() {
     }
   }
 
-  async function handleTogglePublish(item: MerchantEventDto) {
-    if (busy) return;
+  function requestTogglePublish(item: MerchantEventDto) {
+    setPublishError("");
+    setPublishTarget(item);
+  }
+
+  async function handleConfirmTogglePublish() {
+    if (!publishTarget || busy) return;
     setBusy(true);
-    setActionError("");
+    setPublishError("");
     setNotice("");
     try {
-      if (item.status === "DRAFT") {
-        await eventsApi.publishMerchantEvent(item.id, token);
-        setNotice(`Đã xuất bản "${item.title}".`);
+      if (publishTarget.status === "DRAFT") {
+        await eventsApi.publishMerchantEvent(publishTarget.id, token);
+        setNotice(`Đã xuất bản "${publishTarget.title}".`);
       } else {
-        await eventsApi.unpublishMerchantEvent(item.id, token);
-        setNotice(`Đã chuyển "${item.title}" về trạng thái Nháp.`);
+        await eventsApi.unpublishMerchantEvent(publishTarget.id, token);
+        setNotice(`Đã chuyển "${publishTarget.title}" về trạng thái Nháp.`);
       }
+      setPublishTarget(null);
       resource.reload();
     } catch (reason) {
-      setActionError(errorText(reason));
+      setPublishError(errorText(reason));
     } finally {
       setBusy(false);
     }
@@ -118,7 +120,6 @@ export function MerchantEventsPage() {
     if (!deleteTarget || busy) return;
     setBusy(true);
     setDeleteError("");
-    setActionError("");
     setNotice("");
     try {
       await eventsApi.deleteMerchantEvent(deleteTarget.id, token);
@@ -134,6 +135,14 @@ export function MerchantEventsPage() {
 
   const items = resource.data?.items ?? [];
   const pagination = resource.data?.pagination;
+  const hasActiveFilters = Boolean(statusFilter || searchQuery);
+
+  function clearFilters() {
+    setStatusFilter("");
+    setSearchInput("");
+    setSearchQuery("");
+    setPage(1);
+  }
 
   return (
     <>
@@ -177,29 +186,33 @@ export function MerchantEventsPage() {
           {notice}
         </p>
       )}
-      {actionError && (
-        <p role="alert" className="mb-4 rounded-xl bg-[#fae7e3] p-4 text-sm text-[#a4473a]">
-          {actionError}
-        </p>
-      )}
-
       {resource.loading ? (
         <LoadingState cards={3} />
       ) : resource.error ? (
         <ErrorState message={translateEventError(resource.error)} retry={resource.reload} />
       ) : items.length === 0 ? (
         <EmptyState
-          title="Chưa có sự kiện"
-          description="Tạo sự kiện mới để thông báo workshop, buổi ra mắt sản phẩm hoặc hoạt động cộng đồng."
+          title={hasActiveFilters ? "Không tìm thấy sự kiện" : "Chưa có sự kiện"}
+          description={
+            hasActiveFilters
+              ? "Thử đổi từ khóa hoặc trạng thái để xem thêm sự kiện."
+              : "Tạo sự kiện mới để thông báo workshop, buổi ra mắt sản phẩm hoặc hoạt động cộng đồng."
+          }
           action={
-            <Button
-              onClick={() => {
-                setFormError("");
-                setFormTarget("new");
-              }}
-            >
-              Tạo sự kiện đầu tiên
-            </Button>
+            hasActiveFilters ? (
+              <Button variant="outline" onClick={clearFilters}>
+                Xóa bộ lọc
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  setFormError("");
+                  setFormTarget("new");
+                }}
+              >
+                Tạo sự kiện đầu tiên
+              </Button>
+            )
           }
         />
       ) : (
@@ -214,7 +227,7 @@ export function MerchantEventsPage() {
                 setFormError("");
                 setFormTarget(target);
               }}
-              onTogglePublish={handleTogglePublish}
+              onTogglePublish={requestTogglePublish}
               onDelete={(target) => {
                 setDeleteError("");
                 setDeleteTarget(target);
@@ -261,13 +274,30 @@ export function MerchantEventsPage() {
       />
 
       <ConfirmActionDialog
+        open={publishTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) {
+            setPublishTarget(null);
+            setPublishError("");
+          }
+        }}
+        title={publishTarget?.status === "DRAFT" ? "Xuất bản sự kiện?" : "Gỡ sự kiện khỏi trang công khai?"}
+        description={
+          publishTarget?.status === "DRAFT"
+            ? `“${publishTarget.title}” sẽ hiển thị trên trang sự kiện công khai của cửa hàng.`
+            : `“${publishTarget?.title}” sẽ không còn hiển thị công khai. Nội dung vẫn được giữ ở trạng thái nháp.`
+        }
+        confirmLabel={publishTarget?.status === "DRAFT" ? "Xác nhận xuất bản" : "Xác nhận gỡ xuất bản"}
+        busy={busy}
+        error={publishError}
+        onConfirm={handleConfirmTogglePublish}
+      />
+      <ConfirmActionDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Xóa bản nháp sự kiện?"
         description={
-          deleteTarget
-            ? `Bản nháp "${deleteTarget.title}" sẽ bị xóa vĩnh viễn và không thể khôi phục.`
-            : ""
+          deleteTarget ? `Bản nháp "${deleteTarget.title}" sẽ bị xóa vĩnh viễn và không thể khôi phục.` : ""
         }
         confirmLabel="Xóa bản nháp"
         destructive
