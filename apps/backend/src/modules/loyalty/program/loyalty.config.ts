@@ -1,7 +1,7 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../../lib/prisma.js";
 import type { LoyaltyConfigDto, LoyaltyConfigInput } from "./loyalty.types.js";
-import { withTransactionRetry } from "./loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import type { TierLevel } from "./loyalty.calculation.js";
 
 type PolicyTier = { level: TierLevel; minLifetimePoints: number; multiplier: Prisma.Decimal | string };

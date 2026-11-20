@@ -7,8 +7,8 @@ import type {
   RefundPreviewDto,
 } from "./orders.types.js";
 import { OrderNotCancellableError } from "./orders.types.js";
-import { loyaltyRepository } from "../../loyalty/program/loyalty.repository.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { completePaidOrder } from "./orders.complete-payment.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import { calculateDiscountedTotal } from "./order-pricing.js";
 import { toOrderDto } from "./orders.serialization.js";
 import { HttpError } from "../../../lib/http-error.js";
@@ -155,7 +155,7 @@ export const ordersRepository = {
             await tx.orderVoucherReservation.deleteMany({ where: { orderId } });
             return "reservation_expired";
           }
-          return loyaltyRepository.completePaidOrder(tx, orderId, memberId);
+          return completePaidOrder(tx, orderId, memberId);
         },
         { isolationLevel: "Serializable" },
       ),

@@ -1,5 +1,4 @@
 import { loyaltyConfigRepository } from "./loyalty.config.js";
-import { completePaidOrder } from "./loyalty.earning.js";
 import { reserveOrderPoints } from "./loyalty.reservation.js";
 import { getWallet } from "./loyalty.read.js";
 
@@ -7,6 +6,5 @@ import { getWallet } from "./loyalty.read.js";
 export const loyaltyRepository = {
   ...loyaltyConfigRepository,
   reserveOrderPoints,
-  completePaidOrder,
   getWallet,
 };

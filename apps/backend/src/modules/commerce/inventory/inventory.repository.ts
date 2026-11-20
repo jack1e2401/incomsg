@@ -2,7 +2,7 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import type { InventoryMovementType, InventoryOwnerType } from "../../../generated/prisma/enums.js";
 import { prisma } from "../../../lib/prisma.js";
 import { HttpError } from "../../../lib/http-error.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import { moveInventory, readInventoryBalance, toInventorySummary } from "./inventory.persistence.js";
 
 const historyLimit = 100;

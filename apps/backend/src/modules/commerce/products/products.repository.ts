@@ -2,7 +2,7 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import { HttpError } from "../../../lib/http-error.js";
 import { prisma } from "../../../lib/prisma.js";
 import { createInventoryBalance } from "../inventory/inventory.persistence.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import {
   productReadRepository,
   productSelection,

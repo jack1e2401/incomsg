@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../../lib/prisma.js";
 import { HttpError } from "../../../lib/http-error.js";
-import { withTransactionRetry } from "../program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import type {
   CancelRewardResponseDto,
   DefinitionDto,

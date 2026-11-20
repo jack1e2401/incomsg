@@ -1,6 +1,6 @@
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../../lib/prisma.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import type {
   StorefrontConfig,
   StorefrontDraftDto,

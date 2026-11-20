@@ -2,9 +2,9 @@ import { prisma } from "../../../lib/prisma.js";
 import { HttpError } from "../../../lib/http-error.js";
 import { merchantService } from "../../merchants/profile/merchant.service.js";
 import { ordersRepository } from "../orders/orders.repository.js";
-import { completeMockRefund } from "../orders/orders.refund.repository.js";
+import { completeMockRefund } from "./refunds.complete.js";
 import { toOrderDto } from "../orders/orders.serialization.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import { RefundRequestStatus } from "../../../generated/prisma/enums.js";
 
 import { reasonInput } from "./refunds.validation.js";

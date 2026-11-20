@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { withTransactionRetry } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../../apps/backend/src/lib/prisma-transaction.js";
 
 test("retries a serialization conflict and returns the committed attempt", async () => {
   let calls = 0;

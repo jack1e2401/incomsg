@@ -1,14 +1,9 @@
-import { Prisma } from "../../../generated/prisma/client.js";
+import type { Order, Prisma } from "../../../generated/prisma/client.js";
 import { HttpError } from "../../../lib/http-error.js";
 import { calculateEarnedPoints, points, selectTier, pointScale, type TierLevel } from "./loyalty.calculation.js";
 import { exactPoints } from "./loyalty.balance.js";
 import { loadEarningPolicy } from "./loyalty.config.js";
 import { canReservePoints } from "./points-reservation.js";
-import { toOrderDto } from "../../commerce/orders/orders.serialization.js";
-import type { OrderDto } from "../../commerce/orders/orders.types.js";
-import { consumeOrderInventory } from "../../commerce/inventory/inventory.order.js";
-import { recordMerchantFee } from "../../merchants/profile/merchant.finance.js";
-import { processPaidOrderChallenges } from "../challenges/challenges.engine.js";
 
 export interface EarningSnapshot {
   vndPerPoint: number;
@@ -21,30 +16,12 @@ export interface EarningSnapshot {
   policy?: Prisma.JsonValue;
 }
 
-export async function completePaidOrder(
-  tx: Prisma.TransactionClient, orderId: number, memberId: number, snapshot?: EarningSnapshot,
-): Promise<OrderDto | "missing" | "already_paid"> {
-  const changed = await tx.order.updateMany({
-    where: { id: orderId, memberId, status: "PENDING" }, data: { status: "PAID", paidAt: new Date() },
-  });
-  if (changed.count === 0) {
-    const existing = await tx.order.findFirst({ where: { id: orderId, memberId }, select: { id: true } });
-    return existing ? "already_paid" : "missing";
-  }
-  const order = await tx.order.findUniqueOrThrow({
-    where: { id: orderId }, include: { items: true, voucher: { include: { membership: true } } },
-  });
-  await consumeOrderInventory(tx, order);
-  if (order.voucherId !== null) {
-    const voucher = order.voucher;
-    if (!voucher || voucher.snapshotType !== "DISCOUNT" || voucher.membership.memberId !== memberId ||
-      voucher.membership.merchantId !== order.merchantId) throw new HttpError(409, "VOUCHER_NOT_AVAILABLE");
-    const used = await tx.memberVoucher.updateMany({
-      where: { id: voucher.id, status: "AVAILABLE" }, data: { status: "USED", usedAt: new Date() },
-    });
-    if (used.count !== 1) throw new HttpError(409, "VOUCHER_NOT_AVAILABLE");
-    await tx.orderVoucherReservation.deleteMany({ where: { orderId: order.id } });
-  }
+export async function creditOrderPoints(
+  tx: Prisma.TransactionClient,
+  order: Pick<Order, "id" | "memberId" | "merchantId" | "total"> & { paidAt: Date },
+  snapshot?: EarningSnapshot,
+) {
+  const memberId = order.memberId;
   const policy = await loadEarningPolicy(tx, order.merchantId);
   const membership = await tx.merchantMembership.upsert({
     where: { memberId_merchantId: { memberId, merchantId: order.merchantId } },
@@ -94,7 +71,7 @@ export async function completePaidOrder(
   } });
   const audit: Prisma.InputJsonObject = {
     source: snapshot ? (snapshot.multiplier ? "VNPAY_INITIATION" : "LEGACY_VNPAY") : "MOCK_PAID",
-    capturedAt: order.paidAt!.toISOString(), pointScale, rounding: "HALF_UP",
+    capturedAt: order.paidAt.toISOString(), pointScale, rounding: "HALF_UP",
     netOrderAmount: order.total.toFixed(0), vndPerPoint, ruleActive, tierLevel,
     multiplier: multiplier.toFixed(2), earnedPointsExact: exactPoints(earned),
     policyVersionId: policy.policyVersion.id,
@@ -109,7 +86,5 @@ export async function completePaidOrder(
     include: { items: true, paymentAttempt: true, refund: true, pointTransactions: true },
   });
   await tx.merchantMembership.update({ where: { id: membership.id }, data: { tierId: nextTier.id } });
-  await recordMerchantFee(tx, { ...order, paidAt: order.paidAt! });
-  await processPaidOrderChallenges(tx, { ...order, paidAt: order.paidAt! }, membership.id);
-  return { ...toOrderDto(paid), promotedToTier };
+  return { paid, promotedToTier, membershipId: membership.id };
 }

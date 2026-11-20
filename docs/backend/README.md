@@ -47,3 +47,14 @@ giữ cách tính nguyên cũ để không vượt reservation cũ; attempt mớ
 khi bắt đầu thanh toán và nhận điểm lẻ theo M1.
 
 Mã nghiệp vụ nằm trong [src/modules](../../apps/backend/src/modules), schema và migration trong [prisma](../../apps/backend/prisma), unit test và kiểm thử tích hợp trong [tests/backend](../../tests/backend).
+
+| Nhóm trong `src/modules` | Trách nhiệm |
+| --- | --- |
+| `loyalty` | Chương trình hội viên, chính sách tính điểm, hạng, ví, sổ điểm, voucher và thử thách. |
+| `commerce` | Sản phẩm, tồn kho, đơn hàng, thanh toán và hoàn tiền. |
+| `merchants` | Hồ sơ, đăng ký, cửa hàng công khai và sự kiện của merchant. |
+| `reporting` | Tra cứu hồ sơ khách hàng và phân tích cho merchant. |
+| `governance` | Quản trị và báo cáo vi phạm. |
+| `platform` | Xác thực, kiểm tra tình trạng hệ thống và tải tệp. |
+
+[Hoàn tất thanh toán](../../apps/backend/src/modules/commerce/orders/orders.complete-payment.ts) và [hoàn tất hoàn tiền](../../apps/backend/src/modules/commerce/refunds/refunds.complete.ts) điều phối các thao tác nghiệp vụ qua transaction do điểm gọi truyền vào. Công thức và thao tác ghi sổ điểm nằm trong `loyalty/program`. [app.ts](../../apps/backend/src/app.ts) đăng ký các tuyến HTTP và middleware của từng nhóm.

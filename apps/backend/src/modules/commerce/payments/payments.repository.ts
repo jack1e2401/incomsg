@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../../../generated/prisma/client.js";
 import { prisma } from "../../../lib/prisma.js";
-import { withTransactionRetry } from "../../loyalty/program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import { loyaltyRepository } from "../../loyalty/program/loyalty.repository.js";
+import { completePaidOrder } from "../orders/orders.complete-payment.js";
 import { releaseOrderInventory } from "../inventory/inventory.order.js";
 
 const maxVnpayAmount = 999_999_999_999n;
@@ -19,7 +20,7 @@ export const paymentsRepository = {
         const orderFence = await tx.order.updateMany({ where: { id: orderId, memberId, status: "PENDING" }, data: { status: "PENDING" } });
         if (orderFence.count !== 1) return "already_paid" as const;
         if (order.total.isZero()) {
-          const paid = await loyaltyRepository.completePaidOrder(tx, orderId, memberId);
+          const paid = await completePaidOrder(tx, orderId, memberId);
           return paid === "missing" || paid === "already_paid" ? paid : { zeroTotal: true, order: paid } as const;
         }
         const amount = BigInt(order.total.toFixed(0)) * 100n;
@@ -115,7 +116,7 @@ export const paymentsRepository = {
           await tx.orderVoucherReservation.deleteMany({ where: { orderId: attempt.orderId } });
           return { code: "00", message: "Confirm Success" };
         }
-        const paid = await loyaltyRepository.completePaidOrder(tx, attempt.orderId, attempt.order.memberId, {
+        const paid = await completePaidOrder(tx, attempt.orderId, attempt.order.memberId, {
           vndPerPoint: attempt.snapshotVndPerPoint,
           ruleActive: attempt.snapshotRuleActive,
           maxMultiplier: attempt.snapshotMaxMultiplier,

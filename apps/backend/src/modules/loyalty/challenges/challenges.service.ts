@@ -3,7 +3,7 @@ import type { ChallengeType, ChallengeStatus } from "../../../generated/prisma/e
 import { prisma } from "../../../lib/prisma.js";
 import { HttpError } from "../../../lib/http-error.js";
 import { merchantService } from "../../merchants/profile/merchant.service.js";
-import { withTransactionRetry } from "../program/loyalty.transaction.js";
+import { withTransactionRetry } from "../../../lib/prisma-transaction.js";
 import { lockChallenge, recordChallengeProgress, settleChallengeRewards } from "./challenges.rewards.js";
 import { buildDefaultChallengeMilestones, type ChallengeMilestoneInput } from "./challenges.milestones.js";
 

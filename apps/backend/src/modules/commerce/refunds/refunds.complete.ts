@@ -2,11 +2,11 @@ import type { OrderRefund, Prisma } from "../../../generated/prisma/client.js";
 import { HttpError } from "../../../lib/http-error.js";
 import { reverseOrderChallenges } from "../../loyalty/challenges/challenges.engine.js";
 import { describeWallet } from "../../loyalty/program/loyalty.balance.js";
-import { points, selectTier } from "../../loyalty/program/loyalty.calculation.js";
-import { loadEarningPolicy } from "../../loyalty/program/loyalty.config.js";
+import { reverseOrderPoints } from "../../loyalty/program/loyalty.reversal.js";
+import { restoreOrderVoucher } from "../../loyalty/vouchers/vouchers.order.js";
 import { reverseMerchantFee } from "../../merchants/profile/merchant.finance.js";
-import { toOrderDto } from "./orders.serialization.js";
-import type { RefundResponseDto } from "./orders.types.js";
+import { toOrderDto } from "../orders/orders.serialization.js";
+import type { RefundResponseDto } from "../orders/orders.types.js";
 
 export async function completeMockRefund(
   tx: Prisma.TransactionClient,
@@ -43,71 +43,8 @@ export async function completeMockRefund(
     },
   });
 
-  const originalEarned = points(order.earnedPointsExact ?? "0");
-  if (originalEarned.greaterThan(0)) {
-    const membership = await tx.merchantMembership.findUniqueOrThrow({
-      where: {
-        memberId_merchantId: { memberId: order.memberId, merchantId },
-      },
-      include: { wallet: true },
-    });
-    const wallet = membership.wallet!;
-    const balanceAfter = points(wallet.exactBalance).minus(
-      originalEarned,
-    );
-    const lifetimeAfter = points(wallet.netLifetimeEarned).minus(
-      originalEarned,
-    );
-
-    const updatedWallet = await tx.loyaltyWallet.updateMany({
-      where: {
-        id: wallet.id,
-        exactBalance: wallet.exactBalance,
-        netLifetimeEarned: wallet.netLifetimeEarned,
-      },
-      data: {
-        exactBalance: { decrement: originalEarned },
-        netLifetimeEarned: { decrement: originalEarned },
-      },
-    });
-    if (updatedWallet.count !== 1)
-      throw Object.assign(new Error("Concurrent wallet update"), {
-        code: "P2034",
-      });
-
-    const policy = await loadEarningPolicy(tx, merchantId);
-    const nextLevel =
-      selectTier(lifetimeAfter, policy.tiers) ?? "BRONZE";
-    const nextTier = policy.tiers.find((t) => t.level === nextLevel);
-    if (nextTier) {
-      await tx.merchantMembership.update({
-        where: { id: membership.id },
-        data: { tierId: nextTier.id },
-      });
-    }
-
-    await tx.pointTransaction.create({
-      data: {
-        walletId: wallet.id,
-        type: "EARN_REVERSAL",
-        delta: originalEarned.negated(),
-        balanceAfter,
-        promotedToTier: null,
-        reason: `Refund for order #${order.id}`,
-        eventRef: `order-earn-reversal-${order.id}`,
-        source: "MERCHANT_REFUND",
-        actorId: ownerId,
-        orderId: order.id,
-      },
-    });
-  }
-
-  if (order.voucherId !== null) {
-    await tx.memberVoucher.updateMany({
-      where: { id: order.voucherId, status: "USED" },
-      data: { status: "AVAILABLE", usedAt: null },
-    });
-  }
+  await reverseOrderPoints(tx, order, ownerId);
+  await restoreOrderVoucher(tx, order.voucherId);
 
   const challengeReversals = await reverseOrderChallenges(tx, order.id, ownerId);
   const updatedOrder = await tx.order.update({
