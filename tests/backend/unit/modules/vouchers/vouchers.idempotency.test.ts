@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HttpError } from "../../../../../apps/backend/src/lib/http-error.js";
-import { readIdempotencyKey } from "../../../../../apps/backend/src/modules/vouchers/vouchers.validation.js";
+import { readIdempotencyKey } from "../../../../../apps/backend/src/modules/loyalty/vouchers/vouchers.validation.js";
 
 test("accepts non-empty idempotency key up to 128 chars", () => {
   assert.equal(readIdempotencyKey("valid-key-123"), "valid-key-123");

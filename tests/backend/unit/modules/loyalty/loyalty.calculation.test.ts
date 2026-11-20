@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Prisma } from "../../../../../apps/backend/src/generated/prisma/client.js";
-import { calculateEarnedPoints, selectTier } from "../../../../../apps/backend/src/modules/loyalty/loyalty.calculation.js";
+import { calculateEarnedPoints, selectTier } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.calculation.js";
 
 test("preserves fractional earning and multiplies before any integer projection", () => {
   assert.equal(calculateEarnedPoints(new Prisma.Decimal("180000"), 10000, new Prisma.Decimal("1.20")).toString(), "21.6");

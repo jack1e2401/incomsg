@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readChallengeInput } from "../../../../../apps/backend/src/modules/challenges/challenges.validation.js";
+import { readChallengeInput } from "../../../../../apps/backend/src/modules/loyalty/challenges/challenges.validation.js";
 import { HttpError } from "../../../../../apps/backend/src/lib/http-error.js";
 
 test("recipient cap is an optional positive database integer, or null for unlimited", () => {

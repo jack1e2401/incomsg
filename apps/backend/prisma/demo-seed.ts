@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "../src/lib/prisma.js";
 import { hashPassword } from "../src/lib/password.js";
-import { createInventoryBalance } from "../src/modules/inventory/inventory.persistence.js";
+import { createInventoryBalance } from "../src/modules/commerce/inventory/inventory.persistence.js";
 
 async function main(): Promise<void> {
   const database = new URL(process.env.DATABASE_URL ?? "");

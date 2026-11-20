@@ -12,7 +12,7 @@ export const [{ app }, { prisma }, { signAccessToken }, { signVnpay }, { env }, 
   import("../../../apps/backend/src/app.js"),
   import("../../../apps/backend/src/lib/prisma.js"),
   import("../../../apps/backend/src/lib/access-token.js"),
-  import("../../../apps/backend/src/modules/payments/vnpay-signature.js"),
+  import("../../../apps/backend/src/modules/commerce/payments/vnpay-signature.js"),
   import("../../../apps/backend/src/config/env.js"),
   import("../../../apps/backend/src/generated/prisma/client.js"),
 ]);

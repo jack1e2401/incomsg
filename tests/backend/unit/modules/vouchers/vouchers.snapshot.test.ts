@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { snapshotVoucherTerms } from "../../../../../apps/backend/src/modules/vouchers/vouchers.snapshot.js";
+import { snapshotVoucherTerms } from "../../../../../apps/backend/src/modules/loyalty/vouchers/vouchers.snapshot.js";
 
 test("issued voucher terms copy and preserve the current definition values", () => {
   assert.deepEqual(snapshotVoucherTerms({

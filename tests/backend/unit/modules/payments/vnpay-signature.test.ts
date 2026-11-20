@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canonicalVnpayData, signVnpay, verifyVnpay } from "../../../../../apps/backend/src/modules/payments/vnpay-signature.js";
+import { canonicalVnpayData, signVnpay, verifyVnpay } from "../../../../../apps/backend/src/modules/commerce/payments/vnpay-signature.js";
 
 const secret = "test-secret-for-vnpay-signature";
 const entries = { vnp_Amount: "1000000", vnp_OrderInfo: "Thanh toan don hang 1", vnp_TxnRef: "order-1" };

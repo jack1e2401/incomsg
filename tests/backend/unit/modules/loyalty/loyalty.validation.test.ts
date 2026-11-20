@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { HttpError } from "../../../../../apps/backend/src/lib/http-error.js";
-import { parseConfig } from "../../../../../apps/backend/src/modules/loyalty/loyalty.validation.js";
+import { parseConfig } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.validation.js";
 
 const config = {
   vndPerPoint: 10000,

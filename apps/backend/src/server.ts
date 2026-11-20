@@ -1,6 +1,6 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
-import { ordersService } from "./modules/orders/orders.service.js";
+import { ordersService } from "./modules/commerce/orders/orders.service.js";
 
 const expireOrders = () => {
   void ordersService.expirePendingOrders().catch((error: unknown) => {

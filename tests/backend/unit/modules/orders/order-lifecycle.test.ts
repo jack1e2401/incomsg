@@ -5,7 +5,7 @@ import {
   computeOrderActions,
   isStalePaymentAttempt,
   toOrderDto,
-} from "../../../../../apps/backend/src/modules/orders/orders.serialization.js";
+} from "../../../../../apps/backend/src/modules/commerce/orders/orders.serialization.js";
 
 test("isStalePaymentAttempt flags CREATED attempts older than 15 minutes", () => {
   const freshAttempt = { status: "CREATED", createdAt: new Date(Date.now() - 5 * 60 * 1000) };

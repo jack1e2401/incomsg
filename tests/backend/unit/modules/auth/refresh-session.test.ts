@@ -5,7 +5,7 @@ import {
   hashRefreshToken,
   parseRefreshTokenCookie,
   generateRefreshToken,
-} from "../../../../../apps/backend/src/modules/auth/refresh-session.js";
+} from "../../../../../apps/backend/src/modules/platform/auth/refresh-session.js";
 
 describe("refresh session tokens", () => {
   it("generates high-entropy opaque tokens and stores only a stable SHA-256 digest", () => {

@@ -5,16 +5,16 @@ import {
   MAX_MEDIA_FILE_BYTES,
   detectImageFormat,
   parseSingleFileMultipartBuffer,
-} from "../../../../../apps/backend/src/modules/media/media.multipart.js";
+} from "../../../../../apps/backend/src/modules/platform/media/media.multipart.js";
 import {
   fallbackSlug,
   slugifyStoreName,
   validateExplicitSlug,
-} from "../../../../../apps/backend/src/modules/storefront/storefront.slug.js";
+} from "../../../../../apps/backend/src/modules/merchants/storefront/storefront.slug.js";
 import {
   defaultStorefrontConfig,
   readStorefrontConfig,
-} from "../../../../../apps/backend/src/modules/storefront/storefront.validation.js";
+} from "../../../../../apps/backend/src/modules/merchants/storefront/storefront.validation.js";
 
 test("slugifyStoreName transliterates Vietnamese characters and avoids reserved words", () => {
   assert.equal(slugifyStoreName("Cà Phê Mộc Đỏ"), "ca-phe-moc-do");

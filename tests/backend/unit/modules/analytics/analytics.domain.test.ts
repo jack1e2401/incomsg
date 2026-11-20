@@ -8,13 +8,13 @@ import {
   computeSlowMovingProducts,
   computeTopProducts,
   parseAnalyticsQuery,
-} from "../../../../../apps/backend/src/modules/analytics/analytics.domain.js";
+} from "../../../../../apps/backend/src/modules/reporting/analytics/analytics.domain.js";
 import {
   computeCustomerStats,
   parseCustomerListQuery,
   resolveMemberTier,
-} from "../../../../../apps/backend/src/modules/customers/customers.domain.js";
-import { defaultTiers } from "../../../../../apps/backend/src/modules/loyalty/loyalty.config.js";
+} from "../../../../../apps/backend/src/modules/reporting/customers/customers.domain.js";
+import { defaultTiers } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.config.js";
 
 test("parseAnalyticsQuery defaults to 30-day VN window and validates boundaries", () => {
   const now = new Date("2026-11-16T17:30:00Z"); // 2026-11-17 00:30 in Asia/Ho_Chi_Minh

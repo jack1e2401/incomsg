@@ -14,7 +14,7 @@ import {
   type Member,
   type Shop,
 } from "./exact-points.fixtures.js";
-import { releaseExpiredMockOrders } from "../../../apps/backend/src/modules/inventory/inventory.order.js";
+import { releaseExpiredMockOrders } from "../../../apps/backend/src/modules/commerce/inventory/inventory.order.js";
 
 const target = new URL(env.databaseUrl ?? "http://invalid");
 assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(target.hostname), "inventory integration tests require local MySQL");

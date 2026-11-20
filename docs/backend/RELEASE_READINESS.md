@@ -89,10 +89,10 @@ Không demo cancel/refund/debt hoặc VNPay sandbox ở trạng thái hiện t�
 
 ## Source map
 
-- Earning formula + exact scale: [`loyalty.calculation.ts`](../../apps/backend/src/modules/loyalty/loyalty.calculation.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/loyalty.earning.ts).
-- Order create/pay and lifecycle routes: [`orders.service.ts`](../../apps/backend/src/modules/orders/orders.service.ts), [`orders.repository.ts`](../../apps/backend/src/modules/orders/orders.repository.ts), [`orders.routes.ts`](../../apps/backend/src/modules/orders/orders.routes.ts).
-- VNPay attempt/IPN: [`payments.service.ts`](../../apps/backend/src/modules/payments/payments.service.ts), [`payments.repository.ts`](../../apps/backend/src/modules/payments/payments.repository.ts).
-- Wallet projection/tier read: [`loyalty.balance.ts`](../../apps/backend/src/modules/loyalty/loyalty.balance.ts), [`loyalty.read.ts`](../../apps/backend/src/modules/loyalty/loyalty.read.ts), [`schema.prisma`](../../apps/backend/prisma/schema.prisma).
-- Redemption and reward fulfillment: [`vouchers.routes.ts`](../../apps/backend/src/modules/vouchers/vouchers.routes.ts), [`vouchers.service.ts`](../../apps/backend/src/modules/vouchers/vouchers.service.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/vouchers/vouchers.repository.ts).
+- Earning formula + exact scale: [`loyalty.calculation.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.calculation.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.earning.ts).
+- Order create/pay and lifecycle routes: [`orders.service.ts`](../../apps/backend/src/modules/commerce/orders/orders.service.ts), [`orders.repository.ts`](../../apps/backend/src/modules/commerce/orders/orders.repository.ts), [`orders.routes.ts`](../../apps/backend/src/modules/commerce/orders/orders.routes.ts).
+- VNPay attempt/IPN: [`payments.service.ts`](../../apps/backend/src/modules/commerce/payments/payments.service.ts), [`payments.repository.ts`](../../apps/backend/src/modules/commerce/payments/payments.repository.ts).
+- Wallet projection/tier read: [`loyalty.balance.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.balance.ts), [`loyalty.read.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.read.ts), [`schema.prisma`](../../apps/backend/prisma/schema.prisma).
+- Redemption and reward fulfillment: [`vouchers.routes.ts`](../../apps/backend/src/modules/loyalty/vouchers/vouchers.routes.ts), [`vouchers.service.ts`](../../apps/backend/src/modules/loyalty/vouchers/vouchers.service.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/loyalty/vouchers/vouchers.repository.ts).
 - Member/merchant views and backend-vs-mock routing: [`BackendMemberPages.tsx`](../../apps/frontend/src/features/member/BackendMemberPages.tsx), [`BackendMerchantPages.tsx`](../../apps/frontend/src/features/merchant/BackendMerchantPages.tsx), [`App.tsx`](../../apps/frontend/src/app/App.tsx).
 - Tests: [`tests/backend`](../../tests/backend), [`tests/frontend`](../../tests/frontend).

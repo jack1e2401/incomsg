@@ -35,7 +35,7 @@ flowchart LR
 | Fulfill reward | `GET /api/merchant/rewards`, `POST /api/merchant/rewards/:memberVoucherId/fulfill` | service resolve merchant theo owner → repository kiểm tra voucher cùng merchant → conditional status update | MemberVoucher FULFILLED + RewardFulfillment với actor/note/time |
 | Cancel/refund | Không có endpoint | Không có service/repository handler | Order schema chỉ PENDING/PAID; reversal enum mới là khai báo |
 
-Implementation chính: [`orders.service.ts`](../../apps/backend/src/modules/orders/orders.service.ts), [`orders.repository.ts`](../../apps/backend/src/modules/orders/orders.repository.ts), [`payments.service.ts`](../../apps/backend/src/modules/payments/payments.service.ts), [`payments.repository.ts`](../../apps/backend/src/modules/payments/payments.repository.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/loyalty.earning.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/vouchers/vouchers.repository.ts).
+Implementation chính: [`orders.service.ts`](../../apps/backend/src/modules/commerce/orders/orders.service.ts), [`orders.repository.ts`](../../apps/backend/src/modules/commerce/orders/orders.repository.ts), [`payments.service.ts`](../../apps/backend/src/modules/commerce/payments/payments.service.ts), [`payments.repository.ts`](../../apps/backend/src/modules/commerce/payments/payments.repository.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.earning.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/loyalty/vouchers/vouchers.repository.ts).
 
 ## 3. Công thức earning thực tế
 
@@ -52,7 +52,7 @@ Stored points = round HALF_UP to 12 decimal places
 - VNPay chụp rate, multiplier, tier/policy tại thời điểm tạo payment attempt. Mock payment đọc policy lúc xác nhận PAID.
 - **Giới hạn precision:** phép chia vô hạn không giữ được toán học exact sau từng giao dịch; ba lần `1/3` trở thành `0.999999999999`. Đây là quy ước implementation đang có, không phải lỗi ở ví dụ 0.6 + 0.6.
 
-Nguồn: [`loyalty.calculation.ts`](../../apps/backend/src/modules/loyalty/loyalty.calculation.ts), [`order-pricing.ts`](../../apps/backend/src/modules/orders/order-pricing.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/loyalty.earning.ts), [`loyalty.reservation.ts`](../../apps/backend/src/modules/loyalty/loyalty.reservation.ts).
+Nguồn: [`loyalty.calculation.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.calculation.ts), [`order-pricing.ts`](../../apps/backend/src/modules/commerce/orders/order-pricing.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.earning.ts), [`loyalty.reservation.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.reservation.ts).
 
 ## 4. Wallet và ledger invariants hiện có
 
@@ -65,7 +65,7 @@ Nguồn: [`loyalty.calculation.ts`](../../apps/backend/src/modules/loyalty/loyal
 - `reservedPoints` trong code là capacity dành cho các earning đang chờ thanh toán, không phải điểm khả dụng để redeem. VNPay callback nhả reservation trước khi settlement.
 - Chưa có EARN_REVERSAL implementation để kiểm chứng reconciliation sau refund. Do đó không được suy từ enum rằng reversal/debt đã hoạt động.
 
-Schema/API: [`schema.prisma`](../../apps/backend/prisma/schema.prisma), [`loyalty.balance.ts`](../../apps/backend/src/modules/loyalty/loyalty.balance.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/loyalty.earning.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/vouchers/vouchers.repository.ts).
+Schema/API: [`schema.prisma`](../../apps/backend/prisma/schema.prisma), [`loyalty.balance.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.balance.ts), [`loyalty.earning.ts`](../../apps/backend/src/modules/loyalty/program/loyalty.earning.ts), [`vouchers.repository.ts`](../../apps/backend/src/modules/loyalty/vouchers/vouchers.repository.ts).
 
 ## 5. Atomicity, idempotency, authorization
 

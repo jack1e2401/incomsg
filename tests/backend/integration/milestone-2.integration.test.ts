@@ -10,7 +10,7 @@ const [{ app }, { prisma }, { hashPassword }] = await Promise.all([
   import("../../../apps/backend/src/lib/prisma.js"),
   import("../../../apps/backend/src/lib/password.js"),
 ]);
-const { hashRefreshToken } = await import("../../../apps/backend/src/modules/auth/refresh-session.js");
+const { hashRefreshToken } = await import("../../../apps/backend/src/modules/platform/auth/refresh-session.js");
 
 const suffix = randomUUID();
 const memberEmail = `m2-member-${suffix}@test.local`;

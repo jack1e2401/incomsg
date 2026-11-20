@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyInventoryMovement } from "../../../apps/backend/src/modules/inventory/inventory.domain.js";
+import { applyInventoryMovement } from "../../../apps/backend/src/modules/commerce/inventory/inventory.domain.js";
 
 test("sale stock reservation and payment consume on-hand exactly once", () => {
   const stocked = applyInventoryMovement({ onHand: 0, reserved: 0 }, "INITIAL_STOCK", 5);

@@ -1,8 +1,8 @@
 import type { RequestHandler } from "express";
 import { readAccessToken } from "../lib/access-token.js";
 import { HttpError } from "../lib/http-error.js";
-import { authRepository } from "../modules/auth/auth.repository.js";
-import type { UserDto } from "../modules/auth/auth.types.js";
+import { authRepository } from "../modules/platform/auth/auth.repository.js";
+import type { UserDto } from "../modules/platform/auth/auth.types.js";
 
 declare global {
   namespace Express {

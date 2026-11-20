@@ -12,7 +12,7 @@ process.env.VNPAY_RETURN_URL = "https://merchant.example/api/payments/vnpay/retu
 
 const [{ app }, { prisma }, { signAccessToken }, { signVnpay }, { env }] = await Promise.all([
   import("../../../apps/backend/src/app.js"), import("../../../apps/backend/src/lib/prisma.js"), import("../../../apps/backend/src/lib/access-token.js"),
-  import("../../../apps/backend/src/modules/payments/vnpay-signature.js"), import("../../../apps/backend/src/config/env.js"),
+  import("../../../apps/backend/src/modules/commerce/payments/vnpay-signature.js"), import("../../../apps/backend/src/config/env.js"),
 ]);
 const suffix = randomUUID();
 const emails = [`m6-owner-${suffix}@test.local`, `m6-member-${suffix}@test.local`, `m6-other-${suffix}@test.local`];
@@ -645,8 +645,8 @@ test("SQL backfill preserves positive reservations and safely reserves zero-rese
 
 test("mock finalization and VNPay attempt creation cannot both win concurrently", async () => {
   const [{ paymentsRepository }, { ordersRepository }] = await Promise.all([
-    import("../../../apps/backend/src/modules/payments/payments.repository.js"),
-    import("../../../apps/backend/src/modules/orders/orders.repository.js"),
+    import("../../../apps/backend/src/modules/commerce/payments/payments.repository.js"),
+    import("../../../apps/backend/src/modules/commerce/orders/orders.repository.js"),
   ]);
   const user = await prisma.user.create({ data: { email: `m6-race-${suffix}@test.local`, passwordHash: "fixture", role: "MEMBER" } });
   fixtureUserIds.push(user.id);

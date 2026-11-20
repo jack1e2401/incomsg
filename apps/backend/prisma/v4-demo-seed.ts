@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Prisma } from "../src/generated/prisma/client.js";
 import { hashPassword } from "../src/lib/password.js";
 import { prisma } from "../src/lib/prisma.js";
-import { createInventoryBalance } from "../src/modules/inventory/inventory.persistence.js";
+import { createInventoryBalance } from "../src/modules/commerce/inventory/inventory.persistence.js";
 
 function assertLocalMysql(): void {
   const url = new URL(process.env.DATABASE_URL ?? "");

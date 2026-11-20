@@ -4,7 +4,7 @@ import {
   readCategoryInput,
   readCategoryPatch,
   slugifyVietnamese,
-} from "../../../../../apps/backend/src/modules/products/categories.validation.js";
+} from "../../../../../apps/backend/src/modules/commerce/products/categories.validation.js";
 import {
   readImageUrl,
   readMerchantProductQuery,
@@ -12,7 +12,7 @@ import {
   readProductPatch,
   readPublicProductQuery,
   readStoreSlug,
-} from "../../../../../apps/backend/src/modules/products/products.validation.js";
+} from "../../../../../apps/backend/src/modules/commerce/products/products.validation.js";
 
 const invalidInput = { statusCode: 400, code: "INVALID_INPUT" };
 

@@ -7,7 +7,7 @@ import {
   readPublicEventsQuery,
   readUpdateEventInput,
   slugifyVietnamese,
-} from "../../../../../apps/backend/src/modules/events/events.validation.js";
+} from "../../../../../apps/backend/src/modules/merchants/events/events.validation.js";
 
 const invalidInput = { statusCode: 400, code: "INVALID_INPUT" };
 

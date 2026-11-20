@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { points } from "../../../../../apps/backend/src/modules/loyalty/loyalty.calculation.js";
-import { describeBalance, describeWallet } from "../../../../../apps/backend/src/modules/loyalty/loyalty.balance.js";
+import { points } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.calculation.js";
+import { describeBalance, describeWallet } from "../../../../../apps/backend/src/modules/loyalty/program/loyalty.balance.js";
 
 test("two fractional credits accumulate into an integer and carry", () => {
   assert.deepEqual(describeBalance(points("0.6").plus("0.6")), {

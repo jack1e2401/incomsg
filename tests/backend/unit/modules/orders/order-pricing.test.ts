@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Prisma } from "../../../../../apps/backend/src/generated/prisma/client.js";
-import { calculateDiscountedTotal } from "../../../../../apps/backend/src/modules/orders/order-pricing.js";
+import { calculateDiscountedTotal } from "../../../../../apps/backend/src/modules/commerce/orders/order-pricing.js";
 
 test("caps discount at subtotal and returns nonnegative payable total", () => {
   assert.deepEqual(calculateDiscountedTotal(new Prisma.Decimal("200000"), new Prisma.Decimal("20000")), {

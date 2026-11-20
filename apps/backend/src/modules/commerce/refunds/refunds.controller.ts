@@ -1,0 +1,12 @@
+import type { RequestHandler } from "express";
+import { refundsService } from "./refunds.service.js";
+import { merchantService } from "../../merchants/profile/merchant.service.js";
+import { readRouteId } from "../products/products.validation.js";
+export const createRefundRequest: RequestHandler = async (req, res) => res.status(201).json({ refundRequest: await refundsService.request(res.locals.user.id, readRouteId(req.params.orderId), req.body?.reason) });
+export const getMemberRefundRequest: RequestHandler = async (req, res) => res.json({ refundRequest: await refundsService.getMember(res.locals.user.id, readRouteId(req.params.orderId)) });
+export const listMerchantRefundRequests: RequestHandler = async (req, res) => res.json(await refundsService.listMerchant(res.locals.user.id, req.query));
+export const merchantRefundRequestDetail: RequestHandler = async (req, res) => { const merchant = await merchantService.getOwnStore(res.locals.user.id); res.json(await refundsService.detail(readRouteId(req.params.requestId), merchant.id)); };
+export const merchantApproveRefundRequest: RequestHandler = async (req, res) => res.json(await refundsService.merchantApprove(res.locals.user.id, readRouteId(req.params.requestId), req.body?.note));
+export const merchantRejectRefundRequest: RequestHandler = async (req, res) => res.json({ refundRequest: await refundsService.merchantReject(res.locals.user.id, readRouteId(req.params.requestId), req.body?.reason) });
+export const listAdminRefundRequests: RequestHandler = async (req, res) => res.json(await refundsService.listAdmin(req.query));
+export const adminRefundRequestDetail: RequestHandler = async (req, res) => res.json(await refundsService.detail(readRouteId(req.params.requestId)));

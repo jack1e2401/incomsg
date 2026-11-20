@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDefaultChallengeMilestones } from "../../../../../apps/backend/src/modules/challenges/challenges.milestones.js";
+import { buildDefaultChallengeMilestones } from "../../../../../apps/backend/src/modules/loyalty/challenges/challenges.milestones.js";
 
 test("count challenges get up to five evenly distributed integer milestones", () => {
   assert.deepEqual(

@@ -24,7 +24,7 @@ const [{ app }, { prisma }, { hashPassword }, { defaultStorefrontConfig }] = awa
   import("../../../apps/backend/src/app.js"),
   import("../../../apps/backend/src/lib/prisma.js"),
   import("../../../apps/backend/src/lib/password.js"),
-  import("../../../apps/backend/src/modules/storefront/storefront.validation.js"),
+  import("../../../apps/backend/src/modules/merchants/storefront/storefront.validation.js"),
 ]);
 
 async function loginAs(email: string): Promise<string> {

@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import type { Server } from "node:http";
 import { HttpError } from "../../../apps/backend/src/lib/http-error.js";
-import { readRouteId } from "../../../apps/backend/src/modules/products/products.validation.js";
+import { readRouteId } from "../../../apps/backend/src/modules/commerce/products/products.validation.js";
 
 process.env.JWT_SECRET ??= randomBytes(32).toString("hex");
 
